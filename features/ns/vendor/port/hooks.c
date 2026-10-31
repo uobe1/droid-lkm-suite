@@ -334,8 +334,9 @@ static struct ds_hook proc_hooks[2];
 
 static bool movable_prologue(u32 op)
 {
-	/* NOP/PACIASP; stack allocation/frame pointer; stack stores, no PC operands. */
+	/* NOP/PACIASP; SCS push; stack allocation/frame pointer; stack stores, no PC operands. */
 	return op == 0xd503201f || op == 0xd503233f ||
+		op == 0xf800865e ||
 		(op & 0xffc003ff) == 0xd10003ff ||
 		(op & 0xffc003ff) == 0x910003fd ||
 		(op & 0xffc003e0) == 0xf90003e0 || /* STR xN,[sp,#imm] */

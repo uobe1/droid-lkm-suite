@@ -19,6 +19,10 @@ Local changes:
   call is now a runtime-resolved function pointer; when the symbol is absent,
   the optional proc-connector exit event is not emitted (matching a kernel
   built without CONFIG_CONNECTOR). No PID/IPC semantics depend on it.
+- `vendor/port/hooks.c`: accept the target kernel's `0xf800865e` SCS push in
+  the movable prologue, same as upstream devtmpfs; it contains no PC operand.
+- `vendor/port/main.c`: hook preparation is skipped when `activate=0`; only
+  activation requires the entry preflight.
 
 Current stage: M1 development. The module is built only for `android16-6.12`
 until the other port directories are vendored and gated. It is not a release

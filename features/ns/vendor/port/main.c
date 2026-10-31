@@ -92,9 +92,11 @@ static int __init ds_port_init(void)
 		return -EOPNOTSUPP;
 	}
 	ds_set_proc_exit_connector_fn((void *)kallsyms_name_to_addr("proc_exit_connector"));
-	ret = ds_hooks_prepare();
-	if (ret)
-		return ret;
+	if (activate) {
+		ret = ds_hooks_prepare();
+		if (ret)
+			return ret;
+	}
 #ifdef DS_USERNS_LIVE
 	ret = ds_userns_core_init();
 	if (ret)
