@@ -21,7 +21,6 @@
 struct dnsk_hook {
 	char key[DNSK_HOOK_KEY_LEN];
 	enum dnsk_hook_type type;
-	struct module *owner;
 	bool active;
 	union {
 		struct {
@@ -47,7 +46,6 @@ struct dnsk_feature {
 	char version[DNSK_FEATURE_NAME_LEN];
 	char caps[128];
 	enum dnsk_status status;
-	struct module *owner;
 	bool active;
 };
 

@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: GPL-2.0-only
+obj-m := dnsk_unstick.o
+ccflags-y += -I$(src)/../../core/include

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Feature registry.  A feature is visible only while its module holds a
- * registration; unloading the owner removes it and releases the module ref.
+ * Feature registry.  Registrations are informational: core does not pin the
+ * owner module, because a pin would prevent the owner's exit from running and
+ * therefore deadlock the unregister.  Each feature module removes its rows in
+ * module_exit(); the core API reference it holds keeps core alive until then.
  */
 
 #include <linux/module.h>
@@ -83,11 +85,6 @@ int dnsk_feature_add_internal(const struct dnsk_feature_desc *desc)
 		mutex_unlock(&dnsk_features_lock);
 		return -ENOSPC;
 	}
-	if (!try_module_get(desc->owner)) {
-		mutex_unlock(&dnsk_features_lock);
-		return -ENOENT;
-	}
-
 	memset(feature, 0, sizeof(*feature));
 	strscpy(feature->name, desc->name, sizeof(feature->name));
 	if (desc->version)
@@ -95,7 +92,6 @@ int dnsk_feature_add_internal(const struct dnsk_feature_desc *desc)
 	if (desc->caps)
 		strscpy(feature->caps, desc->caps, sizeof(feature->caps));
 	feature->status = desc->status;
-	feature->owner = desc->owner;
 	feature->active = true;
 	mutex_unlock(&dnsk_features_lock);
 	return 0;
@@ -115,10 +111,6 @@ int dnsk_feature_del_internal(const char *name)
 		return -ENOENT;
 	}
 	feature->active = false;
-	if (feature->owner) {
-		module_put(feature->owner);
-		feature->owner = NULL;
-	}
 	memset(feature, 0, sizeof(*feature));
 	mutex_unlock(&dnsk_features_lock);
 	return 0;
@@ -164,10 +156,6 @@ void dnsk_features_exit(void)
 		if (!dnsk_features[i].active)
 			continue;
 		dnsk_features[i].active = false;
-		if (dnsk_features[i].owner) {
-			module_put(dnsk_features[i].owner);
-			dnsk_features[i].owner = NULL;
-		}
 	}
 	mutex_unlock(&dnsk_features_lock);
 }

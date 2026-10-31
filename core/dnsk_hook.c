@@ -25,14 +25,6 @@ static struct dnsk_hook *dnsk_find_locked(const char *key)
 	return NULL;
 }
 
-static void dnsk_release_owner(struct dnsk_hook *hook)
-{
-	if (hook->owner) {
-		module_put(hook->owner);
-		hook->owner = NULL;
-	}
-}
-
 static int dnsk_kprobe_pre(struct kprobe *kp, struct pt_regs *regs)
 {
 	struct dnsk_hook *hook = container_of(kp, struct dnsk_hook, u.kprobe.kp);
@@ -78,7 +70,6 @@ static int dnsk_remove_locked(struct dnsk_hook *hook)
 
 	hook->active = false;
 	memset(hook->key, 0, sizeof(hook->key));
-	dnsk_release_owner(hook);
 	return 0;
 }
 
@@ -111,15 +102,9 @@ int dnsk_hook_add_internal(const struct dnsk_hook_req *req)
 		return -ENOSPC;
 	}
 
-	if (!try_module_get(req->owner)) {
-		mutex_unlock(&dnsk_hooks_lock);
-		return -ENOENT;
-	}
-
 	memset(hook, 0, sizeof(*hook));
 	strscpy(hook->key, req->key, sizeof(hook->key));
 	hook->type = req->type;
-	hook->owner = req->owner;
 
 	switch (req->type) {
 	case DNSK_HOOK_KPROBE:
@@ -187,7 +172,6 @@ int dnsk_hook_add_internal(const struct dnsk_hook_req *req)
 
 	if (ret) {
 		memset(hook->key, 0, sizeof(hook->key));
-		dnsk_release_owner(hook);
 		mutex_unlock(&dnsk_hooks_lock);
 		return ret;
 	}

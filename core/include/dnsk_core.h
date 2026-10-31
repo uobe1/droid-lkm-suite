@@ -34,6 +34,8 @@ enum dnsk_hook_type {
 struct dnsk_hook_req {
 	const char *key;
 	enum dnsk_hook_type type;
+	/* Registering module, for diagnostics.  Core does not pin it; the
+	 * owner must remove every hook in module_exit(). */
 	struct module *owner;
 	const char *symbol;
 	unsigned int syscall_nr;
@@ -47,6 +49,8 @@ struct dnsk_feature_desc {
 	const char *version;
 	enum dnsk_status status;
 	const char *caps;
+	/* Registering module, for diagnostics.  Core does not pin it; the
+	 * owner must remove its registration in module_exit(). */
 	struct module *owner;
 };
 
