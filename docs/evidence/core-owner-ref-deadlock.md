@@ -4,7 +4,7 @@
 
 `dnsk_ns` 注册状态桥后, `dnsk_ns` 与 `dnsk_core` 互相持有模块引用:
 
-```
+```text
 dnsk_ns               319488  1
 dnsk_core              45056  1
 ```
@@ -31,7 +31,7 @@ dnsk_core              45056  1
 `feature_del("ns")`, 释放旧 core 对 ns 的引用。随后按 `dnsk_unstick -> dnsk_ns -> dnsk_core`
 顺序卸载:
 
-```
+```text
 dnsk_unstick: feature_del(ns) = 0
 unstick_rc=0
 ns_rc=0
@@ -40,13 +40,14 @@ all_gone
 proc_gone
 ```
 
-恢复过程没有重启设备, 没有 Oops。
+恢复过程没有重启设备, 没有 Oops。设备 `boot_id` 在恢复前后均为
+`c8716b4b-091c-4bc1-87e8-925d9c095154`。
 
 ## 修正版验证
 
 加载修正后的 `dnsk_core.ko` 与 `dnsk_ns.ko`（`gki=1 activate=0`）:
 
-```
+```text
 bridge_status=ok
 core_pinned_by_feature=ok
 CORE_BRIDGE_SMOKE_OK

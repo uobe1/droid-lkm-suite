@@ -1,0 +1,90 @@
+name: qemu-core
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:android16-6.12-20260828
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build modules and boot Image
+        shell: bash
+        run: |
+          set -euxo pipefail
+          KDIR="/opt/ddk/kdir/android16-6.12"
+          make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
+          make -C "$GITHUB_WORKSPACE/features/ns" KDIR="$KDIR" modules
+          make -C "$GITHUB_WORKSPACE/features/diag" KDIR="$KDIR" modules
+          make -C "$GITHUB_WORKSPACE/features/devtmpfs" KDIR="$KDIR" modules
+          make -C "$GITHUB_WORKSPACE/features/netfilter" KDIR="$KDIR" modules
+          mkdir -p out
+          cp "$GITHUB_WORKSPACE"/*.ko out/
+          cp "$GITHUB_WORKSPACE"/features/*/*.ko out/
+          OBJCOPY=$(command -v llvm-objcopy || command -v aarch64-linux-gnu-objcopy || command -v objcopy)
+          "$OBJCOPY" -O binary -R .note -R .comment -S "$KDIR/vmlinux" out/Image
+          cp "$KDIR/System.map" "$KDIR/.config" out/
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qemu-6.12
+          path: out/*
+          if-no-files-found: error
+
+  boot:
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: qemu-6.12
+          path: qemu
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm cpio
+      - name: Build initramfs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fsSL -o alpine.tar.gz \
+            https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.3-aarch64.tar.gz
+          mkdir -p rootfs
+          tar -xzf alpine.tar.gz -C rootfs
+          mkdir -p rootfs/modules rootfs/proc rootfs/sys rootfs/dev rootfs/tmp
+          cp qemu/dnsk_core.ko qemu/dnsk_ns.ko rootfs/modules/
+          cp tests/qemu/init rootfs/init
+          chmod 0755 rootfs/init
+          (cd rootfs && find . | cpio -o -H newc | gzip -9) > initramfs.cpio.gz
+          ls -l Image 2>/dev/null || ls -l qemu/Image
+      - name: Boot and check
+        shell: bash
+        run: |
+          set +e
+          timeout 420 qemu-system-aarch64 \
+            -M virt -cpu max -m 2048 -smp 2 -nographic -no-reboot \
+            -kernel qemu/Image -initrd initramfs.cpio.gz \
+            -append "console=ttyAMA0 rdinit=/init panic=-1 module.sig_enforce=0" \
+            2>&1 | tee qemu.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "qemu_rc=$rc"
+          grep -q 'DNSK_QEMU_OK' qemu.log
+          if grep -Eq 'Kernel panic|Oops|BUG:|CFI failure|Unknown symbol|invalid module format|insmod: can.t insert' qemu.log; then
+            echo "kernel failure in QEMU log" >&2
+            exit 1
+          fi
+          echo "QEMU core/ns smoke ok"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qemu-core-log
+          path: qemu.log
+          if-no-files-found: warn
