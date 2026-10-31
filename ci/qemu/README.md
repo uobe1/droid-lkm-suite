@@ -25,3 +25,19 @@ Planned matrix:
 
 A QEMU run counts only when its log and job URL are attached to the release
 evidence. Do not mark a feature validated from a build alone.
+
+## DDK image facts
+
+The `android16-6.12-20260828` DDK kdir ships `vmlinux`, `System.map`, `.config`
+and `Module.symvers` for Linux **6.12.76-4k**; `objcopy` of that `vmlinux`
+boots under `-M virt` and matches the modules built in the same container.
+Its config has `PID_NS`, `IPC_NS`, `SYSVIPC`, `POSIX_MQUEUE`, `DEVTMPFS`,
+`NF_TABLES`, `IP_SET` and `USER_NS` disabled, which is the feature-off kernel
+these tests need. `9P_FS=n`, so modules must be embedded in the initramfs;
+`MODULE_SIG=y` with `MODULE_SIG_FORCE` off, so unsigned modules load with a
+taint.
+
+Google's public GKI `Image` for build 13881345 is the device's exact
+`6.12.30-android16-...` kernel, but its version and symbol CRCs differ from the
+DDK 6.12.76 build; it is not used to load DDK-built modules. It remains a
+candidate for Native-oracle work with matching builds.
