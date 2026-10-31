@@ -20,5 +20,6 @@
 ## 证据
 
 - 设备事实：`android16-6.12`，缺 PID/IPC/USER_NS/TMPFS_XATTR/ACL/CGROUP_PIDS 等；见计划 Context。
+- M0 core：8 KMI 构建成功、docs 已部署、core 已在真机加载/卸载；见 [evidence/m0-core.md](evidence/m0-core.md)。
 - 状态更新必须先有 CI/QEMU/真机证据；没有证据时保持 not-shipped。
 - 首 tag 前不创建 tag；dev 版本仅构建产物。

@@ -14,6 +14,17 @@
 #include <sys/utsname.h>
 #include <unistd.h>
 
+/*
+ * Android Bionic requires a 64-byte-aligned PT_TLS for arm64.  A static
+ * clang binary may otherwise be rejected by the loader ("TLS segment is
+ * underaligned") even when the program itself has no TLS.  This aligned
+ * thread-local object forces the linker's PT_TLS alignment to 64.
+ */
+#if defined(__ANDROID__) && defined(__aarch64__)
+__attribute__((visibility("default"), aligned(64)))
+_Thread_local int dnsk_android_tls_alignment_fix = 0;
+#endif
+
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 struct sym_req {

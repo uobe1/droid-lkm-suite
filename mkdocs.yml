@@ -31,6 +31,8 @@ nav:
   - 首页: index.md
   - 架构: architecture/overview.md
   - 状态: status.md
+  - 证据:
+      - M0 core: evidence/m0-core.md
   - 可行性:
       - CGROUP_PIDS: feasibility/cgpids.md
       - TMPFS_XATTR/ACL: feasibility/tmpfsx.md

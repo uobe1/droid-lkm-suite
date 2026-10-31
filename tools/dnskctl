@@ -6,8 +6,12 @@
 
 set -eu
 
-MODDIR=${0%/*}
-[ "$MODDIR" = "$0" ] && MODDIR=.
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+if [ "$(basename -- "$SCRIPT_DIR")" = "bin" ]; then
+	MODDIR=$(dirname -- "$SCRIPT_DIR")
+else
+	MODDIR=$SCRIPT_DIR
+fi
 STATE_DIR=${DNSK_STATE_DIR:-/data/adb/dnsk}
 SUPPORTED="$MODDIR/supported_kmis.txt"
 KSUD=${DNSK_KSUD:-}
@@ -138,6 +142,10 @@ do_unload() {
 	[ $# -eq 1 ] || die "unload <feature>"
 	need_root
 	feature=$1
+	if ! is_loaded "dnsk_${feature}"; then
+		echo "dnsk_${feature} is not loaded"
+		return 0
+	fi
 	bb=$(find_busybox)
 	[ -n "$bb" ] || die "busybox not found; cannot rmmod safely"
 	if [ "$feature" = core ]; then
