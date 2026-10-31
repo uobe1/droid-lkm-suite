@@ -83,6 +83,8 @@ jobs:
             cp "$GITHUB_WORKSPACE/features/devtmpfs/dnsk_devtmpfs.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             make -C "$GITHUB_WORKSPACE/features/netfilter" KDIR="$KDIR" modules
             cp "$GITHUB_WORKSPACE/features/netfilter/dnsk_netfilter.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
+            make -C "$GITHUB_WORKSPACE/features/ipset" KDIR="$KDIR" modules
+            cp "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
           fi
           file "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"*.ko
           SYMVERS="$KDIR/Module.symvers"

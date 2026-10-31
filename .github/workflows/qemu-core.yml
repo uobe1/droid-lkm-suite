@@ -34,6 +34,7 @@ jobs:
           make -C "$GITHUB_WORKSPACE/features/diag" KDIR="$KDIR" modules
           make -C "$GITHUB_WORKSPACE/features/devtmpfs" KDIR="$KDIR" modules
           make -C "$GITHUB_WORKSPACE/features/netfilter" KDIR="$KDIR" modules
+          make -C "$GITHUB_WORKSPACE/features/ipset" KDIR="$KDIR" modules
           mkdir -p out
           cp "$GITHUB_WORKSPACE"/*.ko out/
           cp "$GITHUB_WORKSPACE"/features/*/*.ko out/
