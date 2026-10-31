@@ -15,7 +15,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-FORBIDDEN_PREFIXES = ("kallsyms_", "__cfi_", "__ksymtab_", "__kcrctab_")
+FORBIDDEN_PREFIXES = ("kallsyms_", "__ksymtab_", "__kcrctab_")
+# __cfi_slowpath is the kernel's exported CFI runtime on pre-kCFI builds;
+# it is a normal module dependency, unlike the CFI/ksymtab internals below.
+ALLOW_EXACT = {"__cfi_slowpath", "__cfi_slowpath_diag"}
 FORBIDDEN_EXACT = {
     "kallsyms_lookup_name",
     "kallsyms_on_each_symbol",
@@ -58,7 +61,7 @@ def main() -> int:
 
     bad = []
     for name in undefined_symbols(args.ko):
-        if name in allow:
+        if name in allow or name in ALLOW_EXACT:
             continue
         if name in FORBIDDEN_EXACT or name.startswith(FORBIDDEN_PREFIXES):
             bad.append(name)
