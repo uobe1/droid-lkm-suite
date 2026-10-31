@@ -9,11 +9,11 @@
   - `package-dev-612` 成功生成 dev KSU ZIP。
 - Docs：run `41232605351`，结论 success；Pages 已部署到 <https://uobe1.github.io/droid-lkm-suite/>。
 
-Dev artifact：
+Dev artifact（最终 M0 构建，run `41233282247`）：
 
 ```text
 droid_lkm_suite-v1.0.0dev0-android16-6.12.zip
-sha256 976e66745bdfa538b8c528f054fec089ca48ae103f0ad199dc7295cbf5096f86
+sha256 5f2bb30bdea4d6a42df50701b90c092fcc9954b5c80c2b5c4c68052cc6a2ed0a
 ```
 
 ## 真机加载
@@ -49,6 +49,22 @@ su -c '/data/adb/ksu/bin/busybox rmmod dnsk_core'
 ```
 
 结果：`rmmod_rc=0`；`lsmod` 不再有 `dnsk_core`；`/proc/dnsk/status` 返回 `No such file or directory`。没有 Oops/panic。
+
+## dnskctl / preflight
+
+从打包目录执行：
+
+```sh
+./bin/dnskctl preflight core
+./bin/dnskctl load core
+./bin/dnskctl cap
+./bin/dnskctl probe
+./bin/dnskctl unload core
+```
+
+preflight 返回 `ok:true`，KMI/BTF/4K 页/ksud/`sys_call_table`/`init_mm`/
+`panic_notifier_list`/`stop_machine`/`register_kprobe`/dcache/kallsyms resolver
+全部为 true。`dnskctl` 从 `bin/` 正确解析模块根，加载/卸载/状态均正常。
 
 ## 结论与边界
 
