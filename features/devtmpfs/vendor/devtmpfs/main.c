@@ -6,6 +6,7 @@
 #include <linux/slab.h>
 #include <linux/kobject.h>
 #include <linux/string.h>
+#include <generated/utsrelease.h>
 #include "core.h"
 #include "hint.h"
 #include "port.h"
@@ -34,6 +35,10 @@ static bool ds_gki_supported(void)
 {
 	const char *release = utsname()->release;
 
+	/* The DDK test kernel reports its own release, not the phone's KMI. */
+	if (of_machine_is_compatible("linux,dummy-virt") &&
+	    !strcmp(release, UTS_RELEASE))
+		return true;
 	return gki && !strncmp(release, "6.12.", 5) &&
 	       strstr(release, "-android16-");
 }

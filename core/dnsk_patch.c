@@ -23,7 +23,13 @@
 
 atomic_t dnsk_patch_state = ATOMIC_INIT(-EOPNOTSUPP);
 
+typedef void (*dnsk_set_fixmap_fn_t)(enum fixed_addresses idx, phys_addr_t phys,
+				     pgprot_t prot);
+typedef int (*dnsk_copy_nofault_fn_t)(void *dst, const void *src, size_t size);
+
 static struct mm_struct *dnsk_init_mm;
+static dnsk_set_fixmap_fn_t dnsk_set_fixmap_fn;
+static dnsk_copy_nofault_fn_t dnsk_copy_nofault_fn;
 static void (*dnsk_dcache_fn)(unsigned long start, unsigned long end);
 static void (*dnsk_dcache_old_fn)(void *addr, size_t size);
 static void (*dnsk_icache_fn)(unsigned long start, unsigned long end);
@@ -88,16 +94,21 @@ int dnsk_patch_init(void)
 	void *mm = dnsk_resolve_symbol("init_mm");
 
 	dnsk_init_mm = mm;
+	/* GKI does not export these two, so they cannot be ELF imports. */
+	dnsk_set_fixmap_fn = dnsk_resolve_symbol("__set_fixmap");
+	dnsk_copy_nofault_fn = dnsk_resolve_symbol("copy_to_kernel_nofault");
 	dnsk_dcache_fn = dnsk_resolve_symbol("dcache_clean_inval_poc");
 	dnsk_dcache_old_fn = dnsk_resolve_symbol("__flush_dcache_area");
 	dnsk_icache_fn = dnsk_resolve_symbol("caches_clean_inval_pou");
 	if (!dnsk_icache_fn)
 		dnsk_icache_fn = dnsk_resolve_symbol("__flush_icache_range");
 
-	if (!dnsk_init_mm || (!dnsk_dcache_fn && !dnsk_dcache_old_fn)) {
+	if (!dnsk_init_mm || !dnsk_set_fixmap_fn || !dnsk_copy_nofault_fn ||
+	    (!dnsk_dcache_fn && !dnsk_dcache_old_fn)) {
 		atomic_set(&dnsk_patch_state, -EOPNOTSUPP);
-		dnsk_warn("patching disabled: init_mm=%px dcache=%px/%px\n",
-			  dnsk_init_mm, dnsk_dcache_fn, dnsk_dcache_old_fn);
+		dnsk_warn("patching disabled: init_mm=%px fixmap=%px copy=%px dcache=%px/%px\n",
+			  dnsk_init_mm, dnsk_set_fixmap_fn, dnsk_copy_nofault_fn,
+			  dnsk_dcache_fn, dnsk_dcache_old_fn);
 		return -EOPNOTSUPP;
 	}
 
@@ -124,6 +135,19 @@ static __nocfi noinline void dnsk_flush_icache(unsigned long start, size_t len)
 		dnsk_icache_fn(start, start + len);
 }
 
+static __nocfi noinline int dnsk_fixmap_write(unsigned long phy,
+					      const void *src, size_t len)
+{
+	void *map;
+	int err;
+
+	dnsk_set_fixmap_fn(FIX_TEXT_POKE0, phy, PAGE_KERNEL);
+	map = (void *)(__fix_to_virt(FIX_TEXT_POKE0) + (phy & ~PAGE_MASK));
+	err = dnsk_copy_nofault_fn(map, src, len);
+	dnsk_set_fixmap_fn(FIX_TEXT_POKE0, 0, __pgprot(0));
+	return err;
+}
+
 struct dnsk_patch_info {
 	void *dst;
 	const void *src;
@@ -137,16 +161,13 @@ static int dnsk_patch_nosync(void *dst, const void *src, size_t len,
 			     bool flush_icache)
 {
 	unsigned long phy;
-	void *map;
 	int err;
 
 	phy = dnsk_phys_from_virt((unsigned long)dst, &err);
 	if (err)
 		return err;
 
-	map = (void *)set_fixmap_offset(FIX_TEXT_POKE0, phy);
-	err = (int)copy_to_kernel_nofault(map, src, len);
-	clear_fixmap(FIX_TEXT_POKE0);
+	err = dnsk_fixmap_write(phy, src, len);
 	if (err)
 		return err;
 
