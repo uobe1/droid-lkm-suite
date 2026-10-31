@@ -29,7 +29,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y doxygen
       - name: Build userspace API
-        run: doxygen Doxyfile
+        run: |
+          mkdir -p build/doxygen-userspace
+          doxygen Doxyfile
       - name: Build site
         run: |
           mkdir -p site/api/userspace

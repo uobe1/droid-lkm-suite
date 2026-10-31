@@ -55,6 +55,7 @@ int dnsk_symbols_init(void);
 void dnsk_symbols_exit(void);
 void *dnsk_resolve_symbol(const char *name);
 void *dnsk_resolve_symbol_exact(const char *name);
+void dnsk_log(int level, const char *fmt, ...);
 
 int dnsk_patch_init(void);
 bool dnsk_patch_ready(void);

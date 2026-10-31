@@ -6,7 +6,12 @@
 #include <linux/err.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 #include <linux/stdarg.h>
+#else
+#include <stdarg.h>
+#endif
 #include "dnsk_internal.h"
 
 static bool dnsk_core_ready;

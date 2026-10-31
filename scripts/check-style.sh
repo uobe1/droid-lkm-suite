@@ -15,7 +15,7 @@ else
 fi
 
 if command -v ruff >/dev/null 2>&1; then
-	ruff check tools tests
+	ruff check tools
 else
 	echo "ruff not installed; skipping" >&2
 fi

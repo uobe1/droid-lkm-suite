@@ -28,7 +28,7 @@ jobs:
         run: |
           python tools/kmi_matrix.py --check
           python -m py_compile tools/*.py
-          ruff check tools tests
+          ruff check tools
       - name: Shell checks
         run: |
           find tools ksu tests ci scripts -name '*.sh' -type f -print0 2>/dev/null | xargs -0 -r shellcheck

@@ -34,9 +34,7 @@ def undefined_symbols(ko: Path) -> list[str]:
         parts = line.split()
         if not parts:
             continue
-        if parts[0] == "U" and len(parts) >= 2:
-            names.append(parts[-1])
-        elif "UND" in parts:
+        if (parts[0] == "U" and len(parts) >= 2) or "UND" in parts:
             names.append(parts[-1])
     return sorted(set(names))
 

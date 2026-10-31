@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import subprocess
 import sys
 import time
@@ -136,7 +135,7 @@ def main() -> int:
             arc = f"kmi/{kmi}/{core.name}"
             add_file(zf, core, arc, 0o644)
             record(core, arc)
-            for stem, ko in feature_files[kmi].items():
+            for ko in feature_files[kmi].values():
                 arc = f"kmi/{kmi}/{ko.name}"
                 add_file(zf, ko, arc, 0o644)
                 record(ko, arc)
