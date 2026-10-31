@@ -85,6 +85,7 @@ static int dnsk_remove_locked(struct dnsk_hook *hook)
 int dnsk_hook_add_internal(const struct dnsk_hook_req *req)
 {
 	struct dnsk_hook *hook;
+	int i;
 	int ret;
 
 	if (!req || !req->key || !req->key[0] || strlen(req->key) >= DNSK_HOOK_KEY_LEN)
@@ -99,7 +100,7 @@ int dnsk_hook_add_internal(const struct dnsk_hook_req *req)
 	}
 
 	hook = NULL;
-	for (int i = 0; i < DNSK_MAX_HOOKS; i++) {
+	for (i = 0; i < DNSK_MAX_HOOKS; i++) {
 		if (!dnsk_hooks[i].active) {
 			hook = &dnsk_hooks[i];
 			break;

@@ -15,4 +15,3 @@ dnsk_core-y := \
 	core/dnsk_panic.o
 
 ccflags-y += -I$(src) -I$(src)/core -I$(src)/core/include
-ccflags-y += -Wno-cast-function-type
