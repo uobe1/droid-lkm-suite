@@ -16,8 +16,9 @@ dnsk_ns-y := \
 	vendor/kallrecon/lib/discover.o vendor/kallrecon/lib/symbol.o \
 	vendor/kallrecon/lib/slide.o vendor/kallrecon/lib/fastboot.o \
 	vendor/kallrecon/lib/hint.o vendor/kallrecon/lib/variant.o \
-	vendor/kallrecon/lib/anchor.o
+	vendor/kallrecon/lib/anchor.o core_bridge.o
 
+ccflags-y += -I$(src)/../../core/include
 ccflags-y += -DDS_GKI_ANDROID='"android16"' -DDS_GKI_VERSION='"6.12"'
 ccflags-y += -DCONFIG_PID_NS=1 -DCONFIG_IPC_NS=1 -DCONFIG_POSIX_MQUEUE=1
 ccflags-y += -DCONFIG_POSIX_MQUEUE_SYSCTL=1 -DCONFIG_SYSVIPC_SYSCTL=1

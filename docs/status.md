@@ -8,8 +8,8 @@
 |---|---|---|---|
 | core ABI / symbol / patch / hook / panic | N/A | M0 实现中 | 无业务 feature |
 | PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV/mqueue smoke 真机通过；full R 待 setns/nested/Docker |
-| DEVTMPFS | R | development | build/inactive load 真机通过；active 待 reboot |
-| xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | build; inactive unload panic fixed, regression pending |
+| DEVTMPFS | R | development | inactive load/unload 真机通过；active 待授权测试 |
+| xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | inactive unload 回归通过；active 未测试 |
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | not-shipped | 未开始 |
 | USER_NS + idmapped/child overlay/FUSE/selftests | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
 | TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |

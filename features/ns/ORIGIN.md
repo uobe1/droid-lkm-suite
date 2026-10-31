@@ -22,7 +22,9 @@ Local changes:
 - `vendor/port/hooks.c`: accept the target kernel's `0xf800865e` SCS push in
   the movable prologue, same as upstream devtmpfs; it contains no PC operand.
 - `vendor/port/main.c`: hook preparation is skipped when `activate=0`; only
-  activation requires the entry preflight.
+  activation requires the entry preflight. The optional `core_bridge.c` adds a
+  development status row through `dnsk_core_get` resolved at runtime; a missing
+  core only disables the row.
 
 Current stage: M1 development. The module is built only for `android16-6.12`
 until the other port directories are vendored and gated. It is not a release

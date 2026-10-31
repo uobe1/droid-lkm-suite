@@ -40,4 +40,18 @@ unit；但 `module_exit` 无条件遍历 `units[]` 调用 `exit()`。`nft_unregi
 2. `busybox rmmod dnsk_netfilter`
 3. 检查 `/sys/fs/pstore` 无新 Oops、设备不重启。
 
-该验证通过前，netfilter 仍为 not-shipped。
+## 回归结果（2026-10-31）
+
+`boot_id` 前后一致：`c8716b4b-091c-4bc1-87e8-925d9c095154`。
+
+```text
+Loaded kernel module: .../dnsk_netfilter.ko
+nf_ins=0
+nf_rm=0
+BOOT_ID_SAME
+no_dnsk_modules
+droidspaces_netfilter: inactive: activate=1 and gki=1 are required
+```
+
+无新 Oops/panic。inactive 卸载崩溃已修复。active（`activate=1`）注册尚未测试，
+netfilter 仍为 development/unsupported。

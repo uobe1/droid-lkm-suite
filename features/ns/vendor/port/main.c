@@ -7,6 +7,7 @@
 #include "hint.h"
 #include "port.h"
 #include "ipc-backend.h"
+#include "core_bridge.h"
 #include "../gki-target.h"
 #ifdef DS_USERNS_LIVE
 #include "../userns/live.h"
@@ -154,6 +155,8 @@ static int __init ds_port_init(void)
 	} else {
 		pr_info("namespace core selftests passed; syscall hooks are not installed\n");
 	}
+	if (dnsk_ns_core_register())
+		pr_warn("core status bridge unavailable\n");
 	return 0;
 #ifdef DS_USERNS_LIVE
 fail_userns_proc:
@@ -167,6 +170,7 @@ fail_userns_core:
 
 static void __exit ds_port_exit(void)
 {
+	dnsk_ns_core_unregister();
 	ds_ipc_backend_exit();
 	ds_ipc_flush();
 	ds_pid_exit();

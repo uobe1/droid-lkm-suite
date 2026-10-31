@@ -20,6 +20,8 @@ const char *dnsk_status_name(enum dnsk_status status)
 		return "not-shipped";
 	case DNSK_STATUS_FEASIBILITY:
 		return "feasibility";
+	case DNSK_STATUS_DEVELOPMENT:
+		return "development";
 	case DNSK_STATUS_NATIVE:
 		return "native";
 	case DNSK_STATUS_REAL:
