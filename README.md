@@ -2,7 +2,7 @@
 
 Android GKI 容器子系统补全的 LKM 套件：在不写 boot 分区、不重编内核的前提下，为已 Root 的 KernelSU 设备按需加载 `.ko`。
 
-本项目以“**Native 或 Real，无 STUB/FAKE_SUCCESS**”为硬约束。当前处于 **M0 工程骨架阶段**：仓库、core ABI、hook/patch 基础、preflight、KSU/CI/文档管线正在建立；任何功能在通过对应验收前都不会被标记为支持。
+本项目以“**Native 或 Real，无 STUB/FAKE_SUCCESS**”为硬约束。当前处于 **M1 开发阶段**（仅 android16-6.12）：`dnsk_ns` 的 PID/IPC/SysV/mqueue 已在真机通过 smoke；`dnsk_devtmpfs` 已完成 inactive 加载验证，active 待重启；`dnsk_netfilter` 正在构建。所有功能仍未通过完整 R/D 验收，不得创建 tag。
 
 ## 范围
 
