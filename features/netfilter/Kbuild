@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: GPL-2.0-only
+obj-m := dnsk_netfilter.o
+dnsk_netfilter-y := vendor/netfilter/main.o vendor/netfilter/nat-inet.o
+dnsk_netfilter-y += \
+	vendor/netfilter/upstream/nf_tables_core.o \
+	vendor/netfilter/upstream/nf_tables_api.o \
+	vendor/netfilter/upstream/nft_chain_filter.o \
+	vendor/netfilter/upstream/nf_tables_trace.o \
+	vendor/netfilter/upstream/nft_immediate.o \
+	vendor/netfilter/upstream/nft_cmp.o \
+	vendor/netfilter/upstream/nft_range.o \
+	vendor/netfilter/upstream/nft_bitwise.o \
+	vendor/netfilter/upstream/nft_byteorder.o \
+	vendor/netfilter/upstream/nft_payload.o \
+	vendor/netfilter/upstream/nft_lookup.o \
+	vendor/netfilter/upstream/nft_dynset.o \
+	vendor/netfilter/upstream/nft_meta.o \
+	vendor/netfilter/upstream/nft_rt.o \
+	vendor/netfilter/upstream/nft_exthdr.o \
+	vendor/netfilter/upstream/nft_last.o \
+	vendor/netfilter/upstream/nft_counter.o \
+	vendor/netfilter/upstream/nft_objref.o \
+	vendor/netfilter/upstream/nft_inner.o \
+	vendor/netfilter/upstream/nft_chain_route.o \
+	vendor/netfilter/upstream/nf_tables_offload.o \
+	vendor/netfilter/upstream/nft_set_hash.o \
+	vendor/netfilter/upstream/nft_set_bitmap.o \
+	vendor/netfilter/upstream/nft_set_rbtree.o \
+	vendor/netfilter/upstream/nft_set_pipapo.o \
+	vendor/netfilter/upstream/xt_addrtype.o \
+	vendor/netfilter/upstream/nft_ct.o \
+	vendor/netfilter/upstream/nft_nat.o \
+	vendor/netfilter/upstream/nft_chain_nat.o \
+	vendor/netfilter/upstream/nft_masq.o \
+	vendor/netfilter/upstream/nft_fib.o \
+	vendor/netfilter/upstream/nft_fib_inet.o \
+	vendor/netfilter/upstream/nft_compat.o \
+	vendor/netfilter/upstream/nft_limit.o \
+	vendor/netfilter/upstream/nft_reject.o \
+	vendor/netfilter/upstream/nft_reject_inet.o \
+	vendor/netfilter/upstream/nft_log.o \
+	vendor/netfilter/upstream/nft_redir.o \
+	vendor/netfilter/upstream/nft_fib_ipv4.o \
+	vendor/netfilter/upstream/nft_reject_ipv4.o \
+	vendor/netfilter/upstream/nft_fib_ipv6.o \
+	vendor/netfilter/upstream/nft_reject_ipv6.o
+ccflags-y += -DCONFIG_NF_TABLES_IPV4=1 -DCONFIG_NF_TABLES_IPV6=1 -DCONFIG_NF_TABLES_INET=1
+LINUXINCLUDE := -I$(src)/vendor/netfilter/compat $(LINUXINCLUDE)
+ccflags-y += -I$(src)/vendor/netfilter -I$(srctree)
+ccflags-y += -std=gnu11 -Wno-declaration-after-statement
