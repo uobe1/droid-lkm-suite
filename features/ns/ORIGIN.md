@@ -14,7 +14,11 @@ Local changes:
 
 - `Kbuild` and `Makefile` are project-specific; upstream build files are not vendored.
 - Module output name is `dnsk_ns.ko`; upstream internal `ds_` prefixes are retained.
-- Local edits to vendored `main.c` (when made) are listed here with a diff summary.
+- `vendor/port/exit.c`/`port.h`/`main.c`: `proc_exit_connector()` is an optional
+  `CONFIG_CONNECTOR` facility and is absent on the target 6.12.30 kernel. The
+  call is now a runtime-resolved function pointer; when the symbol is absent,
+  the optional proc-connector exit event is not emitted (matching a kernel
+  built without CONFIG_CONNECTOR). No PID/IPC semantics depend on it.
 
 Current stage: M1 development. The module is built only for `android16-6.12`
 until the other port directories are vendored and gated. It is not a release

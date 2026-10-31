@@ -91,6 +91,7 @@ static int __init ds_port_init(void)
 		pr_err("this prototype requires native PID/IPC namespaces to be absent\n");
 		return -EOPNOTSUPP;
 	}
+	ds_set_proc_exit_connector_fn((void *)kallsyms_name_to_addr("proc_exit_connector"));
 	ret = ds_hooks_prepare();
 	if (ret)
 		return ret;

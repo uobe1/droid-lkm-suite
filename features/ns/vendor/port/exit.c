@@ -44,6 +44,15 @@
 #include <linux/signal.h>
 #include <linux/posix-timers.h>
 #include <linux/cn_proc.h>
+#include "port.h"
+
+/* Optional kernel facility: CONFIG_CONNECTOR=n builds have no proc connector. */
+static void (*ds_proc_exit_connector_fn)(struct task_struct *);
+
+void ds_set_proc_exit_connector_fn(void (*fn)(struct task_struct *))
+{
+	ds_proc_exit_connector_fn = fn;
+}
 #include <linux/mutex.h>
 #include <linux/futex.h>
 #include <linux/pipe_fs_i.h>
@@ -917,7 +926,8 @@ void __noreturn do_exit(long code)
 
 	exit_tasks_rcu_start();
 	exit_notify(tsk, group_dead);
-	proc_exit_connector(tsk);
+	if (ds_proc_exit_connector_fn)
+		ds_proc_exit_connector_fn(tsk);
 	mpol_put_task_policy(tsk);
 #ifdef CONFIG_FUTEX
 	if (unlikely(current->pi_state_cache))
