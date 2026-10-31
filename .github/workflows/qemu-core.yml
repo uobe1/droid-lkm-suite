@@ -2,6 +2,14 @@ name: qemu-core
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: initramfs test to run
+        type: choice
+        options:
+          - baseline
+          - active-ns
+        default: baseline
 
 permissions:
   contents: read
@@ -30,6 +38,8 @@ jobs:
           OBJCOPY=$(command -v llvm-objcopy || command -v aarch64-linux-gnu-objcopy || command -v objcopy)
           "$OBJCOPY" -O binary -R .note -R .comment -S "$KDIR/vmlinux" out/Image
           cp "$KDIR/System.map" "$KDIR/.config" out/
+          grep -E '^CONFIG_(DEVTMPFS|SERIAL_AMBA_PL011|MODULE_SIG|MODULE_SIG_FORCE|MODULE_SIG_ALL|VIRTIO|9P_FS|KALLSYMS|CFI_CLANG)=' \
+            "$KDIR/.config" || true
           ls -l out
       - uses: actions/upload-artifact@v4
         with:
@@ -60,7 +70,11 @@ jobs:
           tar -xzf alpine.tar.gz -C rootfs
           mkdir -p rootfs/modules rootfs/proc rootfs/sys rootfs/dev rootfs/tmp
           cp qemu/dnsk_core.ko qemu/dnsk_ns.ko rootfs/modules/
-          cp tests/qemu/init rootfs/init
+          if [ "${{ inputs.mode }}" = "active-ns" ]; then
+            cp tests/qemu/init-active-ns rootfs/init
+          else
+            cp tests/qemu/init rootfs/init
+          fi
           chmod 0755 rootfs/init
           (cd rootfs && find . | cpio -o -H newc | gzip -9) > initramfs.cpio.gz
           ls -l Image 2>/dev/null || ls -l qemu/Image
@@ -71,11 +85,15 @@ jobs:
           timeout 420 qemu-system-aarch64 \
             -M virt -cpu max -m 2048 -smp 2 -nographic -no-reboot \
             -kernel qemu/Image -initrd initramfs.cpio.gz \
-            -append "console=ttyAMA0 rdinit=/init panic=-1 module.sig_enforce=0" \
+            -append "console=ttyAMA0 rdinit=/init panic=-1 nokaslr module.sig_enforce=0" \
             2>&1 | tee qemu.log
           rc=${PIPESTATUS[0]}
           set -e
           echo "qemu_rc=$rc"
+          if [ "$rc" -ne 0 ]; then
+            echo "QEMU did not exit cleanly" >&2
+            exit 1
+          fi
           grep -q 'DNSK_QEMU_OK' qemu.log
           if grep -Eq 'Kernel panic|Oops|BUG:|CFI failure|Unknown symbol|invalid module format|insmod: can.t insert' qemu.log; then
             echo "kernel failure in QEMU log" >&2
@@ -85,6 +103,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: qemu-core-log
+          name: qemu-core-log-${{ inputs.mode }}
           path: qemu.log
           if-no-files-found: warn

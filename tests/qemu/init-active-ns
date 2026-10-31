@@ -1,0 +1,40 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Disposable-VM test for the active PID/IPC namespace hooks.
+BB=/bin/busybox
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	"$BB" mknod /dev/console c 5 1
+	"$BB" mknod /dev/null c 1 3
+fi
+"$BB" mkdir -p /dev/pts /tmp
+"$BB" mount -t devpts devpts /dev/pts 2>/dev/null
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" poweroff -f
+}
+
+echo "DNSK_QEMU_ACTIVE_BOOT $(cat /proc/sys/kernel/osrelease)"
+"$BB" insmod /modules/dnsk_core.ko || fail core_insmod
+"$BB" insmod /modules/dnsk_ns.ko gki=1 activate=1 || fail ns_activate
+"$BB" grep -q '^feature ns development' /proc/dnsk/status || fail ns_feature
+
+"$BB" unshare -p -f -m --mount-proc /bin/sh -c '
+	[ "$$" -eq 1 ] || exit 11
+	readlink /proc/self/ns/pid >/dev/null || exit 12
+	echo DNSK_ACTIVE_PID_OK
+' || fail pid_ns
+
+i=0
+while [ "$i" -lt 20 ]; do
+	"$BB" unshare -p -f /bin/true || fail "pid_cycle_$i"
+	i=$((i + 1))
+done
+echo "DNSK_ACTIVE_CYCLES_OK $i"
+echo "DNSK_QEMU_ACTIVE_OK"
+"$BB" poweroff -f

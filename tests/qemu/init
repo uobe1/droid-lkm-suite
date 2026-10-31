@@ -26,6 +26,11 @@ echo "DNSK_QEMU_BOOT $(cat /proc/sys/kernel/osrelease)"
 "$BB" grep -q '^feature ns development' /proc/dnsk/status || fail ns_feature
 echo "DNSK_QEMU_BRIDGE_OK"
 "$BB" rmmod dnsk_ns || fail ns_rmmod
+"$BB" insmod /modules/dnsk_devtmpfs.ko gki=1 activate=0 || fail devtmpfs_insmod
+"$BB" rmmod dnsk_devtmpfs || fail devtmpfs_rmmod
+"$BB" insmod /modules/dnsk_netfilter.ko gki=1 activate=0 || fail netfilter_insmod
+"$BB" rmmod dnsk_netfilter || fail netfilter_rmmod
+echo "DNSK_QEMU_INACTIVE_OK"
 if "$BB" grep -q '^feature ns ' /proc/dnsk/status; then
 	fail ns_feature_stale
 fi
