@@ -1,0 +1,68 @@
+# M1 namespace evidence (android16-6.12)
+
+日期：2026-10-31。范围：`dnsk_ns.ko`，vendored Droidspaces-LKM 6.12 PID/IPC 端口；仅
+`android16-6.12` 构建。没有 tag，没有 release 声明。
+
+## Artifact
+
+`droid_lkm_suite-v1.0.0dev0-android16-6.12.zip`
+sha256 `418b86b56d5e5066a70f78778749b482bd5fa1e51494dc9be9b48999d8b567a3`
+（core + ns；CI run `41234788684`）。
+
+## activate=0（低风险自测）
+
+```text
+Loaded kernel module: .../dnsk_ns.ko
+dnsk_ns 315392 0
+dnsk_core 45056 0
+droidspaces_ns: PID: allocation, parent, IDR, sharing and invalid-parent checks passed
+droidspaces_ns: IPC: allocation, namespace identity, owner and sharing checks passed
+droidspaces_ns: PID/IPC: deferred destruction finished, no live namespaces
+droidspaces_ns: namespace core selftests passed; syscall hooks are not installed
+```
+
+`rmmod dnsk_ns` 和 `rmmod dnsk_core` 均成功。
+
+## activate=1（真实 hooks）
+
+```text
+droidspaces_ns: entry preflight passed: 21 functions, 20 syscalls, 6 callbacks; no patches written
+droidspaces_ns: experimental namespace hooks active; module stays pinned until reboot
+/etc:
+ipc -> ipc:[4026531839]
+pid -> pid:[4026531836]
+pid_for_children -> pid:[4026531836]
+```
+
+### PID namespace
+
+在 namespace 内执行独立脚本：
+
+```text
+child_pid=1
+child_pidns=pid:[4026535021]
+child_pid_for_children=pid:[4026535021]
+proc1=Name: sh
+proc_count=3
+unshare_pid_rc=0
+```
+
+### IPC namespace + SysV
+
+```text
+parent: ipcns ipc:[4026531839], msgget 0, msgsnd 0, msgrcv 5 "hello", msgctl_rmid 0
+ipcns:  ipc:[4026535020], same queue ops
+pid+ipc: pid 1, ipc:[4026535021], same queue ops
+```
+
+### POSIX mqueue
+
+`mq_open` 在父进程、IPC ns、PID+IPC ns 均返回 `EACCES (13)`。因此 mqueue
+尚未通过验收；需要继续定位 mqueue mount 的 `s_fs_info`。不能标记为支持。
+
+## 已知边界
+
+- 模块激活后 pinned；替换需重启。
+- mqueue 仍失败。
+- 未测试：setns、nested PID、container reboot、100 容器、Docker、QEMU。
+- 不得据此创建 tag 或宣称完整 PID/IPC 支持。

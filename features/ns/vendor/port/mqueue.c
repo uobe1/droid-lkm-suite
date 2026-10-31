@@ -407,6 +407,9 @@ static int mqueue_fill_super(struct super_block *sb, struct fs_context *fc)
 	struct inode *inode;
 	struct ipc_namespace *ns = sb->s_fs_info;
 
+	pr_info("dnsk_mq: fill_super sb=%px s_fs_info=%px fc=%px fc_s_fs_info=%px\n",
+		sb, sb->s_fs_info, fc, fc->s_fs_info);
+
 	sb->s_iflags |= SB_I_NOEXEC | SB_I_NODEV;
 	sb->s_blocksize = PAGE_SIZE;
 	sb->s_blocksize_bits = PAGE_SHIFT;
@@ -574,6 +577,9 @@ static int mqueue_create_attr(struct dentry *dentry, umode_t mode, void *arg)
 	struct mq_attr *attr = arg;
 	int error;
 	struct ipc_namespace *ipc_ns;
+
+	pr_info("dnsk_mq: create_attr dir=%px sb=%px s_fs_info=%px\n",
+		dir, dir->i_sb, dir->i_sb->s_fs_info);
 
 	spin_lock(&mq_lock);
 	ipc_ns = __get_ns_from_inode(dir);
@@ -904,6 +910,9 @@ static int do_mq_open(const char __user *u_name, int oflag, umode_t mode,
 	struct path path;
 	int fd, error;
 	int ro;
+
+	pr_info("dnsk_mq: open ns=%px mnt=%px sb=%px s_fs_info=%px\n",
+		ds_current_ipc_ns(), mnt, mnt->mnt_sb, mnt->mnt_sb->s_fs_info);
 
 	audit_mq_open(oflag, mode, attr);
 

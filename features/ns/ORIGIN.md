@@ -23,6 +23,8 @@ Local changes:
   the movable prologue, same as upstream devtmpfs; it contains no PC operand.
 - `vendor/port/main.c`: hook preparation is skipped when `activate=0`; only
   activation requires the entry preflight.
+- `vendor/port/mqueue.c`: temporary `pr_info` diagnostics for mqueue
+  `s_fs_info`; remove once the EACCES investigation is closed.
 
 Current stage: M1 development. The module is built only for `android16-6.12`
 until the other port directories are vendored and gated. It is not a release
