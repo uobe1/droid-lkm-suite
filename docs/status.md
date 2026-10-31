@@ -7,7 +7,7 @@
 | 功能 | 目标等级 | 当前状态 | 说明 |
 |---|---|---|---|
 | core ABI / symbol / patch / hook / panic | N/A | M0 实现中 | 无业务 feature |
-| PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV 真机验证；mqueue EACCES，未通过 |
+| PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV/mqueue smoke 真机通过；full R 待 setns/nested/Docker |
 | DEVTMPFS | R | not-shipped | 源码移植未开始 |
 | xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | not-shipped | 目标范围真实实现，未开始 |
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | not-shipped | 未开始 |

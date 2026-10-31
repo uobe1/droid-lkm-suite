@@ -57,12 +57,17 @@ pid+ipc: pid 1, ipc:[4026535021], same queue ops
 
 ### POSIX mqueue
 
-`mq_open` 在父进程、IPC ns、PID+IPC ns 均返回 `EACCES (13)`。因此 mqueue
-尚未通过验收；需要继续定位 mqueue mount 的 `s_fs_info`。不能标记为支持。
+通过 raw syscall 测试；注意 kernel ABI 的 name 不带前导 `/`，接收 buffer 必须 >=
+默认 `mq_msgsize` (8192)。父进程、IPC ns、PID+IPC ns 均通过：
+
+```text
+parent:  ipc:[4026531839] mq_open 4, send 0, receive 5 "hello" prio 1, unlink 0
+ipcns:   ipc:[4026535013] same
+pid+ipc: pid 1 ipc:[4026535020] same
+```
 
 ## 已知边界
 
 - 模块激活后 pinned；替换需重启。
-- mqueue 仍失败。
 - 未测试：setns、nested PID、container reboot、100 容器、Docker、QEMU。
 - 不得据此创建 tag 或宣称完整 PID/IPC 支持。

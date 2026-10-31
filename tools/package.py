@@ -144,7 +144,7 @@ def main() -> int:
             "schema": 1,
             "dev": True,
             "tagged": False,
-            "status": "M1 development: core + namespace (android16-6.12); PID/IPC/SysV verified, mqueue pending; no release support",
+            "status": "M1 development: core + namespace (android16-6.12); PID/IPC/SysV/mqueue smoke verified; full R/Docker/setns/nested gates pending; no release support",
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "source_commit": git_commit(root),
             "kmis": args.kmi,
@@ -157,7 +157,7 @@ def main() -> int:
         zf.writestr("verification.json", json.dumps({
             "dev": True,
             "tagged": False,
-            "note": "Dev artifact. Core + namespace development; mqueue pending. No release/tag before all 8 KMI and all feature gates pass.",
+            "note": "Dev artifact. Core + namespace development; PID/IPC/SysV/mqueue smoke verified, full gates pending. No release/tag before all 8 KMI and all feature gates pass.",
         }, indent=2, sort_keys=True))
 
     print(f"package: {args.out}")

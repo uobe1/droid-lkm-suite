@@ -8,8 +8,10 @@ libc = ctypes.CDLL(None, use_errno=True)
 O_CREAT = 0o100
 O_RDWR = 0o2
 O_EXCL = 0o200
-name = f"/dnsk-smoke-{os.getpid()}"
+name = f"dnsk-smoke-{os.getpid()}"
 name_b = name.encode()
+# The raw syscall ABI takes the name without a leading slash; libc mq_open
+# wrappers strip it before entering the kernel.
 
 # arm64 __NR_mq_open=180, mq_unlink=181, mq_timedsend=182, mq_timedreceive=183.
 # Bionic does not export the mq_* wrappers, so use the raw syscall interface.
@@ -52,7 +54,8 @@ def main():
         return 1
     rc = sys_mq_send(fd, b"hello", 1)
     print("mq_send", rc, "errno", errno())
-    rc, data, prio = sys_mq_receive(fd, 32)
+    # The receive buffer must be at least the queue's mq_msgsize (default 8192).
+    rc, data, prio = sys_mq_receive(fd, 8192)
     print("mq_receive", rc, data, "prio", prio, "errno", errno())
     print("mq_close", os.close(fd), "errno", errno())
     print("mq_unlink", sys_mq_unlink(name_b), "errno", errno())

@@ -50,7 +50,7 @@ class PackagingInputTests(unittest.TestCase):
         text = (ROOT / "ksu/module.prop").read_text()
         self.assertIn("version=v1.0.0dev0", text)
         self.assertIn("M1 dev", text)
-        self.assertIn("mqueue pending", text)
+        self.assertIn("mqueue smoke verified", text)
         self.assertIn("no release support", text)
 
 
