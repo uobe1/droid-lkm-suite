@@ -120,9 +120,12 @@ do_status() {
 do_preflight() {
 	feature=${1:-core}
 	if [ -x "$MODDIR/bin/dnsk-preflight" ]; then
+		set +e
 		"$MODDIR/bin/dnsk-preflight" --kmi "$(resolve_kmi 2>/dev/null || true)" \
 			--supported "$SUPPORTED" "$feature"
-		return $?
+		rc=$?
+		set -e
+		return "$rc"
 	fi
 	echo "dnsk-preflight binary missing; refusing to guess" >&2
 	return 1

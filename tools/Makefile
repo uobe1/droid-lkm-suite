@@ -3,7 +3,8 @@
 
 CC ?= clang
 TARGET ?= aarch64-linux-android24
-CFLAGS ?= -O2 -Wall -Wextra -std=c11 -D_GNU_SOURCE
+CFLAGS ?= -O2 -Wall -Wextra -std=c11 -D_GNU_SOURCE -fno-emulated-tls
+LDFLAGS ?= -static -Wl,-z,max-page-size=16384
 BIN := bin
 
 .PHONY: all clean
@@ -11,7 +12,7 @@ BIN := bin
 all: $(BIN)/dnsk-preflight
 
 $(BIN)/dnsk-preflight: dnsk_preflight.c | $(BIN)
-	$(CC) --target=$(TARGET) $(CFLAGS) -static -o $@ $<
+	$(CC) --target=$(TARGET) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 $(BIN):
 	mkdir -p $(BIN)

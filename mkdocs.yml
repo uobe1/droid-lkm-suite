@@ -39,6 +39,7 @@ nav:
       - USER_NS: feasibility/userns.md
   - 指南:
       - 构建: guides/build.md
+      - QEMU: guides/qemu.md
       - 真机: guides/device.md
       - 测试: guides/testing.md
   - 文档规范: STYLE.md
