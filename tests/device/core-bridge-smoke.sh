@@ -42,6 +42,7 @@ if "$BB" lsmod | grep -q '^dnsk_'; then
 	die "dnsk modules already loaded; unload them first"
 fi
 
+# shellcheck disable=SC2317  # invoked through the EXIT trap
 cleanup() {
 	if "$BB" lsmod | grep -q '^dnsk_ns '; then
 		"$BB" rmmod dnsk_ns 2>/dev/null
