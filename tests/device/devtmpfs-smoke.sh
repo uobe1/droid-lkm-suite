@@ -14,7 +14,7 @@ if ! mount -t devtmpfs devtmpfs "$MNT"; then
 	exit 1
 fi
 echo "mounted $MNT"
-ls -l "$MNT" | head -30
+find "$MNT" -maxdepth 1 -mindepth 1 -print | head -30
 for node in null zero full random urandom; do
 	if [ ! -c "$MNT/$node" ]; then
 		echo "FAIL: missing char node $node"
