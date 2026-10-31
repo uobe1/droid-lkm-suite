@@ -47,6 +47,16 @@ proc_count=3
 unshare_pid_rc=0
 ```
 
+nested PID namespace：
+
+```text
+child_pid=1
+child_pidns=pid:[4026535023]
+nested_rc=0
+```
+
+100 次 `unshare -p -f /system/bin/true` 循环：`loops=100 fail=0`。
+
 ### IPC namespace + SysV
 
 ```text

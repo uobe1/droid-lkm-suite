@@ -6,5 +6,6 @@ claim of validation: `validated` stays false until the QEMU/device evidence is
 attached to a release.
 
 Current stage: M0 core scaffold; `android16-6.12` additionally carries the
-`ns` development module (PID/IPC/SysV/mqueue smoke verified on device; full R
-pending). All other feature entries are `not-shipped`. No entry is validated.
+`ns` and `devtmpfs` development modules (ns PID/IPC/SysV/mqueue smoke verified;
+devtmpfs inactive load verified, active pending reboot). All other feature
+entries are `not-shipped`. No entry is validated.

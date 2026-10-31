@@ -159,6 +159,13 @@ static int __init ds_init(void)
 	return 0;
 }
 module_init(ds_init);
+
+static void __exit ds_exit(void)
+{
+	/* Active mode is pinned by __module_get(); inactive mode has no state. */
+}
+
+module_exit(ds_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Shikochin");
 MODULE_DESCRIPTION("Late-loaded devtmpfs for android16-6.12 GKI");

@@ -9,7 +9,7 @@
       "target_level": "n/a"
     },
     "devtmpfs": {
-      "status": "not-shipped",
+      "status": "development",
       "target_level": "R"
     },
     "ipset": {

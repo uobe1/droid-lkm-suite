@@ -24,12 +24,14 @@ class KmiMatrixTests(unittest.TestCase):
             if path.stem == "android16-6.12":
                 self.assertEqual(data["stage"], "M1-ns-development", path)
                 self.assertEqual(data["features"]["ns"]["status"], "development", path)
+                self.assertEqual(data["features"]["devtmpfs"]["status"], "development", path)
             else:
                 self.assertEqual(data["stage"], "M0-core-scaffold", path)
                 self.assertEqual(data["features"]["ns"]["status"], "not-shipped", path)
+                self.assertEqual(data["features"]["devtmpfs"]["status"], "not-shipped", path)
             self.assertEqual(data["features"]["core"]["status"], "scaffold", path)
             for name, feature in data["features"].items():
-                if name in ("core", "ns") and path.stem == "android16-6.12":
+                if name in ("core", "ns", "devtmpfs") and path.stem == "android16-6.12":
                     continue
                 if name != "core":
                     self.assertEqual(feature["status"], "not-shipped", path)

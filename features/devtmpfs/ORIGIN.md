@@ -15,6 +15,7 @@ Local changes:
 - `vendor/devtmpfs/main.c`: the PLZ110/VM exact-target gate is replaced with a
   `gki=1` + `6.12.*-android16-*` gate. `activate=0` loads the module as a no-op;
   `activate=1` is required to create the internal devtmpfs mount and install
-  device lifecycle hooks.
+  device lifecycle hooks. A no-op `module_exit` was added so the inactive mode
+  can be unloaded; the active mode is still pinned by `__module_get()`.
 
 Current stage: M1 development, android16-6.12 only. Not release-supported.

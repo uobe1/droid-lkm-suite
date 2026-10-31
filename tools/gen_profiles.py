@@ -60,7 +60,7 @@ def main() -> None:
                 name: {
                     "status": (
                         "scaffold" if name == "core" else
-                        "development" if dev_ns and name == "ns" else
+                        "development" if dev_ns and name in ("ns", "devtmpfs") else
                         "not-shipped"
                     ),
                     "target_level": "n/a" if name == "core" else {
