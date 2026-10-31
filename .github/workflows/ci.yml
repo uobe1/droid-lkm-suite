@@ -74,11 +74,15 @@ jobs:
           make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
           mkdir -p "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}"
           cp "$GITHUB_WORKSPACE/dnsk_core.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
-          file "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/dnsk_core.ko"
+          if [ "${{ matrix.kmi }}" = "android16-6.12" ]; then
+            make -C "$GITHUB_WORKSPACE/features/ns" KDIR="$KDIR" modules
+            cp "$GITHUB_WORKSPACE/features/ns/dnsk_ns.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
+          fi
+          file "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"*.ko
       - uses: actions/upload-artifact@v4
         with:
           name: core-${{ matrix.kmi }}
-          path: build/kmi/${{ matrix.kmi }}/dnsk_core.ko
+          path: build/kmi/${{ matrix.kmi }}/*.ko
           if-no-files-found: error
 
   package-dev-612:

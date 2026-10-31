@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-2.0-only
+obj-m := dnsk_ns.o
+
+dnsk_ns-y := \
+	vendor/port/main.o vendor/port/pid.o vendor/port/ipc.o \
+	vendor/port/nsproxy.o vendor/port/pid_alloc.o vendor/port/exit.o \
+	vendor/port/proc_ns.o vendor/port/proc_root.o vendor/port/hooks.o \
+	vendor/port/selftest.o vendor/port/msg.o vendor/port/msgutil.o \
+	vendor/port/sem.o vendor/port/shm.o vendor/port/ipc-util.o \
+	vendor/port/ipc-task.o vendor/port/ipc-compat.o \
+	vendor/port/mqueue.o vendor/port/mq_sysctl.o vendor/port/ipc_sysctl.o \
+	vendor/port/fork.o vendor/port/pidfd.o vendor/port/reboot.o \
+	vendor/port/fuse.o vendor/port/cgroup-pidlist.o vendor/port/bpf-pidns.o \
+	vendor/port/perf.o vendor/port/perf-original.o vendor/port/memfd.o \
+	vendor/kallrecon/lib/core.o vendor/kallrecon/lib/access.o \
+	vendor/kallrecon/lib/discover.o vendor/kallrecon/lib/symbol.o \
+	vendor/kallrecon/lib/slide.o vendor/kallrecon/lib/fastboot.o \
+	vendor/kallrecon/lib/hint.o vendor/kallrecon/lib/variant.o \
+	vendor/kallrecon/lib/anchor.o
+
+ccflags-y += -DDS_GKI_ANDROID='"android16"' -DDS_GKI_VERSION='"6.12"'
+ccflags-y += -DCONFIG_PID_NS=1 -DCONFIG_IPC_NS=1 -DCONFIG_POSIX_MQUEUE=1
+ccflags-y += -DCONFIG_POSIX_MQUEUE_SYSCTL=1 -DCONFIG_SYSVIPC_SYSCTL=1
+ccflags-y += -include $(src)/vendor/port/names.h
+ccflags-y += -I$(src)/vendor/kallrecon/lib -I$(src)/vendor
+ccflags-y += -I$(srctree)/fs/proc -I$(srctree)/fs -I$(srctree)
+ccflags-y += -std=gnu11 -Wno-declaration-after-statement

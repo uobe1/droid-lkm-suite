@@ -119,6 +119,11 @@ do_status() {
 
 do_preflight() {
 	feature=${1:-core}
+	ko=$(module_path "$feature")
+	[ -s "$ko" ] || die "module not shipped in this build: $ko"
+	if [ "$feature" != core ] && ! is_loaded dnsk_core; then
+		die "dnsk_core is not loaded; load core first"
+	fi
 	if [ -x "$MODDIR/bin/dnsk-preflight" ]; then
 		set +e
 		"$MODDIR/bin/dnsk-preflight" --kmi "$(resolve_kmi 2>/dev/null || true)" \
@@ -138,7 +143,11 @@ do_load() {
 	ko=$(module_path "$feature")
 	[ -s "$ko" ] || die "module not shipped in this build: $ko"
 	ksud=$(find_ksud) || die "ksud not found (set DNSK_KSUD)"
-	"$ksud" insmod "$ko"
+	set -- "$ko"
+	case "$feature" in
+		ns) set -- "$@" gki=1 activate=1 ;;
+	esac
+	"$ksud" insmod "$@"
 }
 
 do_unload() {
