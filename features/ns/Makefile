@@ -2,11 +2,13 @@
 KDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 
-.PHONY: all clean
+.PHONY: all modules clean
 
 all:
 	@test -n "$(KDIR)" || { echo "Set KDIR to a prepared kernel build directory." >&2; exit 1; }
 	$(MAKE) -C "$(KDIR)" M="$(PWD)" modules
+
+modules: all
 
 clean:
 	$(MAKE) -C "$(KDIR)" M="$(PWD)" clean
