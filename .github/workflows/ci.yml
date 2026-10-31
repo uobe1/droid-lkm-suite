@@ -1,0 +1,101 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install linters
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          npm install -g markdownlint-cli
+      - name: Python checks
+        run: |
+          python tools/kmi_matrix.py --check
+          python -m py_compile tools/*.py
+          ruff check tools tests
+      - name: Shell checks
+        run: |
+          find tools ksu tests ci scripts -name '*.sh' -type f -print0 2>/dev/null | xargs -0 -r shellcheck
+          shellcheck tools/dnskctl
+      - name: Markdown checks
+        run: markdownlint 'README.md' 'CONTRIBUTING.md' 'docs/**/*.md' 'profiles/**/*.md'
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        kmi:
+          - android12-5.10
+          - android13-5.10
+          - android13-5.15
+          - android14-5.15
+          - android14-6.1
+          - android15-6.6
+          - android16-6.12
+          - android17-6.18
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-20260828
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dnsk_core.ko
+        shell: bash
+        run: |
+          set -euxo pipefail
+          KDIR="/opt/ddk/kdir/${{ matrix.kmi }}"
+          test -d "$KDIR"
+          make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
+          mkdir -p "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}"
+          cp "$GITHUB_WORKSPACE/dnsk_core.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
+          file "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/dnsk_core.ko"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-${{ matrix.kmi }}
+          path: build/kmi/${{ matrix.kmi }}/dnsk_core.ko
+          if-no-files-found: error
+
+  package-dev-612:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-android16-6.12
+          path: build/kmi/android16-6.12
+      - uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27
+          add-to-path: true
+      - name: Build static arm64 preflight
+        run: |
+          make -C tools CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" TARGET=aarch64-linux-android24
+          file tools/bin/dnsk-preflight
+      - name: Package dev artifact
+        run: |
+          python tools/package.py --dev \
+            --kmi android16-6.12 \
+            --bin-root tools/bin \
+            --out out/droid_lkm_suite-v1.0.0dev0-android16-6.12.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ksu-dev-android16-6.12
+          path: out/*.zip
+          if-no-files-found: error

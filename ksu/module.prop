@@ -1,0 +1,7 @@
+id=droid_lkm_suite
+name=Droid LKM Suite
+version=v1.0.0dev0
+versionCode=1
+author=Uobe
+description=M0 core scaffold only. Native/Real feature modules are not shipped until their acceptance gates pass; no tags before all 8 KMI/features pass.
+updateJson=https://raw.githubusercontent.com/uobe1/droid-lkm-suite/main/update.json

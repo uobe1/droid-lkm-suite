@@ -1,0 +1,21 @@
+# droid-lkm-suite
+
+Native/Real LKM container-subsystem completion for Android GKI.
+
+本页是 MkDocs 首页。当前处于 M0 工程骨架阶段，功能状态见 [status](status.md)。
+
+## 关键约束
+
+- Bootloader 锁定：绝不写 boot/vendor_boot/dtbo/system/vendor_dlkm/system_dlkm。
+- 只用 `ksud insmod`；不使用 `/system/bin/insmod` 或 busybox insmod。
+- Native 或 Real，无 STUB/FAKE_SUCCESS。
+- 首 tag 需要全部 8 个 KMI 与全部目标功能通过；未完成不打 tag。
+
+## 导航
+
+- [架构](architecture/overview.md)
+- [状态矩阵](status.md)
+- [可行性门控](feasibility/cgpids.md)
+- [构建](guides/build.md)
+- [真机测试](guides/device.md)
+- [文档规范](STYLE.md)

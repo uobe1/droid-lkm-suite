@@ -1,0 +1,55 @@
+{
+  "features": {
+    "cgpids": {
+      "status": "not-shipped",
+      "target_level": "V/D"
+    },
+    "core": {
+      "status": "scaffold",
+      "target_level": "n/a"
+    },
+    "devtmpfs": {
+      "status": "not-shipped",
+      "target_level": "R"
+    },
+    "ipset": {
+      "status": "not-shipped",
+      "target_level": "R"
+    },
+    "netfilter": {
+      "status": "not-shipped",
+      "target_level": "R"
+    },
+    "ns": {
+      "status": "not-shipped",
+      "target_level": "R"
+    },
+    "tmpfsx": {
+      "status": "not-shipped",
+      "target_level": "D/N"
+    },
+    "userns": {
+      "status": "not-shipped",
+      "target_level": "D/N"
+    }
+  },
+  "kmi": "android14-5.15",
+  "native_capability": {
+    "cfs_bandwidth": "config-dependent",
+    "cgroup_pids": "config-dependent",
+    "idmapped_mount": "supported",
+    "ip_set": "config-dependent",
+    "nf_tables": "config-dependent",
+    "pidfs": "n/a",
+    "tmpfs_posix_acl": "config-dependent",
+    "tmpfs_xattr": "config-dependent",
+    "user_ns": "config-dependent"
+  },
+  "notes": [
+    "Native capability is a KMI/upstream property, not a test result.",
+    "Feature status stays not-shipped until its acceptance evidence exists."
+  ],
+  "schema": 1,
+  "stage": "M0-core-scaffold",
+  "validated": false
+}

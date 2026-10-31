@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Droid LKM Suite</title>
+<style>
+:root { color-scheme: light dark; }
+body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; }
+h1 { font-size: 20px; margin: 0 0 8px; }
+p.muted { opacity: .7; }
+button { font: inherit; padding: 8px 12px; margin: 4px 4px 4px 0; border-radius: 8px; border: 1px solid #888; background: transparent; color: inherit; }
+pre { white-space: pre-wrap; word-break: break-word; background: rgba(127,127,127,.12); padding: 12px; border-radius: 8px; min-height: 120px; }
+</style>
+</head>
+<body>
+<h1>Droid LKM Suite</h1>
+<p class="muted">M0 core scaffold. Feature modules are not shipped until their acceptance gates pass.</p>
+<div>
+  <button data-cmd="status">Status</button>
+  <button data-cmd="cap">Capabilities</button>
+  <button data-cmd="probe">Probe</button>
+  <button data-cmd="doctor --last-panic">Doctor / last panic</button>
+</div>
+<pre id="out">ready</pre>
+<script>
+const base = "/data/adb/modules/droid_lkm_suite/bin/dnskctl";
+const out = document.getElementById("out");
+async function run(cmd) {
+  out.textContent = "$ " + cmd + "\n";
+  try {
+    if (!window.ksu || !window.ksu.exec) {
+      out.textContent += "KSU WebUI bridge unavailable\n";
+      return;
+    }
+    const r = await window.ksu.exec(base + " " + cmd, { cwd: "/data/adb/modules/droid_lkm_suite" });
+    out.textContent += (r && (r.stdout || r)) + (r && r.stderr ? "\n[stderr]\n" + r.stderr : "");
+  } catch (e) {
+    out.textContent += String(e);
+  }
+}
+document.querySelectorAll("button[data-cmd]").forEach(b => {
+  b.addEventListener("click", () => run(b.dataset.cmd));
+});
+</script>
+</body>
+</html>

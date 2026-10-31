@@ -1,0 +1,45 @@
+site_name: droid-lkm-suite
+site_url: https://uobe1.github.io/droid-lkm-suite/
+repo_url: https://github.com/uobe1/droid-lkm-suite
+edit_uri: edit/main/docs/
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - content.code.copy
+    - search.suggest
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+plugins:
+  - search
+  - mike:
+      alias_type: symlink
+      canonical_version: latest
+nav:
+  - 首页: index.md
+  - 架构: architecture/overview.md
+  - 状态: status.md
+  - 可行性:
+      - CGROUP_PIDS: feasibility/cgpids.md
+      - TMPFS_XATTR/ACL: feasibility/tmpfsx.md
+      - USER_NS: feasibility/userns.md
+  - 指南:
+      - 构建: guides/build.md
+      - 真机: guides/device.md
+      - 测试: guides/testing.md
+  - 文档规范: STYLE.md
+  - API:
+      - Kernel: api/kernel.md
+      - Userspace: api/userspace.md

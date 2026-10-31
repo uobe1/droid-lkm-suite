@@ -1,0 +1,29 @@
+# Build outputs
+build/
+out/
+site/
+*.ko
+*.o
+*.mod
+*.mod.c
+*.cmd
+*.symvers
+*.order
+.tmp_versions/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Local state
+/data/
+*.log
+*.zst
+*.xz
+!tests/fixtures/**/*.xz
+
+# Editor
+.idea/
+.vscode/
+*.swp
+.DS_Store
