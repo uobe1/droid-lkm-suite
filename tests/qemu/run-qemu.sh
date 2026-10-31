@@ -32,8 +32,8 @@ grep -q 'DSNK_QEMU_OK' "$LOG" || {
 	echo "QEMU smoke did not report DSNK_QEMU_OK" >&2
 	exit 1
 }
-grep -Eq 'Kernel panic|Oops|BUG:|CFI failure|refcount_t|Unknown symbol' "$LOG" && {
+if grep -Eq 'Kernel panic|Oops|BUG:|CFI failure|refcount_t|Unknown symbol' "$LOG"; then
 	echo "QEMU log contains a kernel failure" >&2
 	exit 1
-}
+fi
 echo "QEMU core smoke ok"

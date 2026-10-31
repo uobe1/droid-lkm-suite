@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
+obj-m := dnsk_diag.o
+ccflags-y += -I$(src)/../../core/include
+ccflags-y += -DCONFIG_IPC_NS=1 -DCONFIG_POSIX_MQUEUE=1
