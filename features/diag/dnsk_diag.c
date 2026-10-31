@@ -80,6 +80,7 @@ static int __init dnsk_diag_init(void)
 	dump_ns("current", current_ns);
 	dump_ns("init", init_ns);
 	pr_info("dnsk_diag: done; no state changed\n");
+	module_put(api->owner);
 	return 0;
 }
 

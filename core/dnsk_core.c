@@ -64,6 +64,7 @@ static struct dnsk_core_api dnsk_api = {
 	.feature_add = dnsk_api_feature_add,
 	.feature_del = dnsk_api_feature_del,
 	.log = dnsk_api_log,
+	.owner = THIS_MODULE,
 };
 
 struct dnsk_core_api *dnsk_core_get(u16 abi, u16 size)
@@ -72,6 +73,7 @@ struct dnsk_core_api *dnsk_core_get(u16 abi, u16 size)
 		return ERR_PTR(-ENODEV);
 	if (abi != DNSK_CORE_ABI || size < sizeof(struct dnsk_core_api))
 		return ERR_PTR(-EPROTO);
+	__module_get(THIS_MODULE);
 	return &dnsk_api;
 }
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)

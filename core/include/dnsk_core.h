@@ -5,7 +5,7 @@
 #include <linux/types.h>
 
 #define DNSK_CORE_MAGIC 0x444E534BU
-#define DNSK_CORE_ABI 1
+#define DNSK_CORE_ABI 2
 
 struct module;
 
@@ -60,6 +60,13 @@ struct dnsk_core_api {
 	int (*feature_add)(const struct dnsk_feature_desc *desc);
 	int (*feature_del)(const char *name);
 	void (*log)(int level, const char *fmt, ...);
+	/*
+	 * dnsk_core_get() returns with one reference taken on this module.
+	 * The caller must keep it for as long as the API may be used and
+	 * release it with module_put(owner); the API must not be touched
+	 * after that final put.
+	 */
+	struct module *owner;
 };
 
 struct dnsk_core_api *dnsk_core_get(u16 abi, u16 size);
