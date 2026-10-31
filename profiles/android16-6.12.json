@@ -21,7 +21,7 @@
       "target_level": "R"
     },
     "ns": {
-      "status": "not-shipped",
+      "status": "development",
       "target_level": "R"
     },
     "tmpfsx": {
@@ -50,6 +50,6 @@
     "Feature status stays not-shipped until its acceptance evidence exists."
   ],
   "schema": 1,
-  "stage": "M0-core-scaffold",
+  "stage": "M1-ns-development",
   "validated": false
 }

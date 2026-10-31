@@ -50,14 +50,19 @@ def main() -> None:
         major, minor = major_minor(kmi)
         idmapped = "supported" if (major, minor) >= (5, 12) else "n/a"
         pidfs = "supported" if (major, minor) >= (6, 12) else "n/a"
+        dev_ns = kmi == "android16-6.12"
         profile = {
             "schema": 1,
             "kmi": kmi,
             "validated": False,
-            "stage": "M0-core-scaffold",
+            "stage": "M1-ns-development" if dev_ns else "M0-core-scaffold",
             "features": {
                 name: {
-                    "status": "scaffold" if name == "core" else "not-shipped",
+                    "status": (
+                        "scaffold" if name == "core" else
+                        "development" if dev_ns and name == "ns" else
+                        "not-shipped"
+                    ),
                     "target_level": "n/a" if name == "core" else {
                         "ns": "R",
                         "devtmpfs": "R",

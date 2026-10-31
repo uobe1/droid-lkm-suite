@@ -21,9 +21,16 @@ class KmiMatrixTests(unittest.TestCase):
         for path in profiles:
             data = json.loads(path.read_text())
             self.assertFalse(data["validated"], path)
-            self.assertEqual(data["stage"], "M0-core-scaffold", path)
+            if path.stem == "android16-6.12":
+                self.assertEqual(data["stage"], "M1-ns-development", path)
+                self.assertEqual(data["features"]["ns"]["status"], "development", path)
+            else:
+                self.assertEqual(data["stage"], "M0-core-scaffold", path)
+                self.assertEqual(data["features"]["ns"]["status"], "not-shipped", path)
             self.assertEqual(data["features"]["core"]["status"], "scaffold", path)
             for name, feature in data["features"].items():
+                if name in ("core", "ns") and path.stem == "android16-6.12":
+                    continue
                 if name != "core":
                     self.assertEqual(feature["status"], "not-shipped", path)
 
@@ -42,8 +49,9 @@ class PackagingInputTests(unittest.TestCase):
     def test_module_prop_is_dev_and_honest(self):
         text = (ROOT / "ksu/module.prop").read_text()
         self.assertIn("version=v1.0.0dev0", text)
-        self.assertIn("M0 core scaffold", text)
-        self.assertIn("not shipped", text)
+        self.assertIn("M1 dev", text)
+        self.assertIn("mqueue pending", text)
+        self.assertIn("no release support", text)
 
 
 if __name__ == "__main__":

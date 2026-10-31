@@ -5,5 +5,6 @@ per-KMI native capability matrix and the current shipping state. It is not a
 claim of validation: `validated` stays false until the QEMU/device evidence is
 attached to a release.
 
-Current stage: M0 core scaffold. All feature entries are `not-shipped` or
-`feasibility`; no feature is validated.
+Current stage: M0 core scaffold; `android16-6.12` additionally carries the
+`ns` development module (PID/IPC/SysV verified on device, mqueue pending).
+All other feature entries are `not-shipped`. No entry is validated.
