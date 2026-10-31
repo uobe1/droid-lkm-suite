@@ -85,11 +85,52 @@ jobs:
             cp "$GITHUB_WORKSPACE/features/netfilter/dnsk_netfilter.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
           fi
           file "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"*.ko
+          SYMVERS="$KDIR/Module.symvers"
+          [ -f "$SYMVERS" ] || SYMVERS="$KDIR/vmlinux.symvers"
+          cp "$SYMVERS" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/symvers.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: core-${{ matrix.kmi }}
-          path: build/kmi/${{ matrix.kmi }}/*.ko
+          path: build/kmi/${{ matrix.kmi }}/
           if-no-files-found: error
+
+  guards:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kmi:
+          - android12-5.10
+          - android13-5.10
+          - android13-5.15
+          - android14-5.15
+          - android14-6.1
+          - android15-6.6
+          - android16-6.12
+          - android17-6.18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-${{ matrix.kmi }}
+          path: art
+      - name: Core exports must match kernel exports
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 tools/exports_guard.py --symvers art/symvers.txt art/dnsk_core.ko
+          python3 tools/imports_guard.py art/dnsk_core.ko
+      - name: Feature imports (advisory)
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uxo pipefail
+          for ko in art/dnsk_*.ko; do
+            [ "$ko" = "art/dnsk_core.ko" ] && continue
+            python3 tools/imports_guard.py "$ko" || true
+            python3 tools/exports_guard.py --symvers art/symvers.txt "$ko" || true
+          done
 
   package-dev-612:
     needs: build

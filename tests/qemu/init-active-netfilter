@@ -1,0 +1,31 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Disposable-VM test for active xt_addrtype/nftables registration.
+BB=/bin/busybox
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	"$BB" mknod /dev/console c 5 1
+	"$BB" mknod /dev/null c 1 3
+fi
+"$BB" mkdir -p /dev/pts /tmp
+"$BB" mount -t devpts devpts /dev/pts 2>/dev/null
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" poweroff -f
+}
+
+echo "DNSK_QEMU_NETFILTER_BOOT $(cat /proc/sys/kernel/osrelease)"
+"$BB" insmod /modules/dnsk_netfilter.ko gki=1 activate=1 || fail netfilter_activate
+if [ -r /proc/net/ip_tables_matches ]; then
+	"$BB" grep -qw addrtype /proc/net/ip_tables_matches || fail addrtype_missing
+	echo "DNSK_ACTIVE_ADDRTYPE_OK"
+fi
+echo "DNSK_ACTIVE_NETFILTER_OK"
+"$BB" rmmod dnsk_netfilter || fail netfilter_rmmod
+echo "DNSK_QEMU_ACTIVE_NETFILTER_DONE"
+"$BB" poweroff -f

@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
+import exports_guard  # noqa: E402
 import kmi_matrix  # noqa: E402
 
 
@@ -35,6 +37,18 @@ class KmiMatrixTests(unittest.TestCase):
                     continue
                 if name != "core":
                     self.assertEqual(feature["status"], "not-shipped", path)
+
+
+class ExportsGuardTests(unittest.TestCase):
+    def test_symvers_parser(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Module.symvers"
+            path.write_text(
+                "0x12345678\tfoo\tvmlinux\tEXPORT_SYMBOL\n"
+                "0x0abcdef0\tbar\tsome_module\tEXPORT_SYMBOL_GPL\n"
+                "not a symvers line\n"
+            )
+            self.assertEqual(exports_guard.exported_symbols(path), {"foo", "bar"})
 
 
 class PackagingInputTests(unittest.TestCase):
