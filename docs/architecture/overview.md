@@ -25,7 +25,7 @@
 
 ## Core ABI
 
-`dnsk_core_get()` 返回版本化 `struct dnsk_core_api`。Feature 只依赖 core 提供的 API，不直接导入非导出内核符号。所有 hook 由 core 持有、计数、quiesce 和恢复，feature 不得自行安装永久 hook。
+`dnsk_core_get()` 返回版本化 `struct dnsk_core_api`。Core 自身不导入任何非导出内核符号，全部经运行时解析。Droidspaces 深移植的 feature（ns/devtmpfs/netfilter/ipset）会引用内核内部符号，目标设备由 KernelSU 的 `ksud insmod` 解析；普通 `/system/insmod` 与 stock-GKI QEMU 无法加载这些 feature。所有 hook 由 core 持有、计数、quiesce 和恢复，feature 不得自行安装永久 hook。
 
 ## Hook 机制
 
