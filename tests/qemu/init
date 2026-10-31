@@ -1,6 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Minimal arm64 initramfs init for the droid-lkm-suite QEMU smoke tests.
+# Minimal arm64 initramfs init for the stock-GKI core smoke.
+# Feature modules import non-exported kernel symbols and need the KernelSU
+# loader; this stock insmod path therefore validates core only.
 BB=/bin/busybox
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 
@@ -22,18 +24,9 @@ fail() {
 echo "DNSK_QEMU_BOOT $(cat /proc/sys/kernel/osrelease)"
 "$BB" insmod /modules/dnsk_core.ko || fail core_insmod
 [ -e /proc/dnsk/status ] || fail core_status
-"$BB" insmod /modules/dnsk_ns.ko gki=1 activate=0 || fail ns_insmod
-"$BB" grep -q '^feature ns development' /proc/dnsk/status || fail ns_feature
-echo "DNSK_QEMU_BRIDGE_OK"
-"$BB" rmmod dnsk_ns || fail ns_rmmod
-"$BB" insmod /modules/dnsk_devtmpfs.ko gki=1 activate=0 || fail devtmpfs_insmod
-"$BB" rmmod dnsk_devtmpfs || fail devtmpfs_rmmod
-"$BB" insmod /modules/dnsk_netfilter.ko gki=1 activate=0 || fail netfilter_insmod
-"$BB" rmmod dnsk_netfilter || fail netfilter_rmmod
-echo "DNSK_QEMU_INACTIVE_OK"
-if "$BB" grep -q '^feature ns ' /proc/dnsk/status; then
-	fail ns_feature_stale
-fi
+"$BB" grep -q '^patch=ready' /proc/dnsk/status || fail patch_not_ready
+"$BB" grep -q '^panic=ready' /proc/dnsk/status || fail panic_not_ready
+echo "DNSK_QEMU_CORE_READY"
 "$BB" rmmod dnsk_core || fail core_rmmod
 if [ -e /proc/dnsk/status ]; then
 	fail core_proc_stale

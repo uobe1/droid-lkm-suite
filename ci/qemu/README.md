@@ -9,8 +9,14 @@ QEMU tests are evidence, not a formality. The first real harness is
 2. The boot job extracts a pinned Alpine 3.20.3 arm64 minirootfs, adds the
    modules and `tests/qemu/init`, and boots `qemu-system-aarch64 -M virt`
    under TCG.
-3. The init script loads core + ns with `activate=0`, checks the status bridge,
-   unloads both, and prints `DNSK_QEMU_OK`; the job fails on panic/Oops.
+3. The stock-GKI init script loads core, checks `patch=ready`/`panic=ready`,
+   unloads it, and prints `DNSK_QEMU_OK`; the job fails on panic/Oops.
+
+Feature modules (`ns`, `devtmpfs`, `netfilter`, `ipset`) import non-exported
+kernel internals that the KernelSU loader resolves on the phone. Plain stock
+`insmod` rejects them, so QEMU currently gates core and the runtime-symbol
+path; feature activation is exercised on the KSU device (and needs a
+KSU-enabled VM or an exports-augmented test kernel to run in the cloud).
 
 Planned matrix:
 
