@@ -11,5 +11,8 @@ Local changes:
 - `Kbuild`/`Makefile` are project-specific; output is `dnsk_netfilter.ko`.
 - `vendor/netfilter/main.c`: the PLZ110/VM exact-target gate is replaced with a
   `gki=1` + `6.12.*-android16-*` gate. `activate=0` loads as a no-op;
-  `activate=1` registers the nftables/xt_addrtype units.
+  `activate=1` registers the nftables/xt_addrtype units. A `registered` guard
+  prevents the exit path from unregistering units that were never initialized;
+  the missing guard caused a NULL dereference in `nft_unregister_expr` when an
+  inactive instance was unloaded.
 - Build target is android16-6.12 only for now. Not release-supported.

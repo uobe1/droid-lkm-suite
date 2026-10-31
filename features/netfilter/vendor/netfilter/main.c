@@ -37,6 +37,8 @@ static struct ds_nf_unit units[] = {
 #include "units.h"
 #undef DS_NF_UNIT
 };
+static bool registered;
+
 static int __init ds_netfilter_init(void)
 {
 	unsigned int i;
@@ -61,12 +63,18 @@ static int __init ds_netfilter_init(void)
             return err;
         }
     }
+	registered = true;
     pr_info("xt_addrtype and nftables registered; private per-net state\n");
     return 0;
 }
 static void __exit ds_netfilter_exit(void)
 {
-    unsigned int i = ARRAY_SIZE(units);
+    unsigned int i;
+
+	if (!registered)
+		return;
+	registered = false;
+    i = ARRAY_SIZE(units);
     while (i)
         units[--i].exit();
     unregister_pernet_subsys(&ds_nft_state_ops);
