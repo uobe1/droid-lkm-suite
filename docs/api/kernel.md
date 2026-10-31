@@ -8,4 +8,5 @@
 scripts/kernel-doc -html core/include/dnsk_core.h core/*.c > site/api/kernel/index.html
 ```
 
-当前 M0 尚未发布可用的 feature API；页面只描述 core ABI 与稳定性规则。
+当前 ABI 为 2。`dnsk_core_get()` 在成功返回时对 core 取一份模块引用, 调用方必须在最后一次使用后
+`module_put(api->owner)`; feature/hook 注册不 pin owner, 对应模块须在 `module_exit()` 中删除注册。

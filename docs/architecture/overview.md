@@ -13,7 +13,7 @@
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
-| `dnsk_core.ko` | 符号解析、patch、hook 托管、diag、feature 注册、panic 取证、日志 | M0 实现中 |
+| `dnsk_core.ko` | 符号解析、patch、hook 托管、diag、feature 注册、panic 取证、日志 | M0 完成 (ABI 2) |
 | `dnsk_ns.ko` | PID_NS/IPC_NS/SYSVIPC/POSIX_MQUEUE | not-shipped |
 | `dnsk_devtmpfs.ko` | devtmpfs | not-shipped |
 | `dnsk_netfilter.ko` | nft 目标子集、xt_addrtype/REJECT/RECENT、ip6table_nat | not-shipped |
