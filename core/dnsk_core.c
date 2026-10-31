@@ -74,7 +74,11 @@ struct dnsk_core_api *dnsk_core_get(u16 abi, u16 size)
 		return ERR_PTR(-EPROTO);
 	return &dnsk_api;
 }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
+EXPORT_SYMBOL_NS_GPL(dnsk_core_get, "DROID_LKM_SUITE");
+#else
 EXPORT_SYMBOL_NS_GPL(dnsk_core_get, DROID_LKM_SUITE);
+#endif
 
 static int __init dnsk_core_init(void)
 {

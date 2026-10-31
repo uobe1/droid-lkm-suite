@@ -4,5 +4,6 @@
   "MD033": false,
   "MD041": true,
   "MD046": { "style": "fenced" },
-  "MD048": { "style": "backtick" }
+  "MD048": { "style": "backtick" },
+  "MD060": false
 }
