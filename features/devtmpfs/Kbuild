@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-only
+obj-m := dnsk_devtmpfs.o
+
+dnsk_devtmpfs-y := \
+	vendor/devtmpfs/main.o vendor/devtmpfs/devtmpfs.o \
+	vendor/devtmpfs/hooks.o vendor/devtmpfs/original.o \
+	vendor/kallrecon/lib/core.o vendor/kallrecon/lib/access.o \
+	vendor/kallrecon/lib/discover.o vendor/kallrecon/lib/symbol.o \
+	vendor/kallrecon/lib/slide.o vendor/kallrecon/lib/fastboot.o \
+	vendor/kallrecon/lib/hint.o vendor/kallrecon/lib/variant.o \
+	vendor/kallrecon/lib/anchor.o
+
+ccflags-y += -I$(src)/vendor/kallrecon/lib -I$(src)/vendor
+ccflags-y += -I$(srctree)
+ccflags-y += -std=gnu11 -Wno-declaration-after-statement

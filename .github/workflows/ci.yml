@@ -79,6 +79,8 @@ jobs:
             cp "$GITHUB_WORKSPACE/features/ns/dnsk_ns.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             make -C "$GITHUB_WORKSPACE/features/diag" KDIR="$KDIR" modules
             cp "$GITHUB_WORKSPACE/features/diag/dnsk_diag.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
+            make -C "$GITHUB_WORKSPACE/features/devtmpfs" KDIR="$KDIR" modules
+            cp "$GITHUB_WORKSPACE/features/devtmpfs/dnsk_devtmpfs.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
           fi
           file "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"*.ko
       - uses: actions/upload-artifact@v4

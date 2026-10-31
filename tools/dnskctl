@@ -146,6 +146,7 @@ do_load() {
 	set -- "$ko"
 	case "$feature" in
 		ns) set -- "$@" gki=1 activate=1 ;;
+		devtmpfs) set -- "$@" gki=1 activate=1 ;;
 	esac
 	"$ksud" insmod "$@"
 }
