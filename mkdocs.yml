@@ -35,6 +35,7 @@ nav:
       - M0 core: evidence/m0-core.md
       - M1 ns: evidence/m1-ns.md
       - M1 devtmpfs: evidence/m1-devtmpfs.md
+      - netfilter unload panic: evidence/netfilter-inactive-unload-panic.md
   - 可行性:
       - CGROUP_PIDS: feasibility/cgpids.md
       - TMPFS_XATTR/ACL: feasibility/tmpfsx.md

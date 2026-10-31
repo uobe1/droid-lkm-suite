@@ -5,4 +5,7 @@ Vendored Droidspaces 6.12 nftables/xt_addrtype units.
 - Build target: android16-6.12 only.
 - Loader parameters: `gki=1 activate=1`; `activate=0` is a no-op.
 - Not yet loaded or claimed supported.
+- Inactive (`activate=0`) unload previously NULL-dereferenced in
+  `nft_unregister_expr`; guarded by a `registered` flag. Regression test is
+  `tests/device/netfilter-inactive-smoke.sh`.
 - Scope: Docker 29.x target subset, not full nftables.
