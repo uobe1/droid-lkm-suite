@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+import json
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+import kmi_matrix  # noqa: E402
+
+
+class KmiMatrixTests(unittest.TestCase):
+    def test_matrix_has_eight_unique_kmis(self):
+        self.assertEqual(len(kmi_matrix.KMIS), 8)
+        self.assertEqual(len(set(kmi_matrix.KMIS)), 8)
+
+    def test_profiles_are_scaffold_only(self):
+        profiles = sorted((ROOT / "profiles").glob("android*.json"))
+        self.assertEqual(len(profiles), 8)
+        for path in profiles:
+            data = json.loads(path.read_text())
+            self.assertFalse(data["validated"], path)
+            self.assertEqual(data["stage"], "M0-core-scaffold", path)
+            self.assertEqual(data["features"]["core"]["status"], "scaffold", path)
+            for name, feature in data["features"].items():
+                if name != "core":
+                    self.assertEqual(feature["status"], "not-shipped", path)
+
+
+class PackagingInputTests(unittest.TestCase):
+    def test_required_packaging_files_exist(self):
+        for rel in (
+            "ksu/module.prop",
+            "ksu/post-fs-data.sh",
+            "ksu/bin/panic_decode.sh",
+            "tools/dnskctl",
+            "tools/dnsk_preflight.c",
+        ):
+            self.assertTrue((ROOT / rel).is_file(), rel)
+
+    def test_module_prop_is_dev_and_honest(self):
+        text = (ROOT / "ksu/module.prop").read_text()
+        self.assertIn("version=v1.0.0dev0", text)
+        self.assertIn("M0 core scaffold", text)
+        self.assertIn("not shipped", text)
+
+
+if __name__ == "__main__":
+    unittest.main()
