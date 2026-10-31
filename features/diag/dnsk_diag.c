@@ -48,6 +48,20 @@ static void dump_ns(const char *tag, void *ns)
 		tag, ns, mnt, sb, sbi, count, max);
 }
 
+static __nocfi noinline void *lookup_module_symbol(struct dnsk_core_api *api, const char *name)
+{
+	unsigned long (*lookup)(const char *);
+	void *addr;
+
+	lookup = api->resolve("module_kallsyms_lookup_name");
+	if (lookup) {
+		addr = (void *)lookup(name);
+		if (addr)
+			return addr;
+	}
+	return api->resolve(name);
+}
+
 static int __init dnsk_diag_init(void)
 {
 	struct dnsk_core_api *api;
@@ -58,7 +72,7 @@ static int __init dnsk_diag_init(void)
 	if (IS_ERR(api))
 		return PTR_ERR(api);
 
-	init_ns = api->resolve("ds_init_ipc_ns");
+	init_ns = lookup_module_symbol(api, "ds_init_ipc_ns");
 	current_ns = read_ptr(current->nsproxy,
 			      offsetof(struct nsproxy, ipc_ns));
 	pr_info("dnsk_diag: task=%s current_ns=%px init_ns=%px\n",
