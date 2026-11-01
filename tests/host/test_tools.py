@@ -42,7 +42,7 @@ class KmiMatrixTests(unittest.TestCase):
 
 class BuildFlagsTests(unittest.TestCase):
     def test_xt_profiles(self):
-        root = ROOT / "profiles" / "build"
+        root = ROOT / "profiles" / "abi"
         pid, flags = build_flags.load(root / "android16-6.12-xt104.json")
         self.assertEqual(pid, "android16-6.12-xt104")
         self.assertEqual(flags["DNSK_XT_NOCOMPAT"], "1")
