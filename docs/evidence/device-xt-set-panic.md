@@ -27,6 +27,16 @@ Call trace:
 | 设备 6.12.30 MTK BTF | 104 字节, 无 `compat_from_user/compat_to_user` |
 | DDK 6.12.76 构建的 dnsk_ipset | 128 字节, 含 compat 字段 |
 
+差异的配置来源已确认:
+
+- 设备 `/proc/config.gz`: `CONFIG_COMPAT=y`, 但
+  **`CONFIG_NETFILTER_XTABLES_COMPAT` 未设置**.
+- DDK 构建对应的 x_tables 头文件包含
+  `compat_from_user/compat_to_user/compatsize`, 即该 compat 选项为开.
+- `struct xt_match`/`xt_target` 的 compat 成员由
+  `#ifdef CONFIG_NETFILTER_XTABLES_COMPAT` 保护, 不是笼统的
+  `CONFIG_COMPAT`; 我们最初的 shim 用错了宏, 构建立即被静态断言拦下.
+
 模块内的静态 `set_matches[]`/`set_targets[]` 按 128 字节布局编译, 设备内核
 按 104 字节步长遍历; 第 8 个元素开始错位, family 被读成 7, 随后 list 指针
 为 NULL, 在 `xt_register_matches` 内崩溃. QEMU 使用 DDK 6.12.76 内核,
@@ -48,11 +58,26 @@ active 测试加载 dnsk_ipset 导致; 04:00 的 `nft_unregister_expr` panic 是
 - `features/ipset/Makefile` 显式把 `DNSK_XT_NOCOMPAT` 传给 kernel make;
   CI 的 android16-6.12 设备产物构建 no-compat 版本.
 
-## 验证状态
+## 修复验证
 
-- No-compat 模块正在由 CI 构建; 必须确认编译期断言通过, 且产物 DWARF/BTF
-  与设备 104 字节布局一致.
-- 验证完成前不得再次在设备加载 ipset; 下一次设备加载只做 insmod/rmmod,
-  先确认布局匹配.
-- 后续需要给 `dnsk_preflight` 增加 BTF `xt_match/xt_target` 布局检查,
-  防止其他 KMI/厂商内核再次出现同类 ABI 差异.
+- CI 6.12 构建通过, 编译期断言确认 `sizeof(xt_match)==104` 且
+  `sizeof(xt_target)==104`; 产物 DWARF 字段偏移
+  (list0/name16/revision45/match48/checkentry56/destroy64/me72/table80/
+  matchsize88/usersize92...) 与设备 BTF 一致.
+- 真机只加载修复后的 ipset (不建 set):
+
+```text
+Loaded kernel module: .../dnsk_ipset.ko
+insmod_rc=0
+dnsk_ipset            147456  0
+dnsk_ipset: ipset protocol 7 with hash:ip, hash:net and xt_set registered
+```
+
+随后 `rmmod_rc=0`, `ipset_gone`, boot_id 保持
+`49afc24f-33b7-4121-9665-1195ff11210d`, 无 Oops/panic.
+
+## 后续
+
+- `dnsk_preflight` 仍需增加 BTF `xt_match/xt_target` 布局检查, 并为不同
+  厂商 config 提供 profile, 防止其他 KMI/设备再次出现同类 ABI 差异.
+- QEMU stock 仍用 compat 构建; 设备包使用 no-compat 构建.
