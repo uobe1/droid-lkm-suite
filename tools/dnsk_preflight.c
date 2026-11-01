@@ -508,8 +508,17 @@ static struct sym_req nf_required[] = {
 	{ "nf_nat_register_fn", 0 },
 	{ "xt_register_matches", 0 },
 	{ "xt_unregister_matches", 0 },
+	{ "xt_register_target", 0 },
+	{ "xt_unregister_target", 0 },
+	{ "xt_check_proc_name", 0 },
 	{ "nfnetlink_subsys_register", 0 },
 	{ "rhashtable_init_noprof", 0 },
+	{ "register_pernet_subsys", 0 },
+	{ "nf_send_unreach", 0 },
+	{ "nf_send_unreach6", 0 },
+	{ "nf_send_reset", 0 },
+	{ "nf_send_reset6", 0 },
+	{ "init_user_ns", 0 },
 };
 
 static int find_symbol_in(struct sym_req *tab, size_t n, const char *name)

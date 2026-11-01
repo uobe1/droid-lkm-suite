@@ -71,7 +71,7 @@ static int __init ds_netfilter_init(void)
         }
     }
 	registered = true;
-    pr_info("xt_addrtype and nftables registered; xt_REJECT/xt_RECENT registered; private per-net state\n");
+    pr_info("xt_addrtype and nftables registered; xt units initialised; private per-net state\n");
     return 0;
 }
 static void __exit ds_netfilter_exit(void)

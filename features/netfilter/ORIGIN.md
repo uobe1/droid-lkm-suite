@@ -44,12 +44,19 @@ Vendored paths and pristine SHA-256 (before the local wrapper change):
 - `net/ipv6/netfilter/ip6t_REJECT.c` -> `vendor/netfilter/upstream/ip6t_REJECT.c`
   `1b4c56b8e04a7372c9eec6c16ba04c8074dd323d580bd09f3daac3b0e2a202e5`
 
-The vendored copies keep their upstream SPDX/license notices. Their only local
+The vendored copies keep their upstream SPDX/license notices. Their local
 changes are at the end: `module_init`/`module_exit` are replaced by
 `ds_nf_init_*`/`ds_nf_exit_*` wrappers so the combined module has one initcall,
 and `__exit` is dropped from the static teardown helper because the non-`__exit`
 wrapper calls it (the same adaptation used by the existing units).
 `vendor/netfilter/xt_reject.c` is project glue and has no upstream counterpart.
+
+Additionally, the three units treat `-EEXIST` from `xt_register_target`/
+`xt_register_matches` as "the kernel already provides this name": they log it,
+mark the unit unregistered and return success, so a device with native REJECT
+does not lose the nftables/addrtype units. A per-unit boolean guards the exit
+path, which therefore never unregisters a target/match it did not add. This is
+the only semantic change from upstream and it is visible in dmesg.
 
 `xt_recent.c`'s `recent_mt_check_v0()` refers to `struct xt_recent_mtinfo_v0`,
 which 6.12 headers do not define. Upstream only uses it as an opaque pointer and

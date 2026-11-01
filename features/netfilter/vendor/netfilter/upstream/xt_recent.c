@@ -13,6 +13,7 @@
 #include <linux/init.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
+#include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/proc_fs.h>
@@ -734,6 +735,8 @@ static struct xt_match recent_mt_reg[] __read_mostly = {
 	}
 };
 
+static bool recent_mt_registered;
+
 static int __init recent_mt_init(void)
 {
 	int err;
@@ -748,13 +751,24 @@ static int __init recent_mt_init(void)
 	if (err)
 		return err;
 	err = xt_register_matches(recent_mt_reg, ARRAY_SIZE(recent_mt_reg));
-	if (err)
+	if (err == -EEXIST) {
 		unregister_pernet_subsys(&recent_net_ops);
-	return err;
+		pr_info("xt_recent already provided by the kernel; skipping\n");
+		return 0;
+	}
+	if (err) {
+		unregister_pernet_subsys(&recent_net_ops);
+		return err;
+	}
+	recent_mt_registered = true;
+	return 0;
 }
 
 static void recent_mt_exit(void)
 {
+	if (!recent_mt_registered)
+		return;
+	recent_mt_registered = false;
 	xt_unregister_matches(recent_mt_reg, ARRAY_SIZE(recent_mt_reg));
 	unregister_pernet_subsys(&recent_net_ops);
 }

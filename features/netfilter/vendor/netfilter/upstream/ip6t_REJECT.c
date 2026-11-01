@@ -15,6 +15,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/gfp.h>
+#include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/skbuff.h>
 #include <linux/icmpv6.h>
@@ -107,13 +108,26 @@ static struct xt_target reject_tg6_reg __read_mostly = {
 	.me		= THIS_MODULE
 };
 
+static bool reject_tg6_registered;
+
 static int __init reject_tg6_init(void)
 {
-	return xt_register_target(&reject_tg6_reg);
+	int err = xt_register_target(&reject_tg6_reg);
+
+	if (err == -EEXIST) {
+		pr_info("xt_REJECT IPv6 already provided by the kernel; skipping\n");
+		return 0;
+	}
+	if (!err)
+		reject_tg6_registered = true;
+	return err;
 }
 
 static void reject_tg6_exit(void)
 {
+	if (!reject_tg6_registered)
+		return;
+	reject_tg6_registered = false;
 	xt_unregister_target(&reject_tg6_reg);
 }
 
