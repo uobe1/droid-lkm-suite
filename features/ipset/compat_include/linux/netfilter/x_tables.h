@@ -8,8 +8,8 @@
  */
 #ifndef DNSK_XTABLES_SHIM_H
 #define DNSK_XTABLES_SHIM_H
-#ifdef CONFIG_COMPAT
-#undef CONFIG_COMPAT
+#ifdef CONFIG_NETFILTER_XTABLES_COMPAT
+#undef CONFIG_NETFILTER_XTABLES_COMPAT
 #endif
 #include_next <linux/netfilter/x_tables.h>
 #endif
