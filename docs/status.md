@@ -7,7 +7,7 @@
 | 功能 | 目标等级 | 当前状态 | 说明 |
 |---|---|---|---|
 | core ABI / symbol / patch / hook / panic | N/A | M0 完成 | ABI 2；状态桥/生命周期真机验证；stock GKI QEMU core smoke 通过 |
-| PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV/mqueue + nested PID + 100 cycles + 嵌套 Debian 容器 smoke 通过；pidfd setns 到旧任务因 `ipc_ns=NULL` panic 已修复，待复测；复测前禁止激活；full R 待 setns/Docker/容器 reboot |
+| PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV/mqueue + nested PID + 100 cycles + 嵌套 Debian 容器 smoke 通过；pidfd setns 的 `ipc_ns=NULL` panic 已修复并复测（EINVAL + ns smoke）；full R 待 setns/Docker/容器 reboot |
 | DEVTMPFS | R | development | active 真机通过：ready=Y、节点挂载、宿主 /dev 不变、嵌套容器 /dev smoke；模块按设计 pin；Docker/droidspaces 工作负载待完成 |
 | xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | active load/unload + netns 内 addrtype/recent/REJECT 规则通过; 原生 REJECT 正确跳过; Docker/UFW/Fail2ban 验收待完成 |
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | development | 6.12 构建/导出/QEMU hash 语义通过; 设备 no-compat ABI 修复后 insmod/xt_set 注册/rmmod 通过; iptables 规则与容器验收待完成 |

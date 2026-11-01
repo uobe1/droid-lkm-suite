@@ -41,7 +41,16 @@ IPC_NS=n 时把这段编译掉，所以只有我们的模块踩到。
 - 回归测试 `tests/device/setns-pidfd-smoke.c`：`pidfd_open(1)` +
   `setns(fd, CLONE_NEWIPC)`，期望 `-EINVAL` 且不崩溃。
 
-## 状态
+## 修复与复测 (2026-11-01)
 
-修复待 CI 构建与真机复测；在复测通过前不得再激活 `dnsk_ns`。设备已由内核
-panic 重启，root 保留，当前无 dnsk 模块加载。
+CI run `41272845539` 构建通过（commit `75991e5`）。设备 boot
+`47d5f50c-b448-4bd9-b69e-0634812213dc`：
+
+```text
+pidfd_open(1) + setns(pidfd, CLONE_NEWIPC)
+  -> ret=-1 errno=22 (Invalid argument)   # 不再 panic
+run-ns-smoke.sh -> NS_SMOKE_OK, namespace_cycles=100
+droidspaces_ns: entry preflight passed: 21 functions, 20 syscalls, 6 callbacks
+```
+
+`boot_id` 未变，无 Oops/BUG/panic；`dnsk_ns` 与 core 正常加载并 pin。
