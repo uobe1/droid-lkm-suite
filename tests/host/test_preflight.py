@@ -52,7 +52,8 @@ def write_btf(path: Path, match_size: int, target_size: int,
     names = [
         "xt_match", "xt_target", "list", "name", "revision", "match",
         "target", "checkentry", "destroy", "me", "table", "matchsize",
-        "targetsize", "usersize", "compatsize", "hooks", "proto", "family",
+        "targetsize", "usersize", "compat_from_user", "compat_to_user",
+        "compatsize", "hooks", "proto", "family",
     ]
     for struct_name, _, rows in extra:
         names.append(struct_name)
@@ -73,6 +74,8 @@ def write_btf(path: Path, match_size: int, target_size: int,
             ("usersize", usersize),
         ]
         if compatsize is not None:
+            rows.append(("compat_from_user", 72))
+            rows.append(("compat_to_user", 80))
             rows.append(("compatsize", compatsize))
         rows += [("hooks", hooks), ("proto", proto), ("family", fam)]
         return rows

@@ -225,7 +225,9 @@ static int xt_layout_matches(const struct btf_type_info *t, uint32_t size,
 				member_is(t, "targetsize", size_off) :
 				member_is(t, "match", 48) &&
 				member_is(t, "matchsize", size_off);
-	if (!member_is(t, "compatsize", 112))
+	if (!member_is(t, "compat_from_user", 72) ||
+	    !member_is(t, "compat_to_user", 80) ||
+	    !member_is(t, "compatsize", 112))
 		return 0;
 	return target ? member_is(t, "target", 48) &&
 			member_is(t, "targetsize", size_off) :
