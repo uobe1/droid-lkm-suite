@@ -50,8 +50,28 @@ DEVTMPFS/NF_TABLES/IP_SET 等。
 
 `qemu-core.yml` 新增 `kernel=oracle` 输入和 `Build Native oracle Image` 步骤：
 基于 DDK 源码与 `.config`，用 `scripts/config` 打开上述选项，`olddefconfig`
-后构建 `Image`，artifact 仍为 `qemu-6.12`。Docker 模式将使用该 Image 重新
-执行隔离容器测试。结果待记录。
+后构建 `Image`，artifact 仍为 `qemu-6.12`。run `41275422841` 的 image job
+构建成功。
+
+## Oracle Docker 结果 (2026-11-01, run 41276935359)
+
+复用 oracle Image，initramfs 内 `DOCKER_RAMDISK=true`（runc no-pivot，因为
+rootfs 是 initramfs，`pivot_root` 不可用）：
+
+```text
+ns_probe -m/-p/-u/-i/-n/-U ok     # -C/-T 是 busybox unshare 选项探测失败
+docker_server=29.7.2
+DOCKER_CONTAINER_OK
+DNSK_DOCKER_ISOLATED_OK
+pids_spawned=30                    # --pids-limit 32，Native CGROUP_PIDS 生效
+DNSK_DOCKER_OK
+DNSK_QEMU_OK
+```
+
+Docker 29.x 在 oracle 上完成：containerd+dockerd、cgroup2、vfs storage、
+离线 Alpine import、隔离 PID/IPC/UTS/Net/Mount namespaces、Native pids
+限制。当前仍是 `--network none`；bridge/NAT、iptables、UFW/Fail2ban 是
+下一阶段。
 
 ## 备注
 

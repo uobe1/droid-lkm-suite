@@ -27,6 +27,10 @@
   `dnsk_xt_layout=` stamp，`dnskctl` 先比对 policy 再跑 BTF preflight；
   104/128 两个构建 profile 均通过 CI（xt128 run 41266822514）；见
   [evidence/xt-layout-preflight.md](evidence/xt-layout-preflight.md)。
+- Docker 29.x QEMU oracle：oracle 内核（PID/IPC/USER_NS、POSIX_MQUEUE、
+  CGROUP_PIDS、NF_TABLES/IP_SET）上隔离容器与 `--pids-limit 32` 通过
+  （run 41276935359）；stock DDK 缺少这些 config，不能直接跑 Docker。见
+  [evidence/qemu-docker.md](evidence/qemu-docker.md)。
 - netfilter ABI：设备 BTF 复核 nf_hook_ops(40)/nf_conn(272)/
   pernet_operations(72)/nfnetlink_subsystem(64)/nfnl_callback(32)/
   net(4160)/rhashtable(160)；`--feature netfilter` 同时校验符号；见
