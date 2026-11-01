@@ -96,7 +96,7 @@ jobs:
           mkdir -p rootfs
           tar -xzf alpine.tar.gz -C rootfs
           mkdir -p rootfs/modules rootfs/proc rootfs/sys rootfs/dev rootfs/tmp
-          cp qemu/dnsk_core.ko qemu/dnsk_ns.ko qemu/dnsk_ipset.ko rootfs/modules/
+          cp qemu/dnsk_*.ko rootfs/modules/
           curl -fsSL -o libmnl.apk \
             https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64/libmnl-1.0.5-r2.apk
           curl -fsSL -o ipset.apk \
