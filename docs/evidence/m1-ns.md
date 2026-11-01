@@ -99,6 +99,16 @@ PID ns `pid:[4026535006]`，退出后宿主无残留 mount。droid-distro Debian
 ns pidfd NULL 修复后，以修复版 `dnsk_ns` 复跑嵌套容器 smoke 仍为
 `NESTED_DEV_OK`，boot `47d5f50c` 未变。
 
+## Layout 防护
+
+- `core/include/dnsk_ns_layout.h` 对 task_struct/nsproxy/pid_namespace/
+  ipc_namespace/user_namespace/cred/pid/upid/ns_common/signal_struct/
+  sighand_struct/cgroup/css_set 的设备实测偏移做编译期断言；DDK 构建通过。
+- `dnsk-preflight --feature ns` 在设备 BTF 上校验同一组字段（成员表已扩到
+  256，覆盖 task_struct 的 234 个成员）。
+- `dnsk_ns.ko` 带 `dnsk_abi_profile`/page size/max frags/cgroup count stamp，
+  `dnskctl` 加载前比对 policy。
+
 ## 已知边界
 
 - 2026-11-01 pidfd setns 到旧任务触发 `ipc_ns=NULL` panic；已修复并复测

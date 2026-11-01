@@ -61,9 +61,12 @@ AOSP 对每个 KMI 分支只保留一份 `gki_defconfig` 和一套 Clang 工具�
   `policy.conf` 记录 `abi_profile`/`xt_layout`，`dnskctl` 在 insmod 前比对
   stamp 并跑设备 BTF preflight。
 - 未建模的 knob、缺失 BTF/struct/member、profile 不匹配一律 fail-closed。
-- 当前 preflight 的锁/skb/net 期望值来自本设备实测（LOCKDEP/DEBUG_*/
+- 当前 preflight 的锁/skb/net/fs/ns 期望值来自本设备实测（LOCKDEP/DEBUG_*/
   KASAN-GENERIC 关闭、OEM data 开启等）；其他布局的设备会被拒绝，必须先
   测量该设备 BTF 再新增 profile/检查，不能填入猜测值。
+- devtmpfs 与 ns 已采用“设备 BTF 偏移 → 头文件静态断言 + preflight 校验 +
+  模块 profile stamp”的同一模式；xt 仍是唯一允许用 include shim 归一化的
+  配置。
 - `cgroup_subsys` 源码差异单列为 cgpids 阻塞项，不能用 profile 掩盖。
 
 ## 来源
