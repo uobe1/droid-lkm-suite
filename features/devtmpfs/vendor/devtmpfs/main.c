@@ -10,6 +10,7 @@
 #include "core.h"
 #include "hint.h"
 #include "port.h"
+#include "dnsk_fs_layout.h"
 
 extern struct kset *devices_kset;
 static DEFINE_MUTEX(nodes_lock);

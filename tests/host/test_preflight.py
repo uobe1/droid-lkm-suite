@@ -92,6 +92,26 @@ BOUNDARY_STRUCTS = [
 ]
 
 
+FS_STRUCTS = [
+    ("device", 912, [("kobj", 0), ("devt", 760)]),
+    ("kobject", 96, [("entry", 8)]),
+    ("kset", 160, [("list", 0), ("list_lock", 16)]),
+    ("super_block", 1536, [
+        ("s_root", 104), ("s_umount", 112), ("s_active", 180),
+    ]),
+    ("inode", 704, [
+        ("i_mode", 0), ("i_rdev", 76), ("i_private", 696),
+    ]),
+    ("kstat", 184, [("mode", 4), ("rdev", 44)]),
+    ("vfsmount", 64, [("mnt_root", 0), ("mnt_sb", 8)]),
+    ("path", 16, [("mnt", 0), ("dentry", 8)]),
+    ("file_system_type", 72, [
+        ("name", 0), ("fs_flags", 8), ("mount", 32), ("kill_sb", 40),
+        ("owner", 48),
+    ]),
+]
+
+
 def mutate(structs, struct_name, member, offset):
     return [
         (name, size,
@@ -306,6 +326,51 @@ class PreflightTests(unittest.TestCase):
             data = json.loads(proc.stdout)
             self.assertFalse(data["btf_layout"]["boundary"]["net"])
             self.assertFalse(data["btf_layout"]["boundary"]["ok"])
+            self.assertFalse(data["checks"]["boundary"])
+
+    def test_preflight_devtmpfs_btf_layout(self):
+        cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+        if not cc:
+            self.skipTest("no host C compiler")
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            binary = tmp / "dnsk-preflight"
+            subprocess.run(
+                [cc, "-O2", "-Wall", "-Wextra", "-std=c11", "-D_GNU_SOURCE",
+                 "-o", str(binary), str(ROOT / "tools/dnsk_preflight.c")],
+                check=True,
+            )
+            btf = tmp / "vmlinux.btf"
+            extra = FS_STRUCTS + BOUNDARY_STRUCTS
+            write_btf(btf, 104, 104, extra=extra)
+            base = [str(binary), "--btf", str(btf), "--feature", "devtmpfs",
+                    "--kmi", "android16-6.12",
+                    "--supported", str(ROOT / "ksu/supported_kmis.txt")]
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            boundary = data["btf_layout"]["boundary"]
+            self.assertTrue(boundary["checked_fs"])
+            self.assertTrue(boundary["fs"])
+            self.assertTrue(boundary["ok"])
+            self.assertTrue(data["checks"]["boundary"])
+
+            broken = mutate(extra, "device", "devt", 768)
+            write_btf(btf, 104, 104, extra=broken)
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            boundary = data["btf_layout"]["boundary"]
+            self.assertFalse(boundary["fs"])
+            self.assertFalse(boundary["ok"])
+            self.assertFalse(data["checks"]["boundary"])
+
+            broken = mutate(extra, "file_system_type", "mount", 40)
+            write_btf(btf, 104, 104, extra=broken)
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            self.assertFalse(data["btf_layout"]["boundary"]["fs"])
             self.assertFalse(data["checks"]["boundary"])
 
 

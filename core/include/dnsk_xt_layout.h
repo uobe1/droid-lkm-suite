@@ -6,6 +6,7 @@
 #include <linux/netfilter/x_tables.h>
 #include <linux/stddef.h>
 #include <linux/stringify.h>
+#include "dnsk_abi.h"
 
 /*
  * CONFIG_NETFILTER_XTABLES_COMPAT is not part of the GKI KMI.  A kernel built
@@ -100,20 +101,6 @@ _Static_assert(offsetof(struct xt_target, family) == 122, "compat xt_target.fami
 #error "unsupported DNSK_XT_LAYOUT"
 #endif
 
-#ifndef DNSK_ABI_PROFILE
-#define DNSK_ABI_PROFILE "unknown"
-#endif
-
-MODULE_INFO(dnsk_abi_profile, DNSK_ABI_PROFILE);
 MODULE_INFO(dnsk_xt_layout, __stringify(DNSK_XT_LAYOUT));
-#ifdef DNSK_PAGE_SIZE
-MODULE_INFO(dnsk_page_size, __stringify(DNSK_PAGE_SIZE));
-#endif
-#ifdef DNSK_MAX_SKB_FRAGS
-MODULE_INFO(dnsk_max_skb_frags, __stringify(DNSK_MAX_SKB_FRAGS));
-#endif
-#ifdef DNSK_CGROUP_SUBSYS_COUNT
-MODULE_INFO(dnsk_cgroup_subsys_count, __stringify(DNSK_CGROUP_SUBSYS_COUNT));
-#endif
 
 #endif /* _DNSK_XT_LAYOUT_H */

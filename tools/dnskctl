@@ -79,6 +79,27 @@ module_modinfo() {
 		head -n 1
 }
 
+check_abi_stamps() {
+	ko=$1
+	abi_profile=$(sed -n 's/^abi_profile=//p' "$MODDIR/policy.conf" 2>/dev/null | head -n 1)
+	[ -n "$abi_profile" ] || die "policy.conf has no abi_profile; refusing to guess"
+	module_profile=$(module_modinfo "$ko" dnsk_abi_profile)
+	[ -n "$module_profile" ] || die "module has no dnsk_abi_profile stamp: $ko"
+	[ "$module_profile" = "$abi_profile" ] || \
+		die "module ABI profile $module_profile does not match policy $abi_profile: $ko"
+	for pair in dnsk_page_size:page_size \
+		    dnsk_max_skb_frags:max_skb_frags \
+		    dnsk_cgroup_subsys_count:cgroup_subsys_count; do
+		mkey=${pair%%:*}
+		pkey=${pair#*:}
+		expected=$(sed -n "s/^${pkey}=//p" "$MODDIR/policy.conf" 2>/dev/null | head -n 1)
+		[ -n "$expected" ] || die "policy.conf has no $pkey; refusing to guess"
+		got=$(module_modinfo "$ko" "$mkey")
+		[ "$got" = "$expected" ] || \
+			die "module $mkey=$got does not match policy $pkey=$expected: $ko"
+	done
+}
+
 is_loaded() {
 	name=$1
 	bb=$(find_busybox)
@@ -140,24 +161,11 @@ do_preflight() {
 			[ -n "$stamp" ] || die "module has no dnsk_xt_layout stamp: $ko"
 			[ "$stamp" = "$xt_layout" ] || \
 				die "module xt layout $stamp does not match policy $xt_layout: $ko"
-			abi_profile=$(sed -n 's/^abi_profile=//p' "$MODDIR/policy.conf" 2>/dev/null | head -n 1)
-			[ -n "$abi_profile" ] || die "policy.conf has no abi_profile; refusing to guess"
-			module_profile=$(module_modinfo "$ko" dnsk_abi_profile)
-			[ -n "$module_profile" ] || die "module has no dnsk_abi_profile stamp: $ko"
-			[ "$module_profile" = "$abi_profile" ] || \
-				die "module ABI profile $module_profile does not match policy $abi_profile: $ko"
-			for pair in dnsk_page_size:page_size \
-				    dnsk_max_skb_frags:max_skb_frags \
-				    dnsk_cgroup_subsys_count:cgroup_subsys_count; do
-				mkey=${pair%%:*}
-				pkey=${pair#*:}
-				expected=$(sed -n "s/^${pkey}=//p" "$MODDIR/policy.conf" 2>/dev/null | head -n 1)
-				[ -n "$expected" ] || die "policy.conf has no $pkey; refusing to guess"
-				got=$(module_modinfo "$ko" "$mkey")
-				[ "$got" = "$expected" ] || \
-					die "module $mkey=$got does not match policy $pkey=$expected: $ko"
-			done
+			check_abi_stamps "$ko"
 			set -- "$@" --xt-layout "$xt_layout"
+			;;
+		devtmpfs)
+			check_abi_stamps "$ko"
 			;;
 		esac
 		set -- "$@" --feature "$feature"

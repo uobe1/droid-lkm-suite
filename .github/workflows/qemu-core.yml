@@ -39,7 +39,9 @@ jobs:
           make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
           make -C "$GITHUB_WORKSPACE/features/ns" KDIR="$KDIR" modules
           make -C "$GITHUB_WORKSPACE/features/diag" KDIR="$KDIR" modules
-          make -C "$GITHUB_WORKSPACE/features/devtmpfs" KDIR="$KDIR" modules
+          make -C "$GITHUB_WORKSPACE/features/devtmpfs" KDIR="$KDIR" \
+            DNSK_ABI_PROFILE=android16-6.12-xt128 DNSK_PAGE_SIZE=4096 \
+            DNSK_MAX_SKB_FRAGS=17 DNSK_CGROUP_SUBSYS_COUNT=8 modules
           make -C "$GITHUB_WORKSPACE/features/netfilter" KDIR="$KDIR" \
             DNSK_ABI_PROFILE=android16-6.12-xt128 DNSK_PAGE_SIZE=4096 \
             DNSK_MAX_SKB_FRAGS=17 DNSK_CGROUP_SUBSYS_COUNT=8 modules

@@ -136,7 +136,7 @@ def main() -> int:
         return 1
     for features in feature_files.values():
         for stem, ko in features.items():
-            if stem not in ("dnsk_ipset", "dnsk_netfilter"):
+            if stem not in ("dnsk_ipset", "dnsk_netfilter", "dnsk_devtmpfs"):
                 continue
             for mod_key, value in expected.items():
                 found = modinfo_value(ko, mod_key)

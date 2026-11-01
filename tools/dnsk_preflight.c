@@ -67,6 +67,7 @@ struct btf_layout {
 	int xt_params_ok;
 	int skb_ok;
 	int net_ok;
+	int fs_ok;
 };
 
 static uint32_t btf_rd32(const unsigned char *p)
@@ -319,7 +320,7 @@ static void btf_check_netfilter(const unsigned char *d, size_t len,
 }
 
 static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
-			     struct btf_layout *l)
+			     int check_fs, struct btf_layout *l)
 {
 	static const struct btf_field mutex[] = {
 		{ "owner", 0 }, { "wait_lock", 8 }, { "wait_list", 16 },
@@ -374,6 +375,34 @@ static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
 		{ "ct", 2608 }, { "wext_nlevents", 2824 }, { "gen", 2848 },
 		{ "xfrm", 2944 },
 	};
+	static const struct btf_field device[] = {
+		{ "kobj", 0 }, { "devt", 760 },
+	};
+	static const struct btf_field kobject[] = {
+		{ "entry", 8 },
+	};
+	static const struct btf_field kset[] = {
+		{ "list", 0 }, { "list_lock", 16 },
+	};
+	static const struct btf_field super_block[] = {
+		{ "s_root", 104 }, { "s_umount", 112 }, { "s_active", 180 },
+	};
+	static const struct btf_field inode[] = {
+		{ "i_mode", 0 }, { "i_rdev", 76 }, { "i_private", 696 },
+	};
+	static const struct btf_field kstat[] = {
+		{ "mode", 4 }, { "rdev", 44 },
+	};
+	static const struct btf_field vfsmount[] = {
+		{ "mnt_root", 0 }, { "mnt_sb", 8 },
+	};
+	static const struct btf_field path[] = {
+		{ "mnt", 0 }, { "dentry", 8 },
+	};
+	static const struct btf_field file_system_type[] = {
+		{ "name", 0 }, { "fs_flags", 8 }, { "mount", 32 },
+		{ "kill_sb", 40 }, { "owner", 48 },
+	};
 
 	l->locks_ok = btf_fields_match(d, len, "mutex", 48, mutex,
 				       ARRAY_SIZE(mutex)) &&
@@ -389,6 +418,27 @@ static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
 				       ARRAY_SIZE(timer_list)) &&
 		      btf_fields_match(d, len, "work_struct", 32, work_struct,
 				       ARRAY_SIZE(work_struct));
+	if (check_fs)
+		l->fs_ok =
+			btf_fields_match(d, len, "device", 912, device,
+					 ARRAY_SIZE(device)) &&
+			btf_fields_match(d, len, "kobject", 96, kobject,
+					 ARRAY_SIZE(kobject)) &&
+			btf_fields_match(d, len, "kset", 160, kset,
+					 ARRAY_SIZE(kset)) &&
+			btf_fields_match(d, len, "super_block", 1536,
+					 super_block, ARRAY_SIZE(super_block)) &&
+			btf_fields_match(d, len, "inode", 704, inode,
+					 ARRAY_SIZE(inode)) &&
+			btf_fields_match(d, len, "kstat", 184, kstat,
+					 ARRAY_SIZE(kstat)) &&
+			btf_fields_match(d, len, "vfsmount", 64, vfsmount,
+					 ARRAY_SIZE(vfsmount)) &&
+			btf_fields_match(d, len, "path", 16, path,
+					 ARRAY_SIZE(path)) &&
+			btf_fields_match(d, len, "file_system_type", 72,
+					 file_system_type,
+					 ARRAY_SIZE(file_system_type));
 	if (!check_xt)
 		return;
 	l->xt_params_ok =
@@ -408,7 +458,7 @@ static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
 }
 
 static int btf_read_layout(const char *path, struct btf_layout *layout,
-			   int check_xt, int check_nf)
+			   int check_xt, int check_nf, int check_fs)
 {
 	FILE *fp;
 	unsigned char *data = NULL;
@@ -463,7 +513,7 @@ static int btf_read_layout(const char *path, struct btf_layout *layout,
 		btf_find_struct_info(data, used, "xt_match", &layout->match) == 0;
 	layout->found_target =
 		btf_find_struct_info(data, used, "xt_target", &layout->target) == 0;
-	btf_check_common(data, used, check_xt, layout);
+	btf_check_common(data, used, check_xt, check_fs, layout);
 	if (check_nf)
 		btf_check_netfilter(data, used, &layout->nf);
 	free(data);
@@ -662,6 +712,7 @@ int main(int argc, char **argv)
 	struct btf_layout layout;
 	int check_nf;
 	int check_xt;
+	int check_fs;
 	int btf;
 	int layout_ok;
 	int boundary_ok;
@@ -686,6 +737,7 @@ int main(int argc, char **argv)
 	}
 	check_nf = !strcmp(feature, "netfilter");
 	check_xt = check_nf || !strcmp(feature, "ipset");
+	check_fs = !strcmp(feature, "devtmpfs");
 
 	if (uname(&uts) != 0) {
 		perror("uname");
@@ -698,7 +750,7 @@ int main(int argc, char **argv)
 	btf = access(btf_path, R_OK) == 0;
 	memset(&layout, 0, sizeof(layout));
 	if (btf)
-		btf_read_layout(btf_path, &layout, check_xt, check_nf);
+		btf_read_layout(btf_path, &layout, check_xt, check_nf, check_fs);
 	if (xt_expected < 0)
 		layout_ok = 1;
 	else if (xt_expected == 104 || xt_expected == 128)
@@ -719,7 +771,8 @@ int main(int argc, char **argv)
 		   required[SYM_KALLSYMS_ON_EACH_SYMBOL].found;
 	boundary_ok = layout.locks_ok &&
 		      (!check_xt || (layout.xt_params_ok && layout.skb_ok &&
-				     layout.net_ok));
+				     layout.net_ok)) &&
+		      (!check_fs || layout.fs_ok);
 	nf_ok = !check_nf || layout.nf.ok;
 	nf_symbols = all_found(nf_required, ARRAY_SIZE(nf_required));
 	ok = page_size == 4096 && btf && layout_ok && boundary_ok && ksud &&
@@ -736,7 +789,7 @@ int main(int argc, char **argv)
 	       "\"xt_match_size\":%u,\"xt_target_size\":%u,"
 	       "\"xt_ok\":%s,\"boundary\":{\"locks\":%s,"
 	       "\"checked_xt\":%s,\"xt_params\":%s,\"skb\":%s,\"net\":%s,"
-	       "\"ok\":%s},\"nf\":{\"checked\":%s,"
+	       "\"checked_fs\":%s,\"fs\":%s,\"ok\":%s},\"nf\":{\"checked\":%s,"
 	       "\"hook_ops\":%s,\"hook_state\":%s,\"conn\":%s,"
 	       "\"pernet_ops\":%s,\"nfnetlink\":%s,\"nfnl_callback\":%s,"
 	       "\"nat_hook\":%s,\"nat_range2\":%s,"
@@ -751,6 +804,8 @@ int main(int argc, char **argv)
 	       layout.xt_params_ok ? "true" : "false",
 	       layout.skb_ok ? "true" : "false",
 	       layout.net_ok ? "true" : "false",
+	       check_fs ? "true" : "false",
+	       layout.fs_ok ? "true" : "false",
 	       boundary_ok ? "true" : "false",
 	       check_nf ? "true" : "false",
 	       layout.nf.hook_ops ? "true" : "false",
