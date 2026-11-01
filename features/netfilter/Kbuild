@@ -51,4 +51,5 @@ LINUXINCLUDE := -I$(src)/../../core/include/compat_include $(LINUXINCLUDE)
 endif
 LINUXINCLUDE := -I$(src)/vendor/netfilter/compat $(LINUXINCLUDE)
 ccflags-y += -I$(src)/vendor/netfilter -I$(srctree)
+ccflags-y += -I$(src)/../../core/include
 ccflags-y += -std=gnu11 -Wno-declaration-after-statement
