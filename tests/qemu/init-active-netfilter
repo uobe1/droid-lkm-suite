@@ -28,4 +28,5 @@ fi
 echo "DNSK_ACTIVE_NETFILTER_OK"
 "$BB" rmmod dnsk_netfilter || fail netfilter_rmmod
 echo "DNSK_QEMU_ACTIVE_NETFILTER_DONE"
+echo "DNSK_QEMU_OK"
 "$BB" poweroff -f

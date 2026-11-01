@@ -51,4 +51,5 @@ while [ "$i" -lt 10 ]; do
 done
 [ "$unloaded" -eq 1 ] || fail ipset_rmmod
 echo "DNSK_QEMU_IPSET_OK"
+echo "DNSK_QEMU_OK"
 "$BB" poweroff -f

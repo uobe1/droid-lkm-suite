@@ -37,4 +37,5 @@ while [ "$i" -lt 20 ]; do
 done
 echo "DNSK_ACTIVE_CYCLES_OK $i"
 echo "DNSK_QEMU_ACTIVE_OK"
+echo "DNSK_QEMU_OK"
 "$BB" poweroff -f

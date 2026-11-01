@@ -25,4 +25,5 @@ echo "DNSK_QEMU_DEVTMPFS_BOOT $(cat /proc/sys/kernel/osrelease)"
 ready=$("$BB" cat /sys/module/dnsk_devtmpfs/parameters/ready 2>/dev/null)
 [ "$ready" = "Y" ] || [ "$ready" = "1" ] || fail "ready=$ready"
 echo "DNSK_ACTIVE_DEVTMPFS_OK ready=$ready"
+echo "DNSK_QEMU_OK"
 "$BB" poweroff -f
