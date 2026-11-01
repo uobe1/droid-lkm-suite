@@ -1,0 +1,66 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Docker 29.x baseline in the stock DDK VM: cgroup2, vfs storage and no
+# network.  The image is imported from the Alpine minirootfs, so no registry
+# access is needed.  Network/bridge/NAT is a separate mode.
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	"$BB" mknod /dev/console c 5 1
+	"$BB" mknod /dev/null c 1 3
+fi
+"$BB" mkdir -p /dev/pts /dev/shm /tmp /run /var/lib/docker \
+	/var/lib/containerd /var/log /etc /sys/fs/cgroup
+"$BB" mount -t devpts devpts /dev/pts 2>/dev/null
+"$BB" mount -t tmpfs tmpfs /dev/shm 2>/dev/null || true
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" tail -80 /var/log/dockerd.log 2>/dev/null
+	"$BB" tail -40 /var/log/containerd.log 2>/dev/null
+	"$BB" poweroff -f
+}
+
+echo "DNSK_QEMU_DOCKER_BOOT $(cat /proc/sys/kernel/osrelease)"
+"$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup || fail cgroup2_mount
+
+containerd >/var/log/containerd.log 2>&1 &
+i=0
+while [ ! -S /run/containerd/containerd.sock ] && [ "$i" -lt 60 ]; do
+	sleep 1
+	i=$((i + 1))
+done
+[ -S /run/containerd/containerd.sock ] || fail containerd_socket
+
+dockerd --containerd /run/containerd/containerd.sock \
+	--data-root /var/lib/docker --exec-root /run/docker \
+	--pidfile /run/docker.pid --storage-driver vfs \
+	--iptables=false --ip6tables=false --bridge=none \
+	--ip-forward=false --ip-masq=false \
+	--exec-opt native.cgroupdriver=cgroupfs \
+	>/var/log/dockerd.log 2>&1 &
+i=0
+while ! docker info >/dev/null 2>&1 && [ "$i" -lt 120 ]; do
+	sleep 1
+	i=$((i + 1))
+done
+docker info >/dev/null 2>&1 || fail docker_info
+
+ver=$(docker info --format '{{.ServerVersion}}' 2>/dev/null)
+echo "docker_server=$ver"
+case "$ver" in
+29.*) ;;
+*) fail "docker_version=$ver" ;;
+esac
+
+docker import /alpine.tar.gz alpine:local || fail docker_import
+docker run --rm --network none alpine:local /bin/sh -c \
+	'echo DOCKER_CONTAINER_OK; cat /proc/1/cgroup; id' || fail docker_run
+
+echo "DNSK_DOCKER_OK"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f

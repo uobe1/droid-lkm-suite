@@ -12,6 +12,7 @@ on:
           - active-netfilter
           - active-devtmpfs
           - active-ipset
+          - docker
         default: baseline
       image_run_id:
         description: reuse qemu-6.12 artifact from this run id (empty = build)
@@ -107,6 +108,14 @@ jobs:
             https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64/ipset-7.21-r2.apk
           tar -xzf libmnl.apk -C rootfs 2>/dev/null
           tar -xzf ipset.apk -C rootfs 2>/dev/null
+          if [ "${{ inputs.mode }}" = "docker" ]; then
+            curl -fsSL -o docker.tgz \
+              https://download.docker.com/linux/static/stable/aarch64/docker-29.7.2.tgz
+            mkdir -p rootfs/opt rootfs/usr/bin
+            tar -xzf docker.tgz -C rootfs/opt
+            cp rootfs/opt/docker/* rootfs/usr/bin/
+            cp alpine.tar.gz rootfs/alpine.tar.gz
+          fi
           if [ "${{ inputs.mode }}" = "baseline" ]; then
             cp tests/qemu/init rootfs/init
           else
@@ -119,8 +128,16 @@ jobs:
         shell: bash
         run: |
           set +e
-          timeout 420 qemu-system-aarch64 \
-            -M virt -cpu max -m 2048 -smp 2 -nographic -no-reboot \
+          MEM=2048
+          SMP=2
+          TIMEOUT=420
+          if [ "${{ inputs.mode }}" = "docker" ]; then
+            MEM=3072
+            SMP=4
+            TIMEOUT=1200
+          fi
+          timeout "$TIMEOUT" qemu-system-aarch64 \
+            -M virt -cpu max -m "$MEM" -smp "$SMP" -nographic -no-reboot \
             -kernel qemu/Image -initrd initramfs.cpio.gz \
             -append "console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0 module.sig_enforce=0" \
             2>&1 | tee qemu.log
