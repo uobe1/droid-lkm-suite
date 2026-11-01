@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -43,14 +44,48 @@ class KmiMatrixTests(unittest.TestCase):
 class BuildFlagsTests(unittest.TestCase):
     def test_xt_profiles(self):
         root = ROOT / "profiles" / "abi"
-        pid, flags = build_flags.load(root / "android16-6.12-xt104.json")
+        pid, kmi, config = build_flags.load(root / "android16-6.12-xt104.json")
         self.assertEqual(pid, "android16-6.12-xt104")
+        self.assertEqual(kmi, "android16-6.12")
+        flags = build_flags.flags_for(pid, config)
+        self.assertEqual(flags["DNSK_ABI_PROFILE"], "android16-6.12-xt104")
         self.assertEqual(flags["DNSK_XT_NOCOMPAT"], "1")
         self.assertEqual(flags["DNSK_XT_LAYOUT"], "104")
-        pid, flags = build_flags.load(root / "android16-6.12-xt128.json")
+        self.assertEqual(flags["DNSK_PAGE_SIZE"], "4096")
+        self.assertEqual(flags["DNSK_MAX_SKB_FRAGS"], "17")
+        self.assertEqual(flags["DNSK_CGROUP_SUBSYS_COUNT"], "8")
+
+        pid, kmi, config = build_flags.load(root / "android16-6.12-xt128.json")
         self.assertEqual(pid, "android16-6.12-xt128")
+        self.assertEqual(kmi, "android16-6.12")
+        flags = build_flags.flags_for(pid, config)
+        self.assertEqual(flags["DNSK_ABI_PROFILE"], "android16-6.12-xt128")
         self.assertEqual(flags["DNSK_XT_NOCOMPAT"], "")
         self.assertEqual(flags["DNSK_XT_LAYOUT"], "128")
+
+    def test_profile_rejects_unknown_or_missing_config(self):
+        text = (ROOT / "profiles/abi/android16-6.12-xt104.json").read_text()
+        data = json.loads(text)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "profile.json"
+            for mutate in ("unknown", "missing"):
+                broken = json.loads(json.dumps(data))
+                if mutate == "unknown":
+                    broken["config"]["not_a_knob"] = 1
+                else:
+                    del broken["config"]["page_size"]
+                path.write_text(json.dumps(broken))
+                with self.assertRaises(ValueError):
+                    build_flags.load(path)
+
+    def test_profile_kmi_mismatch(self):
+        argv = ["build_flags.py", "--profile",
+                str(ROOT / "profiles/abi/android16-6.12-xt104.json"),
+                "--kmi", "android14-6.1"]
+        with mock.patch.object(sys, "argv", argv), \
+                mock.patch("sys.stderr"), \
+                mock.patch("builtins.print"):
+            self.assertEqual(build_flags.main(), 2)
 
 
 class ExportsGuardTests(unittest.TestCase):

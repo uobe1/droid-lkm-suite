@@ -34,7 +34,9 @@
   matchsize|targetsize/usersize/hooks/proto/family` 的全部字节偏移;
 - 输出 `btf_layout.xt_match_size/xt_target_size/xt_ok`;
 - 指定 `--xt-layout 104|128` 时, size/offset 不匹配即 `ok:false` 并返回非零;
-- `dnskctl` 只为 ipset/netfilter 传该检查, core/ns/devtmpfs 不受影响.
+- `--feature ipset|netfilter` 额外校验 xt 回调参数、skb 与 net; 所有 feature
+  校验锁原语; netfilter 再校验 nf 边界结构;
+- `dnskctl` 只为 ipset/netfilter 传 xt 布局检查, core/ns/devtmpfs 不受影响.
 
 主机测试 `tests/host/test_preflight.py` 构造合成的 104/128 字节 BTF,
 验证正例通过、128 反例失败.

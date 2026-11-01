@@ -14,6 +14,18 @@ ccflags-y += -DCONFIG_NETFILTER_XT_SET=1 -DCONFIG_IP_SET_MAX=256
 ifneq ($(DNSK_XT_LAYOUT),)
 ccflags-y += -DDNSK_XT_LAYOUT=$(DNSK_XT_LAYOUT)
 endif
+ifneq ($(DNSK_ABI_PROFILE),)
+ccflags-y += -DDNSK_ABI_PROFILE=\"$(DNSK_ABI_PROFILE)\"
+endif
+ifneq ($(DNSK_PAGE_SIZE),)
+ccflags-y += -DDNSK_PAGE_SIZE=$(DNSK_PAGE_SIZE)
+endif
+ifneq ($(DNSK_MAX_SKB_FRAGS),)
+ccflags-y += -DDNSK_MAX_SKB_FRAGS=$(DNSK_MAX_SKB_FRAGS)
+endif
+ifneq ($(DNSK_CGROUP_SUBSYS_COUNT),)
+ccflags-y += -DDNSK_CGROUP_SUBSYS_COUNT=$(DNSK_CGROUP_SUBSYS_COUNT)
+endif
 
 # The vendored 6.12 ipset/uapi headers are used before the kernel tree copies
 # so the module does not depend on CONFIG_IP_SET being enabled in the KMI.

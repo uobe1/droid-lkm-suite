@@ -46,11 +46,13 @@ struct btf_field {
 
 struct btf_nf_layout {
 	int hook_ops;
+	int hook_state;
 	int conn;
 	int pernet_ops;
 	int nfnetlink;
 	int nfnl_callback;
-	int net;
+	int nat_hook;
+	int nat_range2;
 	int rhashtable;
 	int ok;
 };
@@ -61,6 +63,10 @@ struct btf_layout {
 	int found_match;
 	int found_target;
 	struct btf_nf_layout nf;
+	int locks_ok;
+	int xt_params_ok;
+	int skb_ok;
+	int net_ok;
 };
 
 static uint32_t btf_rd32(const unsigned char *p)
@@ -274,13 +280,24 @@ static void btf_check_netfilter(const unsigned char *d, size_t len,
 		{ "call", 0 }, { "policy", 8 }, { "type", 16 },
 		{ "attr_count", 20 },
 	};
-	static const struct btf_field net[] = {
-		{ "gen", 2848 },
+	static const struct btf_field hook_state[] = {
+		{ "hook", 0 }, { "pf", 1 }, { "in", 8 }, { "out", 16 },
+		{ "sk", 24 }, { "net", 32 }, { "okfn", 40 },
+	};
+	static const struct btf_field nat_hook[] = {
+		{ "parse_nat_setup", 0 }, { "decode_session", 8 },
+		{ "remove_nat_bysrc", 16 },
+	};
+	static const struct btf_field nat_range2[] = {
+		{ "flags", 0 }, { "min_addr", 4 }, { "max_addr", 20 },
+		{ "min_proto", 36 }, { "max_proto", 38 }, { "base_proto", 40 },
 	};
 
 	memset(nf, 0, sizeof(*nf));
 	nf->hook_ops = btf_fields_match(d, len, "nf_hook_ops", 40, hook_ops,
 					ARRAY_SIZE(hook_ops));
+	nf->hook_state = btf_fields_match(d, len, "nf_hook_state", 48,
+					  hook_state, ARRAY_SIZE(hook_state));
 	nf->conn = btf_fields_match(d, len, "nf_conn", 272, conn,
 				    ARRAY_SIZE(conn));
 	nf->pernet_ops = btf_fields_match(d, len, "pernet_operations", 72,
@@ -291,16 +308,106 @@ static void btf_check_netfilter(const unsigned char *d, size_t len,
 	nf->nfnl_callback = btf_fields_match(d, len, "nfnl_callback", 32,
 					     nfnl_callback,
 					     ARRAY_SIZE(nfnl_callback));
-	nf->net = btf_fields_match(d, len, "net", 4160, net,
-				   ARRAY_SIZE(net));
+	nf->nat_hook = btf_fields_match(d, len, "nf_nat_hook", 32, nat_hook,
+					ARRAY_SIZE(nat_hook));
+	nf->nat_range2 = btf_fields_match(d, len, "nf_nat_range2", 44,
+					  nat_range2, ARRAY_SIZE(nat_range2));
 	nf->rhashtable = btf_fields_match(d, len, "rhashtable", 160, NULL, 0);
-	nf->ok = nf->hook_ops && nf->conn && nf->pernet_ops &&
-		 nf->nfnetlink && nf->nfnl_callback && nf->net &&
-		 nf->rhashtable;
+	nf->ok = nf->hook_ops && nf->hook_state && nf->conn &&
+		 nf->pernet_ops && nf->nfnetlink && nf->nfnl_callback &&
+		 nf->nat_hook && nf->nat_range2 && nf->rhashtable;
+}
+
+static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
+			     struct btf_layout *l)
+{
+	static const struct btf_field mutex[] = {
+		{ "owner", 0 }, { "wait_lock", 8 }, { "wait_list", 16 },
+		{ "android_oem_data1", 32 },
+	};
+	static const struct btf_field rwsem[] = {
+		{ "count", 0 }, { "owner", 8 }, { "wait_list", 24 },
+		{ "android_vendor_data1", 40 }, { "android_oem_data1", 48 },
+	};
+	static const struct btf_field raw_spinlock[] = {
+		{ "raw_lock", 0 },
+	};
+	static const struct btf_field wait_queue_head[] = {
+		{ "lock", 0 }, { "head", 8 },
+	};
+	static const struct btf_field timer_list[] = {
+		{ "entry", 0 }, { "expires", 16 }, { "function", 24 },
+		{ "flags", 32 },
+	};
+	static const struct btf_field work_struct[] = {
+		{ "data", 0 }, { "entry", 8 }, { "func", 24 },
+	};
+	static const struct btf_field xt_action_param[] = {
+		{ "state", 16 }, { "thoff", 24 }, { "fragoff", 28 },
+		{ "hotdrop", 30 },
+	};
+	static const struct btf_field xt_mtchk_param[] = {
+		{ "net", 0 }, { "table", 8 }, { "entryinfo", 16 },
+		{ "match", 24 }, { "matchinfo", 32 }, { "hook_mask", 40 },
+		{ "family", 44 }, { "nft_compat", 45 },
+	};
+	static const struct btf_field xt_tgchk_param[] = {
+		{ "net", 0 }, { "table", 8 }, { "entryinfo", 16 },
+		{ "target", 24 }, { "targinfo", 32 }, { "hook_mask", 40 },
+		{ "family", 44 }, { "nft_compat", 45 },
+	};
+	static const struct btf_field sk_buff[] = {
+		{ "sk", 24 }, { "_nfct", 104 }, { "len", 112 },
+		{ "data_len", 116 }, { "active_extensions", 127 },
+		{ "tail", 208 }, { "end", 212 }, { "head", 216 },
+		{ "data", 224 }, { "truesize", 232 }, { "users", 236 },
+		{ "extensions", 240 },
+	};
+	static const struct btf_field skb_shared_info[] = {
+		{ "flags", 0 }, { "nr_frags", 2 }, { "frag_list", 8 },
+		{ "gso_type", 24 }, { "dataref", 32 },
+		{ "destructor_arg", 40 }, { "frags", 88 },
+	};
+	static const struct btf_field net[] = {
+		{ "user_ns", 80 }, { "sysctls", 176 }, { "ipv4", 768 },
+		{ "ipv6", 1536 }, { "nf", 2384 }, { "ct", 2608 },
+		{ "wext_nlevents", 2824 }, { "gen", 2848 }, { "xfrm", 2944 },
+	};
+
+	l->locks_ok = btf_fields_match(d, len, "mutex", 48, mutex,
+				       ARRAY_SIZE(mutex)) &&
+		      btf_fields_match(d, len, "rw_semaphore", 64, rwsem,
+				       ARRAY_SIZE(rwsem)) &&
+		      btf_fields_match(d, len, "spinlock", 4, NULL, 0) &&
+		      btf_fields_match(d, len, "raw_spinlock", 4, raw_spinlock,
+				       ARRAY_SIZE(raw_spinlock)) &&
+		      btf_fields_match(d, len, "wait_queue_head", 24,
+				       wait_queue_head,
+				       ARRAY_SIZE(wait_queue_head)) &&
+		      btf_fields_match(d, len, "timer_list", 40, timer_list,
+				       ARRAY_SIZE(timer_list)) &&
+		      btf_fields_match(d, len, "work_struct", 32, work_struct,
+				       ARRAY_SIZE(work_struct));
+	if (!check_xt)
+		return;
+	l->xt_params_ok =
+		btf_fields_match(d, len, "xt_action_param", 32, xt_action_param,
+				 ARRAY_SIZE(xt_action_param)) &&
+		btf_fields_match(d, len, "xt_mtchk_param", 48, xt_mtchk_param,
+				 ARRAY_SIZE(xt_mtchk_param)) &&
+		btf_fields_match(d, len, "xt_tgchk_param", 48, xt_tgchk_param,
+				 ARRAY_SIZE(xt_tgchk_param));
+	l->skb_ok = btf_fields_match(d, len, "sk_buff", 248, sk_buff,
+				     ARRAY_SIZE(sk_buff)) &&
+		    btf_fields_match(d, len, "skb_shared_info", 360,
+				     skb_shared_info,
+				     ARRAY_SIZE(skb_shared_info));
+	l->net_ok = btf_fields_match(d, len, "net", 4160, net,
+				     ARRAY_SIZE(net));
 }
 
 static int btf_read_layout(const char *path, struct btf_layout *layout,
-			   int check_nf)
+			   int check_xt, int check_nf)
 {
 	FILE *fp;
 	unsigned char *data = NULL;
@@ -355,6 +462,7 @@ static int btf_read_layout(const char *path, struct btf_layout *layout,
 		btf_find_struct_info(data, used, "xt_match", &layout->match) == 0;
 	layout->found_target =
 		btf_find_struct_info(data, used, "xt_target", &layout->target) == 0;
+	btf_check_common(data, used, check_xt, layout);
 	if (check_nf)
 		btf_check_netfilter(data, used, &layout->nf);
 	free(data);
@@ -544,8 +652,10 @@ int main(int argc, char **argv)
 	long xt_expected = -1;
 	struct btf_layout layout;
 	int check_nf;
+	int check_xt;
 	int btf;
 	int layout_ok;
+	int boundary_ok;
 	int nf_ok;
 	int nf_symbols;
 	int supported;
@@ -566,6 +676,7 @@ int main(int argc, char **argv)
 			xt_expected = strtol(argv[++i], NULL, 10);
 	}
 	check_nf = !strcmp(feature, "netfilter");
+	check_xt = check_nf || !strcmp(feature, "ipset");
 
 	if (uname(&uts) != 0) {
 		perror("uname");
@@ -578,7 +689,7 @@ int main(int argc, char **argv)
 	btf = access(btf_path, R_OK) == 0;
 	memset(&layout, 0, sizeof(layout));
 	if (btf)
-		btf_read_layout(btf_path, &layout, check_nf);
+		btf_read_layout(btf_path, &layout, check_xt, check_nf);
 	if (xt_expected < 0)
 		layout_ok = 1;
 	else if (xt_expected == 104 || xt_expected == 128)
@@ -597,10 +708,13 @@ int main(int argc, char **argv)
 		 required[SYM_FLUSH_DCACHE_AREA].found;
 	resolver = required[SYM_KALLSYMS_LOOKUP_NAME].found ||
 		   required[SYM_KALLSYMS_ON_EACH_SYMBOL].found;
+	boundary_ok = layout.locks_ok &&
+		      (!check_xt || (layout.xt_params_ok && layout.skb_ok &&
+				     layout.net_ok));
 	nf_ok = !check_nf || layout.nf.ok;
 	nf_symbols = all_found(nf_required, ARRAY_SIZE(nf_required));
-	ok = page_size == 4096 && btf && layout_ok && ksud && supported &&
-	     kmi[0] && required[SYM_SYS_CALL_TABLE].found &&
+	ok = page_size == 4096 && btf && layout_ok && boundary_ok && ksud &&
+	     supported && kmi[0] && required[SYM_SYS_CALL_TABLE].found &&
 	     required[SYM_INIT_MM].found &&
 	     required[SYM_PANIC_NOTIFIER_LIST].found &&
 	     required[SYM_STOP_MACHINE].found &&
@@ -611,22 +725,33 @@ int main(int argc, char **argv)
 	       "\"kmi\":\"%s\",\"supported\":%s,\"page_size\":%lu,"
 	       "\"btf\":%s,\"ksud\":\"%s\",\"btf_layout\":{"
 	       "\"xt_match_size\":%u,\"xt_target_size\":%u,"
-	       "\"xt_ok\":%s,\"nf\":{\"checked\":%s,"
-	       "\"hook_ops\":%s,\"conn\":%s,\"pernet_ops\":%s,"
-	       "\"nfnetlink\":%s,\"nfnl_callback\":%s,\"net\":%s,"
+	       "\"xt_ok\":%s,\"boundary\":{\"locks\":%s,"
+	       "\"checked_xt\":%s,\"xt_params\":%s,\"skb\":%s,\"net\":%s,"
+	       "\"ok\":%s},\"nf\":{\"checked\":%s,"
+	       "\"hook_ops\":%s,\"hook_state\":%s,\"conn\":%s,"
+	       "\"pernet_ops\":%s,\"nfnetlink\":%s,\"nfnl_callback\":%s,"
+	       "\"nat_hook\":%s,\"nat_range2\":%s,"
 	       "\"rhashtable\":%s,\"ok\":%s}},\"symbols\":{",
 	       ok ? "true" : "false", feature, uts.release, kmi,
 	       supported ? "true" : "false", page_size,
 	       btf ? "true" : "false", ksud ? ksud : "",
 	       layout.match.size, layout.target.size,
 	       layout_ok ? "true" : "false",
+	       layout.locks_ok ? "true" : "false",
+	       check_xt ? "true" : "false",
+	       layout.xt_params_ok ? "true" : "false",
+	       layout.skb_ok ? "true" : "false",
+	       layout.net_ok ? "true" : "false",
+	       boundary_ok ? "true" : "false",
 	       check_nf ? "true" : "false",
 	       layout.nf.hook_ops ? "true" : "false",
+	       layout.nf.hook_state ? "true" : "false",
 	       layout.nf.conn ? "true" : "false",
 	       layout.nf.pernet_ops ? "true" : "false",
 	       layout.nf.nfnetlink ? "true" : "false",
 	       layout.nf.nfnl_callback ? "true" : "false",
-	       layout.nf.net ? "true" : "false",
+	       layout.nf.nat_hook ? "true" : "false",
+	       layout.nf.nat_range2 ? "true" : "false",
 	       layout.nf.rhashtable ? "true" : "false",
 	       layout.nf.ok ? "true" : "false");
 	for (size_t i = 0; i < ARRAY_SIZE(required); i++) {
@@ -640,11 +765,12 @@ int main(int argc, char **argv)
 	printf("},\"checks\":{\"page_size_4k\":%s,\"btf\":%s,"
 	       "\"kmi_supported\":%s,\"ksud\":%s,\"dcache\":%s,"
 	       "\"kallsyms_resolver\":%s,\"xt_layout\":%s,"
-	       "\"nf_abi\":%s,\"nf_symbols\":%s}}\n",
+	       "\"boundary\":%s,\"nf_abi\":%s,\"nf_symbols\":%s}}\n",
 	       page_size == 4096 ? "true" : "false", btf ? "true" : "false",
 	       supported ? "true" : "false", ksud ? "true" : "false",
 	       dcache ? "true" : "false", resolver ? "true" : "false",
-	       layout_ok ? "true" : "false", nf_ok ? "true" : "false",
+	       layout_ok ? "true" : "false", boundary_ok ? "true" : "false",
+	       nf_ok ? "true" : "false",
 	       (!check_nf || nf_symbols) ? "true" : "false");
 	return ok ? 0 : 1;
 }

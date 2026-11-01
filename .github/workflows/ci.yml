@@ -58,15 +58,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        kmi:
-          - android12-5.10
-          - android13-5.10
-          - android13-5.15
-          - android14-5.15
-          - android14-6.1
-          - android15-6.6
-          - android16-6.12
-          - android17-6.18
+        include:
+          - kmi: android12-5.10
+          - kmi: android13-5.10
+          - kmi: android13-5.15
+          - kmi: android14-5.15
+          - kmi: android14-6.1
+          - kmi: android15-6.6
+          - kmi: android16-6.12
+            profile: ${{ inputs.build_profile || 'android16-6.12-xt104' }}
+          - kmi: android17-6.18
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-20260828
@@ -75,13 +76,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build dnsk_core.ko
         shell: bash
+        env:
+          MATRIX_PROFILE: ${{ matrix.profile }}
         run: |
           set -euxo pipefail
           KDIR="/opt/ddk/kdir/${{ matrix.kmi }}"
           test -d "$KDIR"
-          PROFILE="${{ inputs.build_profile || 'android16-6.12-xt104' }}"
-          eval "$(python3 "$GITHUB_WORKSPACE/tools/build_flags.py" \
-            --profile "$GITHUB_WORKSPACE/profiles/abi/${PROFILE}.json")"
+          PROFILE="$MATRIX_PROFILE"
+          if [ -n "$PROFILE" ]; then
+            eval "$(python3 "$GITHUB_WORKSPACE/tools/build_flags.py" \
+              --profile "$GITHUB_WORKSPACE/profiles/abi/${PROFILE}.json" \
+              --kmi "${{ matrix.kmi }}")"
+            test "$DNSK_ABI_PROFILE" = "$PROFILE"
+          fi
           make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
           mkdir -p "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}"
           cp "$GITHUB_WORKSPACE/dnsk_core.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
@@ -93,20 +100,30 @@ jobs:
             make -C "$GITHUB_WORKSPACE/features/devtmpfs" KDIR="$KDIR" modules
             cp "$GITHUB_WORKSPACE/features/devtmpfs/dnsk_devtmpfs.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             make -C "$GITHUB_WORKSPACE/features/netfilter" KDIR="$KDIR" \
-              DNSK_XT_NOCOMPAT="${DNSK_XT_NOCOMPAT:-}" DNSK_XT_LAYOUT="${DNSK_XT_LAYOUT:-}" modules
+              DNSK_XT_NOCOMPAT="${DNSK_XT_NOCOMPAT:-}" DNSK_XT_LAYOUT="${DNSK_XT_LAYOUT:-}" \
+              DNSK_ABI_PROFILE="${DNSK_ABI_PROFILE:-}" DNSK_PAGE_SIZE="${DNSK_PAGE_SIZE:-}" \
+              DNSK_MAX_SKB_FRAGS="${DNSK_MAX_SKB_FRAGS:-}" \
+              DNSK_CGROUP_SUBSYS_COUNT="${DNSK_CGROUP_SUBSYS_COUNT:-}" modules
             cp "$GITHUB_WORKSPACE/features/netfilter/dnsk_netfilter.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             # The android16-6.12 device has 104-byte xt_match/xt_target while
             # the DDK headers carry the 128-byte CONFIG_COMPAT layout.  Build the
             # device artifact without the compat members; QEMU builds its own
             # separate compat module.
             make -C "$GITHUB_WORKSPACE/features/ipset" KDIR="$KDIR" \
-              DNSK_XT_NOCOMPAT="${DNSK_XT_NOCOMPAT:-}" DNSK_XT_LAYOUT="${DNSK_XT_LAYOUT:-}" modules
+              DNSK_XT_NOCOMPAT="${DNSK_XT_NOCOMPAT:-}" DNSK_XT_LAYOUT="${DNSK_XT_LAYOUT:-}" \
+              DNSK_ABI_PROFILE="${DNSK_ABI_PROFILE:-}" DNSK_PAGE_SIZE="${DNSK_PAGE_SIZE:-}" \
+              DNSK_MAX_SKB_FRAGS="${DNSK_MAX_SKB_FRAGS:-}" \
+              DNSK_CGROUP_SUBSYS_COUNT="${DNSK_CGROUP_SUBSYS_COUNT:-}" modules
             cp "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             # dnskctl compares this stamp with policy.conf before insmod.
             for ko in "$GITHUB_WORKSPACE/features/netfilter/dnsk_netfilter.ko" \
                       "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko"; do
               grep -aq "dnsk_xt_layout=${DNSK_XT_LAYOUT}" "$ko" || {
                 echo "missing dnsk_xt_layout=${DNSK_XT_LAYOUT} stamp: $ko" >&2
+                exit 1
+              }
+              grep -aq "dnsk_abi_profile=${PROFILE}" "$ko" || {
+                echo "missing dnsk_abi_profile=${PROFILE} stamp: $ko" >&2
                 exit 1
               }
             done
@@ -184,10 +201,14 @@ jobs:
           make -C tools CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" TARGET=aarch64-linux-android24
           file tools/bin/dnsk-preflight
       - name: Package dev artifact
+        env:
+          ABI_PROFILE: ${{ inputs.build_profile || 'android16-6.12-xt104' }}
         run: |
-          PROFILE="${{ inputs.build_profile || 'android16-6.12-xt104' }}"
-          eval "$(python3 tools/build_flags.py --profile "profiles/abi/${PROFILE}.json")"
+          PROFILE="$ABI_PROFILE"
+          eval "$(python3 tools/build_flags.py \
+            --profile "profiles/abi/${PROFILE}.json" --kmi android16-6.12)"
           sed -i "s/^xt_layout=.*/xt_layout=${DNSK_XT_LAYOUT}/" ksu/policy.conf
+          sed -i "s/^abi_profile=.*/abi_profile=${DNSK_ABI_PROFILE}/" ksu/policy.conf
           python tools/package.py --dev \
             --kmi android16-6.12 \
             --bin-root tools/bin \

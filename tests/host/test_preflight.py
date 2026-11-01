@@ -14,6 +14,10 @@ NF_STRUCTS = [
         ("hook", 0), ("dev", 8), ("priv", 16), ("pf", 24),
         ("hook_ops_type", 25), ("hooknum", 28), ("priority", 32),
     ]),
+    ("nf_hook_state", 48, [
+        ("hook", 0), ("pf", 1), ("in", 8), ("out", 16), ("sk", 24),
+        ("net", 32), ("okfn", 40),
+    ]),
     ("nf_conn", 272, [
         ("status", 128), ("nat_bysource", 144), ("master", 160),
         ("mark", 168), ("secmark", 172), ("ext", 176), ("proto", 184),
@@ -29,9 +33,72 @@ NF_STRUCTS = [
     ("nfnl_callback", 32, [
         ("call", 0), ("policy", 8), ("type", 16), ("attr_count", 20),
     ]),
-    ("net", 4160, [("gen", 2848)]),
+    ("nf_nat_hook", 32, [
+        ("parse_nat_setup", 0), ("decode_session", 8),
+        ("remove_nat_bysrc", 16),
+    ]),
+    ("nf_nat_range2", 44, [
+        ("flags", 0), ("min_addr", 4), ("max_addr", 20),
+        ("min_proto", 36), ("max_proto", 38), ("base_proto", 40),
+    ]),
     ("rhashtable", 160, []),
 ]
+
+BOUNDARY_STRUCTS = [
+    ("mutex", 48, [
+        ("owner", 0), ("wait_lock", 8), ("wait_list", 16),
+        ("android_oem_data1", 32),
+    ]),
+    ("rw_semaphore", 64, [
+        ("count", 0), ("owner", 8), ("wait_list", 24),
+        ("android_vendor_data1", 40), ("android_oem_data1", 48),
+    ]),
+    ("spinlock", 4, []),
+    ("raw_spinlock", 4, [("raw_lock", 0)]),
+    ("wait_queue_head", 24, [("lock", 0), ("head", 8)]),
+    ("timer_list", 40, [
+        ("entry", 0), ("expires", 16), ("function", 24), ("flags", 32),
+    ]),
+    ("work_struct", 32, [("data", 0), ("entry", 8), ("func", 24)]),
+    ("xt_action_param", 32, [
+        ("state", 16), ("thoff", 24), ("fragoff", 28), ("hotdrop", 30),
+    ]),
+    ("xt_mtchk_param", 48, [
+        ("net", 0), ("table", 8), ("entryinfo", 16), ("match", 24),
+        ("matchinfo", 32), ("hook_mask", 40), ("family", 44),
+        ("nft_compat", 45),
+    ]),
+    ("xt_tgchk_param", 48, [
+        ("net", 0), ("table", 8), ("entryinfo", 16), ("target", 24),
+        ("targinfo", 32), ("hook_mask", 40), ("family", 44),
+        ("nft_compat", 45),
+    ]),
+    ("sk_buff", 248, [
+        ("sk", 24), ("_nfct", 104), ("len", 112), ("data_len", 116),
+        ("active_extensions", 127), ("tail", 208), ("end", 212),
+        ("head", 216), ("data", 224), ("truesize", 232),
+        ("users", 236), ("extensions", 240),
+    ]),
+    ("skb_shared_info", 360, [
+        ("flags", 0), ("nr_frags", 2), ("frag_list", 8),
+        ("gso_type", 24), ("dataref", 32), ("destructor_arg", 40),
+        ("frags", 88),
+    ]),
+    ("net", 4160, [
+        ("user_ns", 80), ("sysctls", 176), ("ipv4", 768),
+        ("ipv6", 1536), ("nf", 2384), ("ct", 2608),
+        ("wext_nlevents", 2824), ("gen", 2848), ("xfrm", 2944),
+    ]),
+]
+
+
+def mutate(structs, struct_name, member, offset):
+    return [
+        (name, size,
+         [(member, offset) if (name == struct_name and m == member)
+          else (m, off) for m, off in rows])
+        for name, size, rows in structs
+    ]
 
 
 def write_btf(path: Path, match_size: int, target_size: int,
@@ -199,7 +266,8 @@ class PreflightTests(unittest.TestCase):
                 check=True,
             )
             btf = tmp / "vmlinux.btf"
-            write_btf(btf, 104, 104, extra=NF_STRUCTS)
+            extra = NF_STRUCTS + BOUNDARY_STRUCTS
+            write_btf(btf, 104, 104, extra=extra)
             base = [str(binary), "--btf", str(btf), "--xt-layout", "104",
                     "--feature", "netfilter", "--kmi", "android16-6.12",
                     "--supported", str(ROOT / "ksu/supported_kmis.txt")]
@@ -207,33 +275,38 @@ class PreflightTests(unittest.TestCase):
                                   check=False)
             data = json.loads(proc.stdout)
             nf = data["btf_layout"]["nf"]
+            boundary = data["btf_layout"]["boundary"]
             self.assertTrue(nf["checked"])
+            self.assertTrue(nf["hook_state"])
+            self.assertTrue(nf["nat_hook"])
+            self.assertTrue(nf["nat_range2"])
             self.assertTrue(nf["ok"])
-            self.assertTrue(nf["net"])
+            self.assertTrue(boundary["locks"])
+            self.assertTrue(boundary["xt_params"])
+            self.assertTrue(boundary["skb"])
+            self.assertTrue(boundary["net"])
+            self.assertTrue(boundary["ok"])
             self.assertTrue(data["checks"]["nf_abi"])
+            self.assertTrue(data["checks"]["boundary"])
 
-            broken = [(name, 4152 if name == "net" else size, rows)
-                      for name, size, rows in NF_STRUCTS]
+            broken = mutate(extra, "nf_nat_range2", "base_proto", 41)
             write_btf(btf, 104, 104, extra=broken)
             proc = subprocess.run(base, text=True, capture_output=True,
                                   check=False)
             data = json.loads(proc.stdout)
-            nf = data["btf_layout"]["nf"]
-            self.assertFalse(nf["net"])
-            self.assertFalse(nf["ok"])
+            self.assertFalse(data["btf_layout"]["nf"]["nat_range2"])
+            self.assertFalse(data["btf_layout"]["nf"]["ok"])
             self.assertFalse(data["checks"]["nf_abi"])
+            self.assertTrue(data["checks"]["boundary"])
 
-            bad_gen = [(name, size,
-                        [("gen", 2856) if member == "gen" else (member, off)
-                         for member, off in rows]
-                        if name == "net" else rows)
-                       for name, size, rows in NF_STRUCTS]
+            bad_gen = mutate(extra, "net", "gen", 2856)
             write_btf(btf, 104, 104, extra=bad_gen)
             proc = subprocess.run(base, text=True, capture_output=True,
                                   check=False)
             data = json.loads(proc.stdout)
-            self.assertFalse(data["btf_layout"]["nf"]["net"])
-            self.assertFalse(data["checks"]["nf_abi"])
+            self.assertFalse(data["btf_layout"]["boundary"]["net"])
+            self.assertFalse(data["btf_layout"]["boundary"]["ok"])
+            self.assertFalse(data["checks"]["boundary"])
 
 
 if __name__ == "__main__":

@@ -56,12 +56,21 @@ NETFILTER_ACTIVE_SMOKE_OK
 | `net` | 4160, gen 2848 | 一致 |
 | `rhashtable` | 160 (alloc_tag 152) | 一致 |
 | `xt_match`/`xt_target` | 104 | 见 xt-layout-preflight |
+| `nf_hook_state` | 48, hook 0, pf 1, in 8, out 16, sk 24, net 32, okfn 40 | 一致 |
+| `nf_nat_hook` | 32, 3 个函数指针 0/8/16 | 一致 |
+| `nf_nat_range2` | 44, flags 0, min/max_addr 4/20, proto 36/38/40 | 一致 |
+| `sk_buff` | 248, sk 24, _nfct 104, tail/end/head/data 208-224 | 一致 |
+| `skb_shared_info` | 360, frags 88 | 一致 |
+| 锁原语 | mutex 48, rw_semaphore 64, spinlock 4, wait_queue_head 24, timer_list 40, work_struct 32 | 一致 (LOCKDEP/DEBUG_* 关闭) |
 
 `dnsk-preflight --feature netfilter` 现在同时校验上述 size/偏移, 以及
 `nf_nat_masquerade_inet_register_notifiers`, `nf_nat_register_fn`,
 `xt_register_matches`, `xt_unregister_matches`, `nfnetlink_subsys_register`,
-`rhashtable_init_noprof` 六个符号. 设备 BTF 实测 `nf.*` 与 `nf_symbols`
-全为 `true`; 合成 BTF 中把 `net.size` 或 `gen` 偏移改错会使 `nf_abi:false`.
+`rhashtable_init_noprof` 六个符号. `--feature ipset` 校验 xt 回调参数
+(`xt_action_param`/`xt_mtchk_param`/`xt_tgchk_param`)、skb 与 net; 所有
+feature 都校验锁原语布局. 设备 BTF 实测 `boundary.*`, `nf.*` 与
+`nf_symbols` 全为 `true`; 合成 BTF 中把 `nf_nat_range2` 的 `base_proto` 或
+`net.gen` 偏移改错会分别使 `nf_abi`/`boundary` 变为 `false`.
 
 若设备已有原生 nftables 注册, `nfnetlink_subsys_register` 返回 `-EBUSY`,
 模块回滚并让 insmod 失败, 不会伪装成功.

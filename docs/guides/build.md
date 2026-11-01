@@ -33,21 +33,31 @@ TMPFS/USER_NS/CGROUP_PIDS 的差分测试需要 AOSP 同 KMI 内核：
 
 ## ABI build profile
 
-KMI 只冻结导出符号，不冻结 config 相关的内部 struct 布局。会影响设备 ABI 的
-config 必须放进 `profiles/abi/*.json`，由 `tools/build_flags.py` 转成构建变量：
+KMI 只冻结导出符号及其可达类型，不冻结 config 相关的内部 struct 布局。会影响
+模块/内核边界 ABI 的 config 全部记录在 `profiles/abi/*.json` 的 `config`
+对象里（schema 2），由 `tools/build_flags.py` 校验并转成构建变量：
 
 ```sh
-python3 tools/build_flags.py --profile profiles/abi/android16-6.12-xt104.json
-# DNSK_BUILD_PROFILE=android16-6.12-xt104
+python3 tools/build_flags.py --profile profiles/abi/android16-6.12-xt104.json \
+  --kmi android16-6.12
+# DNSK_ABI_PROFILE=android16-6.12-xt104
 # DNSK_XT_NOCOMPAT=1
 # DNSK_XT_LAYOUT=104
+# DNSK_PAGE_SIZE=4096
+# DNSK_MAX_SKB_FRAGS=17
+# DNSK_CGROUP_SUBSYS_COUNT=8
 ```
 
+- `config` 必须包含 registry 里的全部 key；缺失或未知 key 直接报错，不回退
+  默认值。只有能表达成代码宏的 knob 会输出构建变量；锁/RT/KASAN/cgroup 等
+  必须选择 config 匹配的内核/DDK 构建，不能用头文件 shim 伪装。
 - `android16-6.12-xt104`：设备/vendor 变体，`CONFIG_NETFILTER_XTABLES_COMPAT=n`，
   `xt_match/xt_target` 104 字节；默认设备构建。
-- `android16-6.12-xt128`：stock GKI 6.12，compat 开启，128 字节。
-- CI `workflow_dispatch` 的 `build_profile` 输入选择 profile；`push` 构建默认
-  xt104。KSU 包的 `policy.conf` 会写入对应的 `xt_layout`，`dnskctl load`
-  先用 `dnsk-preflight` 校验设备 BTF，再允许 `ksud insmod`。
-- 新增会影响模块/内核边界 struct 的 config 时，必须增加 profile 字段、构建
-  变体和 BTF preflight 检查；不能仅靠 `uname` KMI 判断。
+- `android16-6.12-xt128`：stock GKI/DDK 6.12，compat 开启，128 字节；QEMU 使用。
+- CI 矩阵只在 `android16-6.12` 条目上应用 profile，并用 `--kmi` 校验 profile
+  与构建 KMI 一致；其他 KMI 不再误用 6.12 profile。
+- 模块内嵌 `dnsk_abi_profile=` 与 `dnsk_xt_layout=` stamp；KSU 包的
+  `policy.conf` 写入同名的 `abi_profile`/`xt_layout`，`dnskctl load` 先比对
+  stamp，再用 `dnsk-preflight` 校验设备 BTF，全部通过才允许 `ksud insmod`。
+- 新增会影响模块/内核边界 struct 的 config 时，必须同时更新 profile
+  registry、构建变体和 BTF preflight 检查；不能仅靠 `uname` KMI 判断。

@@ -77,6 +77,10 @@ module_layout() {
 	tr '\000' '\n' < "$1" | sed -n 's/^dnsk_xt_layout=//p' | head -n 1
 }
 
+module_abi_profile() {
+	tr '\000' '\n' < "$1" | sed -n 's/^dnsk_abi_profile=//p' | head -n 1
+}
+
 is_loaded() {
 	name=$1
 	bb=$(find_busybox)
@@ -138,6 +142,12 @@ do_preflight() {
 			[ -n "$stamp" ] || die "module has no dnsk_xt_layout stamp: $ko"
 			[ "$stamp" = "$xt_layout" ] || \
 				die "module xt layout $stamp does not match policy $xt_layout: $ko"
+			abi_profile=$(sed -n 's/^abi_profile=//p' "$MODDIR/policy.conf" 2>/dev/null | head -n 1)
+			[ -n "$abi_profile" ] || die "policy.conf has no abi_profile; refusing to guess"
+			module_profile=$(module_abi_profile "$ko")
+			[ -n "$module_profile" ] || die "module has no dnsk_abi_profile stamp: $ko"
+			[ "$module_profile" = "$abi_profile" ] || \
+				die "module ABI profile $module_profile does not match policy $abi_profile: $ko"
 			set -- "$@" --xt-layout "$xt_layout"
 			;;
 		esac
