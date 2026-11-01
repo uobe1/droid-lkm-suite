@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "id": "android16-6.12-xt128",
+  "kmi": "android16-6.12",
+  "abi": {
+    "xtables_compat": 1
+  },
+  "description": "Stock GKI 6.12 variant with CONFIG_NETFILTER_XTABLES_COMPAT=y: struct xt_match/xt_target are 128 bytes."
+}

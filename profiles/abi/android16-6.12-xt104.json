@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "id": "android16-6.12-xt104",
+  "kmi": "android16-6.12",
+  "abi": {
+    "xtables_compat": 0
+  },
+  "description": "GKI/vendor variant without 32-bit xtables compat members: struct xt_match/xt_target are 104 bytes."
+}

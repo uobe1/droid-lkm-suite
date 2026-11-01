@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Turn a build ABI profile into build flags.
 
-Profiles under profiles/build/ describe kernel config choices that are not
+Profiles under profiles/abi/ describe kernel config choices that are not
 frozen by the GKI KMI but change struct layouts used by our modules. The
 emitted assignments are evaluated by the CI build step and passed to Kbuild.
 """

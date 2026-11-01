@@ -81,7 +81,7 @@ jobs:
           test -d "$KDIR"
           PROFILE="${{ inputs.build_profile || 'android16-6.12-xt104' }}"
           eval "$(python3 "$GITHUB_WORKSPACE/tools/build_flags.py" \
-            --profile "$GITHUB_WORKSPACE/profiles/build/${PROFILE}.json")"
+            --profile "$GITHUB_WORKSPACE/profiles/abi/${PROFILE}.json")"
           make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
           mkdir -p "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}"
           cp "$GITHUB_WORKSPACE/dnsk_core.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
@@ -176,7 +176,7 @@ jobs:
       - name: Package dev artifact
         run: |
           PROFILE="${{ inputs.build_profile || 'android16-6.12-xt104' }}"
-          eval "$(python3 tools/build_flags.py --profile "profiles/build/${PROFILE}.json")"
+          eval "$(python3 tools/build_flags.py --profile "profiles/abi/${PROFILE}.json")"
           sed -i "s/^xt_layout=.*/xt_layout=${DNSK_XT_LAYOUT}/" ksu/policy.conf
           python tools/package.py --dev \
             --kmi android16-6.12 \
