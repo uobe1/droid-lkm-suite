@@ -144,7 +144,8 @@ def main() -> int:
                             "dnsk_ns"):
                 continue
             for mod_key, value in expected.items():
-                if mod_key == "dnsk_xt_layout" and stem == "dnsk_devtmpfs":
+                if mod_key == "dnsk_xt_layout" and stem in (
+                        "dnsk_devtmpfs", "dnsk_ns"):
                     continue
                 found = modinfo_value(ko, mod_key)
                 if found != value:
