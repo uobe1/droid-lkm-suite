@@ -165,6 +165,24 @@ NS_STRUCTS = [
 ]
 
 
+CGPIDS_STRUCTS = [
+    ("cgroup_subsys", 256, [
+        ("can_attach", 72), ("attach", 88), ("can_fork", 104),
+        ("cancel_fork", 112), ("fork", 120), ("exit", 128),
+        ("release", 136), ("bind", 144),
+    ]),
+    ("cgroup", 1984, [
+        ("self", 0), ("flags", 216), ("level", 224), ("subsys", 616),
+        ("nr_dying_subsys", 680), ("e_csets", 736), ("psi", 1176),
+        ("bpf", 1184), ("freezer", 1904), ("ancestors", 1936),
+    ]),
+    ("css_set", 456, [
+        ("subsys", 0), ("refcount", 64), ("dfl_cgrp", 80),
+        ("cgrp_links", 336),
+    ]),
+]
+
+
 def mutate(structs, struct_name, member, offset):
     return [
         (name, size,
@@ -469,6 +487,52 @@ class PreflightTests(unittest.TestCase):
                                   check=False)
             data = json.loads(proc.stdout)
             self.assertFalse(data["btf_layout"]["boundary"]["ns"])
+            self.assertFalse(data["checks"]["boundary"])
+
+    def test_preflight_cgpids_btf_layout(self):
+        cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+        if not cc:
+            self.skipTest("no host C compiler")
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            binary = tmp / "dnsk-preflight"
+            subprocess.run(
+                [cc, "-O2", "-Wall", "-Wextra", "-std=c11", "-D_GNU_SOURCE",
+                 "-o", str(binary), str(ROOT / "tools/dnsk_preflight.c")],
+                check=True,
+            )
+            btf = tmp / "vmlinux.btf"
+            extra = CGPIDS_STRUCTS + BOUNDARY_STRUCTS
+            write_btf(btf, 104, 104, extra=extra)
+            base = [str(binary), "--btf", str(btf), "--feature", "cgpids",
+                    "--kmi", "android16-6.12",
+                    "--supported", str(ROOT / "ksu/supported_kmis.txt")]
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            boundary = data["btf_layout"]["boundary"]
+            self.assertTrue(boundary["checked_cgpids"])
+            self.assertTrue(boundary["cgpids"])
+            self.assertTrue(boundary["ok"])
+            self.assertTrue(data["checks"]["boundary"])
+
+            bad_size = [(name, 264 if name == "cgroup_subsys" else size, rows)
+                        for name, size, rows in extra]
+            write_btf(btf, 104, 104, extra=bad_size)
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            self.assertFalse(data["btf_layout"]["boundary"]["cgpids"])
+            self.assertFalse(data["checks"]["boundary"])
+
+            ddk = [(name, size, rows + [("css_killed", 48)])
+                   if name == "cgroup_subsys" else (name, size, rows)
+                   for name, size, rows in extra]
+            write_btf(btf, 104, 104, extra=ddk)
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            self.assertFalse(data["btf_layout"]["boundary"]["cgpids"])
             self.assertFalse(data["checks"]["boundary"])
 
 

@@ -61,6 +61,7 @@ CONFIG_SPECS = {
     "bsd_process_acct": ("bool", None),
     "cgroups": ("bool", None),
     "cgroup_subsys_count": ("range", (1, 16)),
+    "cgroup_subsys_layout": ("enum", ("vendor-256", "ddk-264")),
     "cgroup_bpf": ("bool", None),
     "psi": ("bool", None),
     "cgroup_sched": ("bool", None),
@@ -131,6 +132,22 @@ def flags_for(profile_id: str, config: dict[str, int | str]) -> dict[str, str]:
     flags["DNSK_VA_BITS"] = str(config["va_bits"])
     flags["DNSK_MAX_SKB_FRAGS"] = str(config["max_skb_frags"])
     flags["DNSK_CGROUP_SUBSYS_COUNT"] = str(config["cgroup_subsys_count"])
+    if config["cgroup_subsys_layout"] == "vendor-256":
+        flags.update({
+            "DNSK_CGROUP_SUBSYS_LAYOUT": "256",
+            "DNSK_CGROUP_SUBSYS_CAN_FORK": "104",
+            "DNSK_CGROUP_SUBSYS_FORK": "120",
+            "DNSK_CGROUP_SUBSYS_EXIT": "128",
+            "DNSK_CGROUP_HAS_CSS_KILLED": "0",
+        })
+    else:
+        flags.update({
+            "DNSK_CGROUP_SUBSYS_LAYOUT": "264",
+            "DNSK_CGROUP_SUBSYS_CAN_FORK": "112",
+            "DNSK_CGROUP_SUBSYS_FORK": "128",
+            "DNSK_CGROUP_SUBSYS_EXIT": "136",
+            "DNSK_CGROUP_HAS_CSS_KILLED": "1",
+        })
     return flags
 
 

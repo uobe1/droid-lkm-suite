@@ -41,6 +41,7 @@
     "bsd_process_acct": 0,
     "cgroups": 1,
     "cgroup_subsys_count": 8,
+    "cgroup_subsys_layout": "ddk-264",
     "cgroup_bpf": 1,
     "psi": 1,
     "cgroup_sched": 1,

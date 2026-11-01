@@ -67,6 +67,11 @@ AOSP 对每个 KMI 分支只保留一份 `gki_defconfig` 和一套 Clang 工具�
 - devtmpfs 与 ns 已采用“设备 BTF 偏移 → 头文件静态断言 + preflight 校验 +
   模块 profile stamp”的同一模式；xt 仍是唯一允许用 include shim 归一化的
   配置。
+- `cgroup_subsys` 的 256（设备）vs 264（DDK，含 `css_killed`）是**源码差异**，
+  不是可 shim 的 config；profile 新增 `cgroup_subsys_layout` knob，输出
+  `DNSK_CGROUP_SUBSYS_LAYOUT/CAN_FORK/FORK/EXIT/HAS_CSS_KILLED`，
+  preflight `--feature cgpids` 校验设备 BTF（256、can_fork@104、无
+  css_killed）。cgpids 模块必须用设备偏移，不能直接用 DDK 头。
 - `cgroup_subsys` 源码差异单列为 cgpids 阻塞项，不能用 profile 掩盖。
 
 ## 来源

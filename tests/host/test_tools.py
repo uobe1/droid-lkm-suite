@@ -55,6 +55,9 @@ class BuildFlagsTests(unittest.TestCase):
         self.assertEqual(flags["DNSK_PAGE_SIZE"], "4096")
         self.assertEqual(flags["DNSK_MAX_SKB_FRAGS"], "17")
         self.assertEqual(flags["DNSK_CGROUP_SUBSYS_COUNT"], "8")
+        self.assertEqual(flags["DNSK_CGROUP_SUBSYS_LAYOUT"], "256")
+        self.assertEqual(flags["DNSK_CGROUP_SUBSYS_CAN_FORK"], "104")
+        self.assertEqual(flags["DNSK_CGROUP_HAS_CSS_KILLED"], "0")
 
         pid, kmi, config = build_flags.load(root / "android16-6.12-xt128.json")
         self.assertEqual(pid, "android16-6.12-xt128")
@@ -63,6 +66,9 @@ class BuildFlagsTests(unittest.TestCase):
         self.assertEqual(flags["DNSK_ABI_PROFILE"], "android16-6.12-xt128")
         self.assertEqual(flags["DNSK_XT_NOCOMPAT"], "")
         self.assertEqual(flags["DNSK_XT_LAYOUT"], "128")
+        self.assertEqual(flags["DNSK_CGROUP_SUBSYS_LAYOUT"], "264")
+        self.assertEqual(flags["DNSK_CGROUP_SUBSYS_CAN_FORK"], "112")
+        self.assertEqual(flags["DNSK_CGROUP_HAS_CSS_KILLED"], "1")
 
     def test_profile_rejects_unknown_or_missing_config(self):
         text = (ROOT / "profiles/abi/android16-6.12-xt104.json").read_text()

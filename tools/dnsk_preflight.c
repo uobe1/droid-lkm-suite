@@ -70,6 +70,7 @@ struct btf_layout {
 	int net_ok;
 	int fs_ok;
 	int ns_ok;
+	int cgpids_ok;
 };
 
 static uint32_t btf_rd32(const unsigned char *p)
@@ -412,8 +413,51 @@ static void btf_check_ns(const unsigned char *d, size_t len,
 				 ARRAY_SIZE(css_set));
 }
 
+static int btf_cgroup_subsys_ok(const unsigned char *d, size_t len)
+{
+	struct btf_type_info t;
+	uint32_t off;
+
+	if (btf_find_struct_info(d, len, "cgroup_subsys", &t) != 0 ||
+	    t.size != 256)
+		return 0;
+	/* Device has no css_killed; DDK's 264-byte layout does. */
+	if (btf_member_off(&t, "css_killed", &off) == 0)
+		return 0;
+	return member_is(&t, "can_attach", 72) &&
+	       member_is(&t, "attach", 88) &&
+	       member_is(&t, "can_fork", 104) &&
+	       member_is(&t, "cancel_fork", 112) &&
+	       member_is(&t, "fork", 120) &&
+	       member_is(&t, "exit", 128) &&
+	       member_is(&t, "release", 136) &&
+	       member_is(&t, "bind", 144);
+}
+
+static void btf_check_cgpids(const unsigned char *d, size_t len,
+			     struct btf_layout *l)
+{
+	static const struct btf_field cgroup[] = {
+		{ "self", 0 }, { "flags", 216 }, { "level", 224 },
+		{ "subsys", 616 }, { "nr_dying_subsys", 680 },
+		{ "e_csets", 736 }, { "psi", 1176 }, { "bpf", 1184 },
+		{ "freezer", 1904 }, { "ancestors", 1936 },
+	};
+	static const struct btf_field css_set[] = {
+		{ "subsys", 0 }, { "refcount", 64 }, { "dfl_cgrp", 80 },
+		{ "cgrp_links", 336 },
+	};
+
+	l->cgpids_ok = btf_cgroup_subsys_ok(d, len) &&
+		       btf_fields_match(d, len, "cgroup", 1984, cgroup,
+					ARRAY_SIZE(cgroup)) &&
+		       btf_fields_match(d, len, "css_set", 456, css_set,
+					ARRAY_SIZE(css_set));
+}
+
 static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
-			     int check_fs, int check_ns, struct btf_layout *l)
+			     int check_fs, int check_ns, int check_cgpids,
+			     struct btf_layout *l)
 {
 	static const struct btf_field mutex[] = {
 		{ "owner", 0 }, { "wait_lock", 8 }, { "wait_list", 16 },
@@ -534,6 +578,8 @@ static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
 					 ARRAY_SIZE(file_system_type));
 	if (check_ns)
 		btf_check_ns(d, len, l);
+	if (check_cgpids)
+		btf_check_cgpids(d, len, l);
 	if (!check_xt)
 		return;
 	l->xt_params_ok =
@@ -554,7 +600,7 @@ static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
 
 static int btf_read_layout(const char *path, struct btf_layout *layout,
 			   int check_xt, int check_nf, int check_fs,
-			   int check_ns)
+			   int check_ns, int check_cgpids)
 {
 	FILE *fp;
 	unsigned char *data = NULL;
@@ -609,7 +655,8 @@ static int btf_read_layout(const char *path, struct btf_layout *layout,
 		btf_find_struct_info(data, used, "xt_match", &layout->match) == 0;
 	layout->found_target =
 		btf_find_struct_info(data, used, "xt_target", &layout->target) == 0;
-	btf_check_common(data, used, check_xt, check_fs, check_ns, layout);
+	btf_check_common(data, used, check_xt, check_fs, check_ns,
+			 check_cgpids, layout);
 	if (check_nf)
 		btf_check_netfilter(data, used, &layout->nf);
 	free(data);
@@ -810,6 +857,7 @@ int main(int argc, char **argv)
 	int check_xt;
 	int check_fs;
 	int check_ns;
+	int check_cgpids;
 	int btf;
 	int layout_ok;
 	int boundary_ok;
@@ -836,6 +884,7 @@ int main(int argc, char **argv)
 	check_xt = check_nf || !strcmp(feature, "ipset");
 	check_fs = !strcmp(feature, "devtmpfs");
 	check_ns = !strcmp(feature, "ns");
+	check_cgpids = !strcmp(feature, "cgpids");
 
 	if (uname(&uts) != 0) {
 		perror("uname");
@@ -849,7 +898,7 @@ int main(int argc, char **argv)
 	memset(&layout, 0, sizeof(layout));
 	if (btf)
 		btf_read_layout(btf_path, &layout, check_xt, check_nf, check_fs,
-				check_ns);
+				check_ns, check_cgpids);
 	if (xt_expected < 0)
 		layout_ok = 1;
 	else if (xt_expected == 104 || xt_expected == 128)
@@ -872,7 +921,8 @@ int main(int argc, char **argv)
 		      (!check_xt || (layout.xt_params_ok && layout.skb_ok &&
 				     layout.net_ok)) &&
 		      (!check_fs || layout.fs_ok) &&
-		      (!check_ns || layout.ns_ok);
+		      (!check_ns || layout.ns_ok) &&
+		      (!check_cgpids || layout.cgpids_ok);
 	nf_ok = !check_nf || layout.nf.ok;
 	nf_symbols = all_found(nf_required, ARRAY_SIZE(nf_required));
 	ok = page_size == 4096 && btf && layout_ok && boundary_ok && ksud &&
@@ -890,7 +940,8 @@ int main(int argc, char **argv)
 	       "\"xt_ok\":%s,\"boundary\":{\"locks\":%s,"
 	       "\"checked_xt\":%s,\"xt_params\":%s,\"skb\":%s,\"net\":%s,"
 	       "\"checked_fs\":%s,\"fs\":%s,"
-	       "\"checked_ns\":%s,\"ns\":%s,\"ok\":%s},\"nf\":{\"checked\":%s,"
+	       "\"checked_ns\":%s,\"ns\":%s,"
+	       "\"checked_cgpids\":%s,\"cgpids\":%s,\"ok\":%s},\"nf\":{\"checked\":%s,"
 	       "\"hook_ops\":%s,\"hook_state\":%s,\"conn\":%s,"
 	       "\"pernet_ops\":%s,\"nfnetlink\":%s,\"nfnl_callback\":%s,"
 	       "\"nat_hook\":%s,\"nat_range2\":%s,"
@@ -909,6 +960,8 @@ int main(int argc, char **argv)
 	       layout.fs_ok ? "true" : "false",
 	       check_ns ? "true" : "false",
 	       layout.ns_ok ? "true" : "false",
+	       check_cgpids ? "true" : "false",
+	       layout.cgpids_ok ? "true" : "false",
 	       boundary_ok ? "true" : "false",
 	       check_nf ? "true" : "false",
 	       layout.nf.hook_ops ? "true" : "false",
