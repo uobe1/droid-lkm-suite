@@ -74,7 +74,9 @@ module_path() {
 }
 
 module_modinfo() {
-	tr '\000' '\n' < "$1" | sed -n "s/^$2=//p" | head -n 1
+	LC_ALL=C tr '\000' '\n' < "$1" | \
+		LC_ALL=C sed -n "s/.*$2=\([0-9A-Za-z._-][0-9A-Za-z._-]*\).*/\1/p" | \
+		head -n 1
 }
 
 is_loaded() {
