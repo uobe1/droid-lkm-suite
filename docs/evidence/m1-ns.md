@@ -108,6 +108,9 @@ ns pidfd NULL 修复后，以修复版 `dnsk_ns` 复跑嵌套容器 smoke 仍为
   256，覆盖 task_struct 的 234 个成员）。
 - `dnsk_ns.ko` 带 `dnsk_abi_profile`/page size/max frags/cgroup count stamp，
   `dnskctl` 加载前比对 policy。
+- CI `7824ea0` 打包的 preflight 在设备上对 `--feature ns` 返回 `ok:true`；
+  当前 runtime 加载的是逻辑修复版（未含断言），断言/stamp 版将在下次重启后
+  加载；两者源差异仅为断言与 stamp。
 
 ## 已知边界
 
