@@ -99,6 +99,8 @@ PID ns `pid:[4026535006]`，退出后宿主无残留 mount。droid-distro Debian
 
 ## 已知边界
 
+- 2026-11-01 pidfd setns 到旧任务触发 `ipc_ns=NULL` panic；修复见
+  [ns-setns-pidfd-panic.md](ns-setns-pidfd-panic.md)，复测前禁止激活。
 - 模块激活后 pinned；替换需重启。
 - 未测试：setns 到已有 ns、container reboot、100 容器、Docker、QEMU ns。
 - nested PID 已由 `run-ns-smoke.sh` 覆盖。

@@ -420,6 +420,10 @@ static int validate_nsset(struct nsset *nsset, struct pid *pid)
 #endif
 
 	if (flags & CLONE_NEWNS) {
+		if (unlikely(!nsp->mnt_ns)) {
+			ret = -EINVAL;
+			goto out;
+		}
 		ret = validate_ns(nsset, from_mnt_ns(nsp->mnt_ns));
 		if (ret)
 			goto out;
@@ -427,6 +431,10 @@ static int validate_nsset(struct nsset *nsset, struct pid *pid)
 
 #ifdef CONFIG_UTS_NS
 	if (flags & CLONE_NEWUTS) {
+		if (unlikely(!nsp->uts_ns)) {
+			ret = -EINVAL;
+			goto out;
+		}
 		ret = validate_ns(nsset, &nsp->uts_ns->ns);
 		if (ret)
 			goto out;
@@ -435,6 +443,15 @@ static int validate_nsset(struct nsset *nsset, struct pid *pid)
 
 #ifdef CONFIG_IPC_NS
 	if (flags & CLONE_NEWIPC) {
+		/*
+		 * The device may have been built without IPC_NS/POSIX_MQUEUE;
+		 * tasks created before this module then keep ipc_ns == NULL.
+		 * pidfd setns must fail closed instead of dereferencing it.
+		 */
+		if (unlikely(!nsp->ipc_ns)) {
+			ret = -EINVAL;
+			goto out;
+		}
 		ret = validate_ns(nsset, &nsp->ipc_ns->ns);
 		if (ret)
 			goto out;
@@ -451,6 +468,10 @@ static int validate_nsset(struct nsset *nsset, struct pid *pid)
 
 #ifdef CONFIG_CGROUPS
 	if (flags & CLONE_NEWCGROUP) {
+		if (unlikely(!nsp->cgroup_ns)) {
+			ret = -EINVAL;
+			goto out;
+		}
 		ret = validate_ns(nsset, &nsp->cgroup_ns->ns);
 		if (ret)
 			goto out;
@@ -459,6 +480,10 @@ static int validate_nsset(struct nsset *nsset, struct pid *pid)
 
 #ifdef CONFIG_NET_NS
 	if (flags & CLONE_NEWNET) {
+		if (unlikely(!nsp->net_ns)) {
+			ret = -EINVAL;
+			goto out;
+		}
 		ret = validate_ns(nsset, &nsp->net_ns->ns);
 		if (ret)
 			goto out;
@@ -467,6 +492,10 @@ static int validate_nsset(struct nsset *nsset, struct pid *pid)
 
 #ifdef CONFIG_TIME_NS
 	if (flags & CLONE_NEWTIME) {
+		if (unlikely(!nsp->time_ns)) {
+			ret = -EINVAL;
+			goto out;
+		}
 		ret = validate_ns(nsset, &nsp->time_ns->ns);
 		if (ret)
 			goto out;
@@ -517,7 +546,7 @@ static void commit_nsset(struct nsset *nsset)
 #endif
 
 #ifdef CONFIG_TIME_NS
-	if (flags & CLONE_NEWTIME)
+	if ((flags & CLONE_NEWTIME) && nsset->nsproxy->time_ns)
 		timens_commit(me, nsset->nsproxy->time_ns);
 #endif
 

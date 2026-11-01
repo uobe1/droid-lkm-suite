@@ -164,6 +164,8 @@ void put_pid_ns(struct pid_namespace *ns)
 {
 	struct pid_namespace *parent;
 
+	if (!ns)
+		return;
 	while (ns != &init_pid_ns) {
 		parent = ns->parent;
 		if (!refcount_dec_and_test(&ns->ns.count))
@@ -402,7 +404,8 @@ static int pidns_install(struct nsset *nsset, struct ns_common *ns)
 	if (ancestor != active)
 		return -EINVAL;
 
-	put_pid_ns(nsproxy->pid_ns_for_children);
+	if (nsproxy->pid_ns_for_children)
+		put_pid_ns(nsproxy->pid_ns_for_children);
 	nsproxy->pid_ns_for_children = get_pid_ns(new);
 	return 0;
 }
