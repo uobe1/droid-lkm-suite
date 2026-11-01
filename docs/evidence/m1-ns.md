@@ -93,6 +93,9 @@ run-ns-smoke.sh:
 
 `boot_id` 未变，无 Oops/BUG/panic。core 在 ns/devtmpfs 激活后 refcnt=1。
 
+组合容器 smoke：在新 PID+mount namespace 内挂载 devtmpfs，`mini_dev_ok`，
+PID ns `pid:[4026535006]`，退出后宿主无残留 mount。
+
 ## 已知边界
 
 - 模块激活后 pinned；替换需重启。

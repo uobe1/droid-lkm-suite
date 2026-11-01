@@ -7,8 +7,8 @@
 | 功能 | 目标等级 | 当前状态 | 说明 |
 |---|---|---|---|
 | core ABI / symbol / patch / hook / panic | N/A | M0 完成 | ABI 2；状态桥/生命周期真机验证；stock GKI QEMU core smoke 通过 |
-| PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV/mqueue + nested PID + 100 cycles 复测通过；full R 待 setns/Docker/容器 reboot |
-| DEVTMPFS | R | development | active 真机通过：ready=Y、节点挂载 smoke、宿主 /dev 不变、无 Oops；模块按设计 pin 至重启；容器 /dev 验收待完成 |
+| PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV/mqueue + nested PID + 100 cycles + ns/devtmpfs 组合 smoke 通过；full R 待 setns/Docker/容器 reboot |
+| DEVTMPFS | R | development | active 真机通过：ready=Y、节点挂载、宿主 /dev 不变、ns 组合 smoke；模块按设计 pin；Docker/droidspaces 工作负载待完成 |
 | xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | active load/unload + addrtype 规则 + recent 注册通过; 原生 REJECT 正确跳过 (不再 pin); nft/容器验收待完成 |
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | development | 6.12 构建/导出/QEMU hash 语义通过; 设备 no-compat ABI 修复后 insmod/xt_set 注册/rmmod 通过; iptables 规则与容器验收待完成 |
 | USER_NS + idmapped/child overlay/FUSE/selftests | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |

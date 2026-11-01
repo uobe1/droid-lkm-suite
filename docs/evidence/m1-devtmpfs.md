@@ -57,6 +57,19 @@ DEVTMPFS_SMOKE_OK
   未变化，测试 mount 已卸载，无残留。
 - `boot_id` 未变，无 Oops/BUG/panic；模块按设计在 active 后 pin，需重启卸载。
 
+### 组合容器 smoke (ns + devtmpfs)
+
+在新 PID+mount namespace 内挂载模块提供的 devtmpfs：
+
+```sh
+unshare -p -m -f --mount-proc /system/bin/sh -c '
+  mount -t devtmpfs devtmpfs /data/local/tmp/dnsk-mini &&
+  test -c .../null && test -c .../zero && readlink /proc/self/ns/pid'
+```
+
+结果 `mini_dev_ok`，PID ns 为 `pid:[4026535006]`，退出后宿主
+`mount | grep dnsk-mini` 为空。说明 ns 与 devtmpfs 可在容器命名空间内组合使用。
+
 ## QEMU active 尝试 (2026-11-01, run 41270172134)
 
 QEMU image 构建成功，但 stock DDK 内核用 busybox `insmod` 插入失败：
