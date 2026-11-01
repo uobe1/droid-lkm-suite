@@ -13,7 +13,7 @@
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | not-shipped | 未开始 |
 | USER_NS + idmapped/child overlay/FUSE/selftests | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
 | TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
-| CGROUP_PIDS（虚拟控制器） | V/D → N | feasibility gate | 原生不可注册；差分契约必须通过 |
+| CGROUP_PIDS（虚拟控制器） | V/D → N | feasibility done | v2 虚拟控制器设计可行；v1 未修改 Docker 不可行，需标 unsupported；见 feasibility/cgpids.md |
 | CFS_BANDWIDTH | N/N/A | native/待按 KMI 核对 | 不写 LKM |
 | FUSE / OverlayFS / NET_NS / UTS / TIME / CGROUP ns | N | native | USER_NS 场景单独验收 |
 
