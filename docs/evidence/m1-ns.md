@@ -96,6 +96,8 @@ run-ns-smoke.sh:
 组合容器 smoke：在新 PID+mount namespace 内挂载 devtmpfs，`mini_dev_ok`，
 PID ns `pid:[4026535006]`，退出后宿主无残留 mount。droid-distro Debian
 容器内嵌套容器同样通过（`NESTED_DEV_OK`，PID 1 为 sh），宿主 `/dev` 未变。
+ns pidfd NULL 修复后，以修复版 `dnsk_ns` 复跑嵌套容器 smoke 仍为
+`NESTED_DEV_OK`，boot `47d5f50c` 未变。
 
 ## 已知边界
 

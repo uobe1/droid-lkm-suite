@@ -82,6 +82,9 @@ unshare --mount --propagation unchanged --pid --fork --mount-proc \
 仍是 tmpfs，`boot_id` 未变，说明 devtmpfs 在嵌套 mount namespace 内可用且
 不污染宿主。
 
+2026-11-01 在 ns pidfd NULL 修复（commit `75991e5`）后，用修复版 `dnsk_ns`
+复跑本组合 smoke 与 `DEVTMPFS_SMOKE_OK`，boot `47d5f50c` 未变，无 Oops。
+
 ## QEMU active 尝试 (2026-11-01, run 41270172134)
 
 QEMU image 构建成功，但 stock DDK 内核用 busybox `insmod` 插入失败：
