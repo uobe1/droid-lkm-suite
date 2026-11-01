@@ -42,6 +42,30 @@ NETFILTER_ACTIVE_SMOKE_OK
 
 无 dnsk 模块残留, boot_id 未变.
 
+## ABI 边界复核
+
+设备 BTF 与 DDK 6.12.76 模块 DWARF 对比 (2026-11-01, 104 构建):
+
+| struct | 设备 BTF | 结论 |
+|---|---|---|
+| `nf_hook_ops` | 40, hook 0, dev 8, priv 16, pf 24, hook_ops_type 25:8, hooknum 28, priority 32 | 一致 |
+| `nf_conn` | 272, status 128, nat_bysource 144, master 160, mark 168, secmark 172, ext 176, proto 184 | 一致 (MARK/SECMARK=y, ZONES=n) |
+| `pernet_operations` | 72, init 16, pre_exit 24, exit 32, exit_batch 40, exit_batch_rtnl 48, id 56, size 64 | 一致 |
+| `nfnetlink_subsystem` | 64, owner 24, commit 32, abort 40, valid_genid 48 | 一致 |
+| `nfnl_callback` | 32, call 0, policy 8, type 16, attr_count 20 | 一致 |
+| `net` | 4160, gen 2848 | 一致 |
+| `rhashtable` | 160 (alloc_tag 152) | 一致 |
+| `xt_match`/`xt_target` | 104 | 见 xt-layout-preflight |
+
+`dnsk-preflight --feature netfilter` 现在同时校验上述 size/偏移, 以及
+`nf_nat_masquerade_inet_register_notifiers`, `nf_nat_register_fn`,
+`xt_register_matches`, `xt_unregister_matches`, `nfnetlink_subsys_register`,
+`rhashtable_init_noprof` 六个符号. 设备 BTF 实测 `nf.*` 与 `nf_symbols`
+全为 `true`; 合成 BTF 中把 `net.size` 或 `gen` 偏移改错会使 `nf_abi:false`.
+
+若设备已有原生 nftables 注册, `nfnetlink_subsys_register` 返回 `-EBUSY`,
+模块回滚并让 insmod 失败, 不会伪装成功.
+
 ## 边界
 
 - 设备没有 nft/ipset 用户态工具; nftables 规则、Docker/UFW/Fail2ban

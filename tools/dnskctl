@@ -74,7 +74,7 @@ module_path() {
 }
 
 module_layout() {
-	tr '\0' '\n' < "$1" | sed -n 's/^dnsk_xt_layout=//p' | head -n 1
+	tr '\000' '\n' < "$1" | sed -n 's/^dnsk_xt_layout=//p' | head -n 1
 }
 
 is_loaded() {
@@ -141,7 +141,7 @@ do_preflight() {
 			set -- "$@" --xt-layout "$xt_layout"
 			;;
 		esac
-		set -- "$@" "$feature"
+		set -- "$@" --feature "$feature"
 		DNSK_KSUD=$(find_ksud 2>/dev/null || true)
 		export DNSK_KSUD
 		set +e

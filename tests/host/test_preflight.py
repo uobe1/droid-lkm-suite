@@ -9,8 +9,34 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+NF_STRUCTS = [
+    ("nf_hook_ops", 40, [
+        ("hook", 0), ("dev", 8), ("priv", 16), ("pf", 24),
+        ("hook_ops_type", 25), ("hooknum", 28), ("priority", 32),
+    ]),
+    ("nf_conn", 272, [
+        ("status", 128), ("nat_bysource", 144), ("master", 160),
+        ("mark", 168), ("secmark", 172), ("ext", 176), ("proto", 184),
+    ]),
+    ("pernet_operations", 72, [
+        ("init", 16), ("pre_exit", 24), ("exit", 32),
+        ("exit_batch", 40), ("exit_batch_rtnl", 48), ("id", 56),
+        ("size", 64),
+    ]),
+    ("nfnetlink_subsystem", 64, [
+        ("owner", 24), ("commit", 32), ("abort", 40), ("valid_genid", 48),
+    ]),
+    ("nfnl_callback", 32, [
+        ("call", 0), ("policy", 8), ("type", 16), ("attr_count", 20),
+    ]),
+    ("net", 4160, [("gen", 2848)]),
+    ("rhashtable", 160, []),
+]
+
+
 def write_btf(path: Path, match_size: int, target_size: int,
-              family_override: int | None = None) -> None:
+              family_override: int | None = None,
+              extra=()) -> None:
     import struct
 
     compat = match_size == 128
@@ -28,6 +54,9 @@ def write_btf(path: Path, match_size: int, target_size: int,
         "target", "checkentry", "destroy", "me", "table", "matchsize",
         "targetsize", "usersize", "compatsize", "hooks", "proto", "family",
     ]
+    for struct_name, _, rows in extra:
+        names.append(struct_name)
+        names.extend(member for member, _ in rows)
     strtab = bytearray(b"\0")
     offsets = {}
     for name in names:
@@ -58,6 +87,8 @@ def write_btf(path: Path, match_size: int, target_size: int,
     match_family = family if family_override is None else family_override
     add_struct("xt_match", match_size, member_rows(False, match_family))
     add_struct("xt_target", target_size, member_rows(True, family))
+    for struct_name, size, rows in extra:
+        add_struct(struct_name, size, rows)
     header = struct.pack(
         "<HBBIIIII",
         0xEB9F, 1, 0, 24, 0, len(types), len(types), len(strtab),
@@ -151,6 +182,55 @@ class PreflightTests(unittest.TestCase):
             self.assertFalse(data["btf_layout"]["xt_ok"])
             self.assertFalse(data["checks"]["xt_layout"])
             self.assertNotEqual(proc.returncode, 0)
+
+    def test_preflight_netfilter_btf_layout(self):
+        cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+        if not cc:
+            self.skipTest("no host C compiler")
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            binary = tmp / "dnsk-preflight"
+            subprocess.run(
+                [cc, "-O2", "-Wall", "-Wextra", "-std=c11", "-D_GNU_SOURCE",
+                 "-o", str(binary), str(ROOT / "tools/dnsk_preflight.c")],
+                check=True,
+            )
+            btf = tmp / "vmlinux.btf"
+            write_btf(btf, 104, 104, extra=NF_STRUCTS)
+            base = [str(binary), "--btf", str(btf), "--xt-layout", "104",
+                    "--feature", "netfilter", "--kmi", "android16-6.12",
+                    "--supported", str(ROOT / "ksu/supported_kmis.txt")]
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            nf = data["btf_layout"]["nf"]
+            self.assertTrue(nf["checked"])
+            self.assertTrue(nf["ok"])
+            self.assertTrue(nf["net"])
+            self.assertTrue(data["checks"]["nf_abi"])
+
+            broken = [(name, 4152 if name == "net" else size, rows)
+                      for name, size, rows in NF_STRUCTS]
+            write_btf(btf, 104, 104, extra=broken)
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            nf = data["btf_layout"]["nf"]
+            self.assertFalse(nf["net"])
+            self.assertFalse(nf["ok"])
+            self.assertFalse(data["checks"]["nf_abi"])
+
+            bad_gen = [(name, size,
+                        [("gen", 2856) if member == "gen" else (member, off)
+                         for member, off in rows]
+                        if name == "net" else rows)
+                       for name, size, rows in NF_STRUCTS]
+            write_btf(btf, 104, 104, extra=bad_gen)
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            self.assertFalse(data["btf_layout"]["nf"]["net"])
+            self.assertFalse(data["checks"]["nf_abi"])
 
 
 if __name__ == "__main__":

@@ -36,7 +36,23 @@ struct btf_member {
 struct btf_type_info {
 	uint32_t size;
 	uint32_t n;
-	struct btf_member members[24];
+	struct btf_member members[64];
+};
+
+struct btf_field {
+	const char *name;
+	uint32_t off;
+};
+
+struct btf_nf_layout {
+	int hook_ops;
+	int conn;
+	int pernet_ops;
+	int nfnetlink;
+	int nfnl_callback;
+	int net;
+	int rhashtable;
+	int ok;
 };
 
 struct btf_layout {
@@ -44,6 +60,7 @@ struct btf_layout {
 	struct btf_type_info target;
 	int found_match;
 	int found_target;
+	struct btf_nf_layout nf;
 };
 
 static uint32_t btf_rd32(const unsigned char *p)
@@ -216,7 +233,72 @@ static int xt_layout_matches(const struct btf_type_info *t, uint32_t size,
 			member_is(t, "matchsize", size_off);
 }
 
-static int btf_read_layout(const char *path, struct btf_layout *layout)
+static int btf_fields_match(const unsigned char *d, size_t len,
+			    const char *name, uint32_t size,
+			    const struct btf_field *fields, size_t n)
+{
+	struct btf_type_info t;
+
+	if (btf_find_struct_info(d, len, name, &t) != 0 || t.size != size)
+		return 0;
+	for (size_t i = 0; i < n; i++)
+		if (!member_is(&t, fields[i].name, fields[i].off))
+			return 0;
+	return 1;
+}
+
+static void btf_check_netfilter(const unsigned char *d, size_t len,
+				struct btf_nf_layout *nf)
+{
+	static const struct btf_field hook_ops[] = {
+		{ "hook", 0 }, { "dev", 8 }, { "priv", 16 }, { "pf", 24 },
+		{ "hook_ops_type", 25 }, { "hooknum", 28 }, { "priority", 32 },
+	};
+	static const struct btf_field conn[] = {
+		{ "status", 128 }, { "nat_bysource", 144 }, { "master", 160 },
+		{ "mark", 168 }, { "secmark", 172 }, { "ext", 176 },
+		{ "proto", 184 },
+	};
+	static const struct btf_field pernet_ops[] = {
+		{ "init", 16 }, { "pre_exit", 24 }, { "exit", 32 },
+		{ "exit_batch", 40 }, { "exit_batch_rtnl", 48 }, { "id", 56 },
+		{ "size", 64 },
+	};
+	static const struct btf_field nfnetlink_subsys[] = {
+		{ "owner", 24 }, { "commit", 32 }, { "abort", 40 },
+		{ "valid_genid", 48 },
+	};
+	static const struct btf_field nfnl_callback[] = {
+		{ "call", 0 }, { "policy", 8 }, { "type", 16 },
+		{ "attr_count", 20 },
+	};
+	static const struct btf_field net[] = {
+		{ "gen", 2848 },
+	};
+
+	memset(nf, 0, sizeof(*nf));
+	nf->hook_ops = btf_fields_match(d, len, "nf_hook_ops", 40, hook_ops,
+					ARRAY_SIZE(hook_ops));
+	nf->conn = btf_fields_match(d, len, "nf_conn", 272, conn,
+				    ARRAY_SIZE(conn));
+	nf->pernet_ops = btf_fields_match(d, len, "pernet_operations", 72,
+					  pernet_ops, ARRAY_SIZE(pernet_ops));
+	nf->nfnetlink = btf_fields_match(d, len, "nfnetlink_subsystem", 64,
+					 nfnetlink_subsys,
+					 ARRAY_SIZE(nfnetlink_subsys));
+	nf->nfnl_callback = btf_fields_match(d, len, "nfnl_callback", 32,
+					     nfnl_callback,
+					     ARRAY_SIZE(nfnl_callback));
+	nf->net = btf_fields_match(d, len, "net", 4160, net,
+				   ARRAY_SIZE(net));
+	nf->rhashtable = btf_fields_match(d, len, "rhashtable", 160, NULL, 0);
+	nf->ok = nf->hook_ops && nf->conn && nf->pernet_ops &&
+		 nf->nfnetlink && nf->nfnl_callback && nf->net &&
+		 nf->rhashtable;
+}
+
+static int btf_read_layout(const char *path, struct btf_layout *layout,
+			   int check_nf)
 {
 	FILE *fp;
 	unsigned char *data = NULL;
@@ -271,6 +353,8 @@ static int btf_read_layout(const char *path, struct btf_layout *layout)
 		btf_find_struct_info(data, used, "xt_match", &layout->match) == 0;
 	layout->found_target =
 		btf_find_struct_info(data, used, "xt_target", &layout->target) == 0;
+	if (check_nf)
+		btf_check_netfilter(data, used, &layout->nf);
 	free(data);
 	return 0;
 }
@@ -307,10 +391,20 @@ static struct sym_req required[] = {
 
 _Static_assert(ARRAY_SIZE(required) == SYM_COUNT, "required symbol table out of sync");
 
-static int find_symbol(const char *name)
+/* Resolved by ksud at load time; needed only by dnsk_netfilter. */
+static struct sym_req nf_required[] = {
+	{ "nf_nat_masquerade_inet_register_notifiers", 0 },
+	{ "nf_nat_register_fn", 0 },
+	{ "xt_register_matches", 0 },
+	{ "xt_unregister_matches", 0 },
+	{ "nfnetlink_subsys_register", 0 },
+	{ "rhashtable_init_noprof", 0 },
+};
+
+static int find_symbol_in(struct sym_req *tab, size_t n, const char *name)
 {
-	for (size_t i = 0; i < ARRAY_SIZE(required); i++)
-		if (!strcmp(required[i].name, name))
+	for (size_t i = 0; i < n; i++)
+		if (!strcmp(tab[i].name, name))
 			return (int)i;
 	return -1;
 }
@@ -330,12 +424,23 @@ static int scan_kallsyms(void)
 
 		if (sscanf(line, "%*s %c %255s", &type, name) != 2)
 			continue;
-		idx = find_symbol(name);
+		idx = find_symbol_in(required, ARRAY_SIZE(required), name);
 		if (idx >= 0)
 			required[idx].found = 1;
+		idx = find_symbol_in(nf_required, ARRAY_SIZE(nf_required), name);
+		if (idx >= 0)
+			nf_required[idx].found = 1;
 	}
 	fclose(fp);
 	return 0;
+}
+
+static int all_found(const struct sym_req *tab, size_t n)
+{
+	for (size_t i = 0; i < n; i++)
+		if (!tab[i].found)
+			return 0;
+	return 1;
 }
 
 static int parse_kmi(const char *release, char *out, size_t out_len)
@@ -430,13 +535,17 @@ int main(int argc, char **argv)
 	char kmi[64] = { 0 };
 	char derived[64] = { 0 };
 	const char *supported_path = NULL;
+	const char *feature = "core";
 	const char *ksud;
 	unsigned long page_size;
 	const char *btf_path = "/sys/kernel/btf/vmlinux";
 	long xt_expected = -1;
 	struct btf_layout layout;
+	int check_nf;
 	int btf;
 	int layout_ok;
+	int nf_ok;
+	int nf_symbols;
 	int supported;
 	int dcache;
 	int resolver;
@@ -449,9 +558,12 @@ int main(int argc, char **argv)
 			supported_path = argv[++i];
 		else if (!strcmp(argv[i], "--btf") && i + 1 < argc)
 			btf_path = argv[++i];
+		else if (!strcmp(argv[i], "--feature") && i + 1 < argc)
+			feature = argv[++i];
 		else if (!strcmp(argv[i], "--xt-layout") && i + 1 < argc)
 			xt_expected = strtol(argv[++i], NULL, 10);
 	}
+	check_nf = !strcmp(feature, "netfilter");
 
 	if (uname(&uts) != 0) {
 		perror("uname");
@@ -464,7 +576,7 @@ int main(int argc, char **argv)
 	btf = access(btf_path, R_OK) == 0;
 	memset(&layout, 0, sizeof(layout));
 	if (btf)
-		btf_read_layout(btf_path, &layout);
+		btf_read_layout(btf_path, &layout, check_nf);
 	if (xt_expected < 0)
 		layout_ok = 1;
 	else if (xt_expected == 104 || xt_expected == 128)
@@ -483,33 +595,54 @@ int main(int argc, char **argv)
 		 required[SYM_FLUSH_DCACHE_AREA].found;
 	resolver = required[SYM_KALLSYMS_LOOKUP_NAME].found ||
 		   required[SYM_KALLSYMS_ON_EACH_SYMBOL].found;
+	nf_ok = !check_nf || layout.nf.ok;
+	nf_symbols = all_found(nf_required, ARRAY_SIZE(nf_required));
 	ok = page_size == 4096 && btf && layout_ok && ksud && supported &&
 	     kmi[0] && required[SYM_SYS_CALL_TABLE].found &&
 	     required[SYM_INIT_MM].found &&
 	     required[SYM_PANIC_NOTIFIER_LIST].found &&
 	     required[SYM_STOP_MACHINE].found &&
-	     required[SYM_REGISTER_KPROBE].found && dcache && resolver;
+	     required[SYM_REGISTER_KPROBE].found && dcache && resolver &&
+	     nf_ok && (!check_nf || nf_symbols);
 
-	printf("{\"ok\":%s,\"release\":\"%s\",\"kmi\":\"%s\","
-	       "\"supported\":%s,\"page_size\":%lu,\"btf\":%s,"
-	       "\"ksud\":\"%s\",\"btf_layout\":{"
+	printf("{\"ok\":%s,\"feature\":\"%s\",\"release\":\"%s\","
+	       "\"kmi\":\"%s\",\"supported\":%s,\"page_size\":%lu,"
+	       "\"btf\":%s,\"ksud\":\"%s\",\"btf_layout\":{"
 	       "\"xt_match_size\":%u,\"xt_target_size\":%u,"
-	       "\"xt_ok\":%s},\"symbols\":{",
-	       ok ? "true" : "false", uts.release, kmi,
+	       "\"xt_ok\":%s,\"nf\":{\"checked\":%s,"
+	       "\"hook_ops\":%s,\"conn\":%s,\"pernet_ops\":%s,"
+	       "\"nfnetlink\":%s,\"nfnl_callback\":%s,\"net\":%s,"
+	       "\"rhashtable\":%s,\"ok\":%s}},\"symbols\":{",
+	       ok ? "true" : "false", feature, uts.release, kmi,
 	       supported ? "true" : "false", page_size,
 	       btf ? "true" : "false", ksud ? ksud : "",
 	       layout.match.size, layout.target.size,
-	       layout_ok ? "true" : "false");
+	       layout_ok ? "true" : "false",
+	       check_nf ? "true" : "false",
+	       layout.nf.hook_ops ? "true" : "false",
+	       layout.nf.conn ? "true" : "false",
+	       layout.nf.pernet_ops ? "true" : "false",
+	       layout.nf.nfnetlink ? "true" : "false",
+	       layout.nf.nfnl_callback ? "true" : "false",
+	       layout.nf.net ? "true" : "false",
+	       layout.nf.rhashtable ? "true" : "false",
+	       layout.nf.ok ? "true" : "false");
 	for (size_t i = 0; i < ARRAY_SIZE(required); i++) {
 		printf("%s\"%s\":%s", i ? "," : "", required[i].name,
 		       required[i].found ? "true" : "false");
 	}
+	for (size_t i = 0; i < ARRAY_SIZE(nf_required); i++) {
+		printf(",\"%s\":%s", nf_required[i].name,
+		       nf_required[i].found ? "true" : "false");
+	}
 	printf("},\"checks\":{\"page_size_4k\":%s,\"btf\":%s,"
 	       "\"kmi_supported\":%s,\"ksud\":%s,\"dcache\":%s,"
-	       "\"kallsyms_resolver\":%s,\"xt_layout\":%s}}\n",
+	       "\"kallsyms_resolver\":%s,\"xt_layout\":%s,"
+	       "\"nf_abi\":%s,\"nf_symbols\":%s}}\n",
 	       page_size == 4096 ? "true" : "false", btf ? "true" : "false",
 	       supported ? "true" : "false", ksud ? "true" : "false",
 	       dcache ? "true" : "false", resolver ? "true" : "false",
-	       layout_ok ? "true" : "false");
+	       layout_ok ? "true" : "false", nf_ok ? "true" : "false",
+	       (!check_nf || nf_symbols) ? "true" : "false");
 	return ok ? 0 : 1;
 }
