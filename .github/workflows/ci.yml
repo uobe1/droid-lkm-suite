@@ -125,16 +125,24 @@ jobs:
               DNSK_MAX_SKB_FRAGS="${DNSK_MAX_SKB_FRAGS:-}" \
               DNSK_CGROUP_SUBSYS_COUNT="${DNSK_CGROUP_SUBSYS_COUNT:-}" modules
             cp "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
-            # dnskctl compares this stamp with policy.conf before insmod.
+            # dnskctl compares these stamps with policy.conf before insmod.
             for ko in "$GITHUB_WORKSPACE/features/netfilter/dnsk_netfilter.ko" \
                       "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko" \
                       "$GITHUB_WORKSPACE/features/devtmpfs/dnsk_devtmpfs.ko"; do
+              for stamp in "dnsk_abi_profile=${PROFILE}" \
+                           "dnsk_page_size=${DNSK_PAGE_SIZE}" \
+                           "dnsk_max_skb_frags=${DNSK_MAX_SKB_FRAGS}" \
+                           "dnsk_cgroup_subsys_count=${DNSK_CGROUP_SUBSYS_COUNT}"; do
+                grep -aq "$stamp" "$ko" || {
+                  echo "missing $stamp stamp: $ko" >&2
+                  exit 1
+                }
+              done
+            done
+            for ko in "$GITHUB_WORKSPACE/features/netfilter/dnsk_netfilter.ko" \
+                      "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko"; do
               grep -aq "dnsk_xt_layout=${DNSK_XT_LAYOUT}" "$ko" || {
                 echo "missing dnsk_xt_layout=${DNSK_XT_LAYOUT} stamp: $ko" >&2
-                exit 1
-              }
-              grep -aq "dnsk_abi_profile=${PROFILE}" "$ko" || {
-                echo "missing dnsk_abi_profile=${PROFILE} stamp: $ko" >&2
                 exit 1
               }
             done
