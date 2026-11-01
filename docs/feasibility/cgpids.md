@@ -92,3 +92,9 @@ pmb110 (`ai-luo2006/droidspaces-6.12-pmb110`) 使用显示层 inline hook、
 kprobe `can_fork` PC-return、post_fork 计数与 `+pids`→`+memory`; 已知问题:
 trampoline BRK 导致写 cgroup.procs 硬崩、迁移任务不计、post_fork 并发超限、
 `pids.max=0` 语义错误、rmdir 失败丢限制. 本项目不重复这些做法.
+
+## 决策 (2026-11-01)
+
+用户接受 v1.0.0 采用 **v2-only 虚拟控制器**, cgroup v1 的未修改
+`--pids-limit` 明确标为 unsupported; 后续版本必须继续实现 Native 等价,
+不得把当前虚拟控制器当作最终 Native 结论.

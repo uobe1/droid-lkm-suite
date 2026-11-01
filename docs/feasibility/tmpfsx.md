@@ -66,3 +66,9 @@
 "所有 tmpfs 的完整 Native xattr/ACL". 按项目硬约束, 该项应作为发布阻塞,
 由用户决定: 接受范围缩减/明确 partial, 或保持阻塞直到可重编内核/Native
 方案出现. 不得用 opt-in 或 ext4/f2fs loop 冒充.
+
+## 决策 (2026-11-01)
+
+用户接受 v1.0.0 以 **partial 稳态语义** 发布并明确边界; 后续版本必须继续
+实现 Native 等价 (无竞态的已有 mount 切换、fileattr、完整 LSM security
+xattr), 不得把当前 partial 方案当作最终 Native 结论.

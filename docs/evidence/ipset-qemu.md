@@ -39,10 +39,10 @@ DNSK_QEMU_IPSET_OK
 qemu_rc=0
 ```
 
-该 run 的 boot job 仍被判失败, 原因是 workflow 只匹配通用标记
-`DNSK_QEMU_OK`, 而 active-ipset init 当时只打印 `DNSK_QEMU_IPSET_OK`;
-这是 CI 标记不匹配, 不是模块失败. 所有 active init 已统一追加
-`DNSK_QEMU_OK`, 最终复跑 (run 41257298547) 用于留下绿色 job 记录.
+最初该 run 的 boot job 被误判失败, 原因是 workflow 只匹配通用标记
+`DNSK_QEMU_OK`, 而 active-ipset init 当时只打印 `DNSK_QEMU_IPSET_OK`.
+统一标记并修复 QEMU 固件包后, 最终复跑 **run 41257449372 绿色通过**
+(复用 run 41256636843 的 image artifact, 只重跑 boot job).
 
 ## 边界
 
