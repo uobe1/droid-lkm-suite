@@ -44,6 +44,8 @@ while [ ! -S /run/containerd/containerd.sock ] && [ "$i" -lt 60 ]; do
 done
 [ -S /run/containerd/containerd.sock ] || fail containerd_socket
 
+# The rootfs is an initramfs; pivot_root is not usable there.
+export DOCKER_RAMDISK=true
 dockerd --containerd /run/containerd/containerd.sock \
 	--data-root /var/lib/docker --exec-root /run/docker \
 	--pidfile /run/docker.pid --storage-driver vfs \

@@ -45,7 +45,7 @@ struct dnsk_hook {
 			int (*entry_handler)(struct kretprobe_instance *,
 					     struct pt_regs *);
 			int (*ret_handler)(struct kretprobe_instance *,
-					   unsigned long, struct pt_regs *);
+					   struct pt_regs *);
 		} kretprobe;
 	} u;
 };

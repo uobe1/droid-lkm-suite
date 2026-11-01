@@ -36,31 +36,67 @@ static int dnsk_kprobe_pre(struct kprobe *kp, struct pt_regs *regs)
 	return 0;
 }
 
-static int dnsk_kretprobe_entry(struct kretprobe_instance *ri,
-				struct pt_regs *regs)
-{
-	struct dnsk_hook *hook =
-		container_of(ri->rp, struct dnsk_hook, u.kretprobe.krp);
+#define DNSK_MAX_KRETPROBES 16
 
-	if (!hook->active)
+static int dnsk_kret_entry(unsigned int idx, struct kretprobe_instance *ri,
+			   struct pt_regs *regs)
+{
+	struct dnsk_hook *hook = &dnsk_hooks[idx];
+
+	if (!hook->active || !hook->u.kretprobe.entry_handler)
 		return 0;
-	if (hook->u.kretprobe.entry_handler)
-		return hook->u.kretprobe.entry_handler(ri, regs);
-	return 0;
+	return hook->u.kretprobe.entry_handler(ri, regs);
 }
 
-static int dnsk_kretprobe_ret(struct kretprobe_instance *ri,
-			      unsigned long ret, struct pt_regs *regs)
+static int dnsk_kret_ret(unsigned int idx, struct kretprobe_instance *ri,
+			 struct pt_regs *regs)
 {
-	struct dnsk_hook *hook =
-		container_of(ri->rp, struct dnsk_hook, u.kretprobe.krp);
+	struct dnsk_hook *hook = &dnsk_hooks[idx];
 
-	if (!hook->active)
+	if (!hook->active || !hook->u.kretprobe.ret_handler)
 		return 0;
-	if (hook->u.kretprobe.ret_handler)
-		return hook->u.kretprobe.ret_handler(ri, ret, regs);
-	return 0;
+	return hook->u.kretprobe.ret_handler(ri, regs);
 }
+
+/*
+ * Kretprobe handlers do not receive the kretprobe pointer in 6.12+ (and the
+ * instance layout differs with CONFIG_KRETPROBE_ON_RETHOOK), so use one
+ * static handler pair per hook slot instead of deriving it from ri.
+ */
+#define DNSK_KRET_SLOT(n)						\
+	static int dnsk_kret_entry_##n(struct kretprobe_instance *ri,	\
+				       struct pt_regs *regs)		\
+	{ return dnsk_kret_entry(n, ri, regs); }			\
+	static int dnsk_kret_ret_##n(struct kretprobe_instance *ri,	\
+				     struct pt_regs *regs)		\
+	{ return dnsk_kret_ret(n, ri, regs); }
+
+DNSK_KRET_SLOT(0) DNSK_KRET_SLOT(1) DNSK_KRET_SLOT(2)
+DNSK_KRET_SLOT(3) DNSK_KRET_SLOT(4) DNSK_KRET_SLOT(5)
+DNSK_KRET_SLOT(6) DNSK_KRET_SLOT(7) DNSK_KRET_SLOT(8)
+DNSK_KRET_SLOT(9) DNSK_KRET_SLOT(10) DNSK_KRET_SLOT(11)
+DNSK_KRET_SLOT(12) DNSK_KRET_SLOT(13) DNSK_KRET_SLOT(14)
+DNSK_KRET_SLOT(15)
+
+static int (*const dnsk_kret_entry_tab[DNSK_MAX_KRETPROBES])(
+	struct kretprobe_instance *, struct pt_regs *) = {
+	dnsk_kret_entry_0, dnsk_kret_entry_1, dnsk_kret_entry_2,
+	dnsk_kret_entry_3, dnsk_kret_entry_4, dnsk_kret_entry_5,
+	dnsk_kret_entry_6, dnsk_kret_entry_7, dnsk_kret_entry_8,
+	dnsk_kret_entry_9, dnsk_kret_entry_10, dnsk_kret_entry_11,
+	dnsk_kret_entry_12, dnsk_kret_entry_13, dnsk_kret_entry_14,
+	dnsk_kret_entry_15,
+};
+
+static int (*const dnsk_kret_ret_tab[DNSK_MAX_KRETPROBES])(
+	struct kretprobe_instance *, struct pt_regs *) = {
+	dnsk_kret_ret_0, dnsk_kret_ret_1, dnsk_kret_ret_2,
+	dnsk_kret_ret_3, dnsk_kret_ret_4, dnsk_kret_ret_5,
+	dnsk_kret_ret_6, dnsk_kret_ret_7, dnsk_kret_ret_8,
+	dnsk_kret_ret_9, dnsk_kret_ret_10, dnsk_kret_ret_11,
+	dnsk_kret_ret_12, dnsk_kret_ret_13, dnsk_kret_ret_14,
+	dnsk_kret_ret_15,
+};
 
 int dnsk_hooks_init(void)
 {
@@ -120,7 +156,8 @@ int dnsk_hook_add_internal(const struct dnsk_hook_req *req)
 	}
 
 	hook = NULL;
-	for (i = 0; i < DNSK_MAX_HOOKS; i++) {
+	for (i = 0; i < (req->type == DNSK_HOOK_KRETPROBE ?
+			 DNSK_MAX_KRETPROBES : DNSK_MAX_HOOKS); i++) {
 		if (!dnsk_hooks[i].active) {
 			hook = &dnsk_hooks[i];
 			break;
@@ -204,11 +241,12 @@ int dnsk_hook_add_internal(const struct dnsk_hook_req *req)
 			(int (*)(struct kretprobe_instance *, struct pt_regs *))
 			req->target;
 		hook->u.kretprobe.ret_handler =
-			(int (*)(struct kretprobe_instance *, unsigned long,
+			(int (*)(struct kretprobe_instance *,
 				 struct pt_regs *))req->replacement;
 		hook->u.kretprobe.krp.kp.symbol_name = req->symbol;
-		hook->u.kretprobe.krp.entry_handler = dnsk_kretprobe_entry;
-		hook->u.kretprobe.krp.ret_handler = dnsk_kretprobe_ret;
+		hook->u.kretprobe.krp.entry_handler =
+			dnsk_kret_entry_tab[i];
+		hook->u.kretprobe.krp.handler = dnsk_kret_ret_tab[i];
 		ret = register_kretprobe(&hook->u.kretprobe.krp);
 		if (!ret) {
 			hook->u.kretprobe.addr =
