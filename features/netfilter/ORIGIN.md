@@ -51,12 +51,17 @@ and `__exit` is dropped from the static teardown helper because the non-`__exit`
 wrapper calls it (the same adaptation used by the existing units).
 `vendor/netfilter/xt_reject.c` is project glue and has no upstream counterpart.
 
-Additionally, the three units treat `-EEXIST` from `xt_register_target`/
-`xt_register_matches` as "the kernel already provides this name": they log it,
-mark the unit unregistered and return success, so a device with native REJECT
-does not lose the nftables/addrtype units. A per-unit boolean guards the exit
-path, which therefore never unregisters a target/match it did not add. This is
-the only semantic change from upstream and it is visible in dmesg.
+Additionally, the units must not add a second target/match when the kernel
+already provides the name. Registering a duplicate `REJECT` target puts it at
+the head of the x_tables list, so the next filter-table replace rebinds every
+existing `-j REJECT` rule to the module target; those rules then hold module
+references and the module can never unload. `ipt_REJECT.c`/`ip6t_REJECT.c`
+therefore call `xt_request_find_target()` first, drop the probe reference and
+skip their own registration when a target is already present. `-EEXIST` is
+handled the same way as a fallback. `xt_recent` treats `-EEXIST` from
+`xt_register_matches` as "native already provides it". Per-unit booleans guard
+the exit path, which never unregisters a target/match it did not add. These are
+the only semantic changes from upstream and they are visible in dmesg.
 
 `xt_recent.c`'s `recent_mt_check_v0()` refers to `struct xt_recent_mtinfo_v0`,
 which 6.12 headers do not define. Upstream only uses it as an opaque pointer and

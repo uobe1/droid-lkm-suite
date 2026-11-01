@@ -42,6 +42,36 @@ NETFILTER_ACTIVE_SMOKE_OK
 
 无 dnsk 模块残留, boot_id 未变.
 
+## xt_REJECT / xt_RECENT 真机结果 (2026-11-01)
+
+使用 CI run `41268020282` 的 2636a95 构建 (仅 lint 失败, build/package/guards
+通过), 设备 boot_id `49afc24f-...`:
+
+```text
+dnsk-preflight --feature netfilter ... -> ok:true,
+  boundary/nf/xt_layout/nf_symbols 全 true
+dnskctl preflight netfilter -> rc=0 (stamp 校验通过)
+Loaded kernel module: .../dnsk_netfilter.ko
+addrtype_registered=ok
+xt_recent_registered=ok
+xt_recent_proc=ok
+xt_reject_available=ok
+xt_addrtype_rule=ok
+FAIL: netfilter module survived unload
+```
+
+**卸载回归与根因:** 设备原生已注册 IPv4/IPv6 REJECT。旧构建仍注册自己的
+REJECT target; `xt_register_target()` 把新 target 插到链表头, 下一次
+filter 表替换时, 设备已有的 `-j REJECT` 规则被重新解析到我们的 target,
+每条规则持有一个模块引用, rmmod 返回 EBUSY (refcnt 3, 后续 6). 这与
+`xt_register_target()` 自身不取引用一致.
+
+**修复 (待重启验证):** `ipt_REJECT.c`/`ip6t_REJECT.c` 先用
+`xt_request_find_target()` 探测, 存在原生 target 时释放探测引用并跳过注册;
+`-EEXIST` 作为兜底同样跳过. `xt_recent` 仍按 EEXIST 处理. 这样设备上
+REJECT 保持 Native, 模块只提供缺失的 recent, 卸载路径不再被规则 pin.
+当前设备上的旧模块仍处于加载状态, 需要用户授权的软重启后复测.
+
 ## ABI 边界复核
 
 设备 BTF 与 DDK 6.12.76 模块 DWARF 对比 (2026-11-01, 104 构建):

@@ -518,7 +518,6 @@ static struct sym_req nf_required[] = {
 	{ "nf_send_unreach6", 0 },
 	{ "nf_send_reset", 0 },
 	{ "nf_send_reset6", 0 },
-	{ "init_user_ns", 0 },
 };
 
 static int find_symbol_in(struct sym_req *tab, size_t n, const char *name)

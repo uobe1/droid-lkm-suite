@@ -7,6 +7,7 @@
  * (C) 2002-2004 Netfilter Core Team <coreteam@netfilter.org>
  */
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+#include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/skbuff.h>
@@ -100,10 +101,26 @@ static struct xt_target reject_tg_reg __read_mostly = {
 
 static bool reject_tg_registered;
 
+static bool reject_tg_present(void)
+{
+	struct xt_target *t = xt_request_find_target(NFPROTO_IPV4, "REJECT", 0);
+
+	if (IS_ERR(t))
+		return false;
+	if (t->me)
+		module_put(t->me);
+	return true;
+}
+
 static int __init reject_tg_init(void)
 {
-	int err = xt_register_target(&reject_tg_reg);
+	int err;
 
+	if (reject_tg_present()) {
+		pr_info("xt_REJECT IPv4 already provided by the kernel; skipping\n");
+		return 0;
+	}
+	err = xt_register_target(&reject_tg_reg);
 	if (err == -EEXIST) {
 		pr_info("xt_REJECT IPv4 already provided by the kernel; skipping\n");
 		return 0;
