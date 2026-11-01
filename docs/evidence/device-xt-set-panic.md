@@ -24,20 +24,23 @@ MTK AEE 目录 `/data/vendor/aee_exp/db.fatal.01.KE` 记录了同一事件
 `xt_register_matches(match, n)` 中第二个参数是 match 数量, 因此这次调用
 注册的是 **7 个** match.
 
-- Linux 6.12 上游 `xt_set` 与当前 `dnsk_ipset` 的 `set_matches[]` 都是
-  **10 个** revision (IPv4 rev0-4, IPv6 rev1-4).
-- 旧版 xt_set (如 5.x) 是 **7 个** match (IPv4 rev0-3, IPv6 rev1-3), 其
-  `struct xt_match` 布局与 6.12 不同, 在 6.12 上注册会读错字段, 与
-  NULL@0x8 的现象一致.
+- Linux 6.12 上游 `xt_set` 与当前 `dnsk_ipset` 的 `set_matches[]` 是
+  **9 个** revision (IPv4 rev0-4, IPv6 rev1-4), `set_targets[]` 是 7 个.
+- 旧版 xt_set (如 5.x) 的 match 数组是 **7 个** (IPv4 rev0-3,
+  IPv6 rev1-3), 其 `struct xt_match` 布局与 6.12 不同, 在 6.12 上注册会
+  读错字段, 与 NULL@0x8 的现象一致.
+- `xt_register_matches(match, n)` 的 `n` 在崩溃寄存器中为 7; 当前 6.12
+  实现传入 9, 与现场不符.
 
 因此这次 panic 的提供者更像一个**旧的/外来的 xt_set LKM**, 不是当前仓库
 构建的 6.12 `dnsk_ipset`.
 
 ## 当前仓库侧核对
 
-- `features/ipset/vendor/linux/net/netfilter/xt_set.c` 的 10 个 match 条目
-  均包含 `name/family/revision/match/matchsize/me`, 8 个 target 条目均包含
-  `name/family/revision/target/targetsize/me`, 没有空字段.
+- `features/ipset/vendor/linux/net/netfilter/xt_set.c` 的 9 个 match 条目
+  均包含 `name/family/revision/match/matchsize/me`, 7 个 target 条目均包含
+  `name/family/revision/target/targetsize/me`, 没有空字段. 主机测试
+  `tests/host/test_tools.py` 已固化该完整性检查.
 - 设备 `/data/adb/modules` 没有 `droid_lkm_suite`; `/data/local/tmp` 与
   Termux home 没有 `dnsk_ipset.ko`; 标准与 vendor 模块目录没有
   `xt_set.ko`/`ip_set*.ko`.

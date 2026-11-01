@@ -51,6 +51,28 @@ class ExportsGuardTests(unittest.TestCase):
             self.assertEqual(exports_guard.exported_symbols(path), {"foo", "bar"})
 
 
+class IpsetSourceTests(unittest.TestCase):
+    def test_xt_set_arrays_are_complete(self):
+        import re
+
+        text = (
+            ROOT
+            / "features/ipset/vendor/linux/net/netfilter/xt_set.c"
+        ).read_text()
+        match_block = text.split("static struct xt_match set_matches", 1)[1].split("};", 1)[0]
+        target_block = text.split("static struct xt_target set_targets", 1)[1].split("};", 1)[0]
+
+        self.assertEqual(len(re.findall(r'\.name\s*=\s*"set"', match_block)), 9)
+        self.assertEqual(len(re.findall(r'\.match\s*=\s*set_match_', match_block)), 9)
+        self.assertEqual(len(re.findall(r'\.family\s*=\s*NFPROTO_IPV[46]', match_block)), 9)
+        self.assertEqual(len(re.findall(r'\.me\s*=\s*THIS_MODULE', match_block)), 9)
+
+        self.assertEqual(len(re.findall(r'\.name\s*=\s*"SET"', target_block)), 7)
+        self.assertEqual(len(re.findall(r'\.target\s*=\s*set_target_', target_block)), 7)
+        self.assertEqual(len(re.findall(r'\.family\s*=\s*NFPROTO_IPV[46]', target_block)), 7)
+        self.assertEqual(len(re.findall(r'\.me\s*=\s*THIS_MODULE', target_block)), 7)
+
+
 class PackagingInputTests(unittest.TestCase):
     def test_required_packaging_files_exist(self):
         for rel in (

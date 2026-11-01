@@ -123,6 +123,13 @@ jobs:
           set -euxo pipefail
           python3 tools/exports_guard.py --symvers art/symvers.txt art/dnsk_core.ko
           python3 tools/imports_guard.py art/dnsk_core.ko
+      - name: ipset exports must match kernel exports
+        if: matrix.kmi == 'android16-6.12'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 tools/exports_guard.py --symvers art/symvers.txt art/dnsk_ipset.ko
+          python3 tools/imports_guard.py art/dnsk_ipset.ko
       - name: Feature imports (advisory)
         shell: bash
         continue-on-error: true
