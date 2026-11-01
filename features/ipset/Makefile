@@ -6,7 +6,7 @@ PWD := $(shell pwd)
 
 all:
 	@test -n "$(KDIR)" || { echo "Set KDIR to a prepared kernel build directory." >&2; exit 1; }
-	$(MAKE) -C "$(KDIR)" M="$(PWD)" modules
+	$(MAKE) -C "$(KDIR)" M="$(PWD)" DNSK_XT_NOCOMPAT="$(DNSK_XT_NOCOMPAT)" modules
 
 modules: all
 
