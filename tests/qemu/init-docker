@@ -28,6 +28,14 @@ fail() {
 echo "DNSK_QEMU_DOCKER_BOOT $(cat /proc/sys/kernel/osrelease)"
 "$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup || fail cgroup2_mount
 
+for opt in m p u i n U C T; do
+	if "$BB" unshare -"$opt" true 2>/dev/null; then
+		echo "ns_probe -$opt ok"
+	else
+		echo "ns_probe -$opt FAIL"
+	fi
+done
+
 containerd >/var/log/containerd.log 2>&1 &
 i=0
 while [ ! -S /run/containerd/containerd.sock ] && [ "$i" -lt 60 ]; do
@@ -58,8 +66,16 @@ case "$ver" in
 esac
 
 docker import /alpine.tar.gz alpine:local || fail docker_import
-docker run --rm --network none alpine:local /bin/sh -c \
-	'echo DOCKER_CONTAINER_OK; cat /proc/1/cgroup; id' || fail docker_run
+if docker run --rm --network none alpine:local /bin/sh -c \
+	'echo DOCKER_CONTAINER_OK; cat /proc/1/cgroup; id'; then
+	echo "DNSK_DOCKER_ISOLATED_OK"
+else
+	echo "isolated_run_failed; trying host namespaces"
+	docker run --rm --network host --pid host --ipc host --uts host \
+		--cgroupns host alpine:local /bin/sh -c \
+		'echo DOCKER_HOSTNS_OK; cat /proc/1/cgroup; id' || fail docker_hostns_run
+	echo "DNSK_DOCKER_HOSTNS_ONLY"
+fi
 
 echo "DNSK_DOCKER_OK"
 echo "DNSK_QEMU_OK"
