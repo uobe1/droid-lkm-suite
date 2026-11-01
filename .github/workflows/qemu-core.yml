@@ -78,7 +78,7 @@ jobs:
           github-token: ${{ github.token }}
       - name: Install QEMU
         run: |
-          PKGS="qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu-256k-compat-efi-roms cpio"
+          PKGS="qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio"
           if ! sudo apt-get install -y --no-install-recommends $PKGS; then
             sudo timeout 120 apt-get update
             sudo apt-get install -y --no-install-recommends $PKGS
