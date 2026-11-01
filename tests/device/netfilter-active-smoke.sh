@@ -72,6 +72,30 @@ else
 	echo "addrtype_registered=ok"
 fi
 
+if grep -qw recent /proc/net/ip_tables_matches 2>/dev/null; then
+	echo "xt_recent_registered=ok"
+else
+	echo "FAIL: recent absent from /proc/net/ip_tables_matches"
+	fail=1
+fi
+if [ -d /proc/net/xt_recent ]; then
+	echo "xt_recent_proc=ok"
+else
+	echo "FAIL: /proc/net/xt_recent missing"
+	fail=1
+fi
+if grep -qw REJECT /proc/net/ip_tables_targets 2>/dev/null; then
+	echo "xt_reject_available=ok"
+else
+	echo "FAIL: REJECT absent from /proc/net/ip_tables_targets"
+	fail=1
+fi
+if dmesg 2>/dev/null | grep -q 'xt_REJECT IPv4 already provided by the kernel'; then
+	echo "xt_reject_native=ok"
+else
+	echo "xt_reject_own_or_no_dmesg=info"
+fi
+
 if "$IPT" -w -t filter -N DNSK_ADDRTYPE 2>/dev/null; then
 	chain_added=1
 	if "$IPT" -w -t filter -A DNSK_ADDRTYPE -m addrtype --src-type LOCAL -j RETURN; then
