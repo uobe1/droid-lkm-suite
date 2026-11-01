@@ -22,6 +22,11 @@ fail() {
 
 echo "DNSK_QEMU_IPSET_BOOT $(cat /proc/sys/kernel/osrelease)"
 "$BB" insmod /modules/dnsk_ipset.ko || fail ipset_insmod
+"$BB" dmesg | "$BB" grep -q 'ipset protocol 7' || fail ipset_marker
+if [ -r /proc/net/ip_tables_matches ]; then
+	"$BB" grep -qw set /proc/net/ip_tables_matches || fail xt_set_missing
+	echo "DNSK_QEMU_XT_SET_OK"
+fi
 "$IPSET" create t hash:ip || fail create_hash_ip
 "$IPSET" add t 10.0.0.1 || fail add_hash_ip
 "$IPSET" test t 10.0.0.1 || fail test_hit
@@ -34,6 +39,16 @@ fi
 "$IPSET" list n >/dev/null || fail list_hash_net
 "$IPSET" destroy t || fail destroy_hash_ip
 "$IPSET" destroy n || fail destroy_hash_net
-"$BB" rmmod dnsk_ipset || fail ipset_rmmod
+unloaded=0
+i=0
+while [ "$i" -lt 10 ]; do
+	if "$BB" rmmod dnsk_ipset 2>/dev/null; then
+		unloaded=1
+		break
+	fi
+	"$BB" sleep 1
+	i=$((i + 1))
+done
+[ "$unloaded" -eq 1 ] || fail ipset_rmmod
 echo "DNSK_QEMU_IPSET_OK"
 "$BB" poweroff -f
