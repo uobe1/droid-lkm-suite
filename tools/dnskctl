@@ -150,6 +150,9 @@ do_load() {
 	feature=$1
 	ko=$(module_path "$feature")
 	[ -s "$ko" ] || die "module not shipped in this build: $ko"
+	if ! do_preflight "$feature"; then
+		die "preflight failed: $feature (refusing to insmod)"
+	fi
 	ksud=$(find_ksud) || die "ksud not found (set DNSK_KSUD)"
 	set -- "$ko"
 	case "$feature" in
