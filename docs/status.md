@@ -9,7 +9,7 @@
 | core ABI / symbol / patch / hook / panic | N/A | M0 完成 | ABI 2；状态桥/生命周期真机验证；stock GKI QEMU core smoke 通过 |
 | PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV/mqueue smoke 真机通过；full R 待 setns/nested/Docker |
 | DEVTMPFS | R | development | inactive load/unload 真机通过；active 待授权测试 |
-| xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | 设备 active load/unload + xt_addrtype iptables 规则通过; nft/容器验收待完成 |
+| xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | 设备 active load/unload + xt_addrtype iptables 规则通过; 设备 BTF 上 nf_hook_ops/nf_conn/net 等边界结构已复核并纳入 preflight; nft/容器验收待完成 |
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | development | 6.12 构建/导出/QEMU hash 语义通过; 设备 no-compat ABI 修复后 insmod/xt_set 注册/rmmod 通过; iptables 规则与容器验收待完成 |
 | USER_NS + idmapped/child overlay/FUSE/selftests | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
 | TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
@@ -23,6 +23,13 @@
 - M0 core：8 KMI 构建成功、docs 已部署、core 已在真机加载/卸载；见 [evidence/m0-core.md](evidence/m0-core.md)。
 - core 生命周期：feature/hook 不再 pin owner；ns 状态桥与无重启恢复见 [evidence/core-owner-ref-deadlock.md](evidence/core-owner-ref-deadlock.md)。
 - QEMU core：DDK 6.12.76 `Image` + Alpine initramfs 通过 load/status/unload；见 [evidence/qemu-core.md](evidence/qemu-core.md)。
-- xtables ABI：设备 104 字节 vs DDK 128 字节已定位并修复；BTF preflight 见 [evidence/xt-layout-preflight.md](evidence/xt-layout-preflight.md)。
+- xtables ABI：设备 104 字节 vs DDK 128 字节已定位并修复；模块带
+  `dnsk_xt_layout=` stamp，`dnskctl` 先比对 policy 再跑 BTF preflight；
+  104/128 两个构建 profile 均通过 CI（xt128 run 41266822514）；见
+  [evidence/xt-layout-preflight.md](evidence/xt-layout-preflight.md)。
+- netfilter ABI：设备 BTF 复核 nf_hook_ops(40)/nf_conn(272)/
+  pernet_operations(72)/nfnetlink_subsystem(64)/nfnl_callback(32)/
+  net(4160)/rhashtable(160)；`--feature netfilter` 同时校验符号；见
+  [evidence/netfilter-active.md](evidence/netfilter-active.md)。
 - 状态更新必须先有 CI/QEMU/真机证据；没有证据时保持 not-shipped。
 - 首 tag 前不创建 tag；dev 版本仅构建产物。
