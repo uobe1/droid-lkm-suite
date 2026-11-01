@@ -66,11 +66,35 @@ filter 表替换时, 设备已有的 `-j REJECT` 规则被重新解析到我们�
 每条规则持有一个模块引用, rmmod 返回 EBUSY (refcnt 3, 后续 6). 这与
 `xt_register_target()` 自身不取引用一致.
 
-**修复 (待重启验证):** `ipt_REJECT.c`/`ip6t_REJECT.c` 先用
-`xt_request_find_target()` 探测, 存在原生 target 时释放探测引用并跳过注册;
-`-EEXIST` 作为兜底同样跳过. `xt_recent` 仍按 EEXIST 处理. 这样设备上
-REJECT 保持 Native, 模块只提供缺失的 recent, 卸载路径不再被规则 pin.
-当前设备上的旧模块仍处于加载状态, 需要用户授权的软重启后复测.
+**修复:** `ipt_REJECT.c`/`ip6t_REJECT.c` 先用 `xt_request_find_target()`
+探测, 存在原生 target 时释放探测引用并跳过注册; `-EEXIST` 作为兜底同样
+跳过. `xt_recent` 仍按 EEXIST 处理. 这样设备上 REJECT 保持 Native, 模块只
+提供缺失的 recent, 卸载路径不再被规则 pin.
+
+**复测 (CI run 41269098493, commit 2738366, boot_id
+`aa1f26d0-ea6d-4caf-8d95-6d25a953eb1f`):**
+
+```text
+insmod dnsk_netfilter.ko gki=1 activate=1
+dnsk_netfilter 413696 0
+refcnt=0
+dnsk_netfilter: xt_REJECT IPv4 already provided by the kernel; skipping
+dnsk_netfilter: xt_REJECT IPv6 already provided by the kernel; skipping
+rmmod -> rc=0
+
+active smoke:
+addrtype_registered=ok
+xt_recent_registered=ok
+xt_recent_proc=ok
+xt_reject_available=ok
+xt_reject_native=ok
+xt_addrtype_rule=ok
+netfilter_unload=ok
+NETFILTER_ACTIVE_SMOKE_OK
+```
+
+复测后 boot_id 未变, 无 dnsk 残留, `/proc/net/xt_recent` 随卸载移除.
+设备上的 dmesg `Call trace` 来自厂商 `iorap2` 模块, 与本套件无关.
 
 ## ABI 边界复核
 

@@ -9,7 +9,7 @@
 | core ABI / symbol / patch / hook / panic | N/A | M0 完成 | ABI 2；状态桥/生命周期真机验证；stock GKI QEMU core smoke 通过 |
 | PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV/mqueue smoke 真机通过；full R 待 setns/nested/Docker |
 | DEVTMPFS | R | development | inactive load/unload 真机通过；active 待授权测试 |
-| xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | recent/REJECT 加载与 addrtype 规则通过; 重复注册 REJECT 被 OEM 规则 pin 的卸载回归已定位并修复, 待软重启复测; nft/容器验收待完成 |
+| xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | active load/unload + addrtype 规则 + recent 注册通过; 原生 REJECT 正确跳过 (不再 pin); nft/容器验收待完成 |
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | development | 6.12 构建/导出/QEMU hash 语义通过; 设备 no-compat ABI 修复后 insmod/xt_set 注册/rmmod 通过; iptables 规则与容器验收待完成 |
 | USER_NS + idmapped/child overlay/FUSE/selftests | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
 | TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
