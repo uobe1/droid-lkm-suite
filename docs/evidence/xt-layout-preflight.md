@@ -41,7 +41,9 @@
 
 - 设备 BTF 解析: 104/104, `xt_ok=true`.
 - 修复后的 ipset 真机 `insmod/rmmod` 通过, boot_id 未变, 无 Oops.
-- 设备构建的 netfilter 使用同一 shim/断言; active 测试待执行.
+- 设备静态 `dnsk-preflight` 返回 `ok:true`, `xt_layout:true`.
+- 设备 netfilter active load/unload 与 xt_addrtype iptables 规则通过;
+  见 [netfilter-active.md](netfilter-active.md).
 
 ## 边界
 
