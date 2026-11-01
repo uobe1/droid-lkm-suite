@@ -125,9 +125,17 @@ do_preflight() {
 		die "dnsk_core is not loaded; load core first"
 	fi
 	if [ -x "$MODDIR/bin/dnsk-preflight" ]; then
+		set -- --kmi "$(resolve_kmi 2>/dev/null || true)" --supported "$SUPPORTED"
+		case "$feature" in
+		ipset|netfilter)
+			xt_layout=$(sed -n 's/^xt_layout=//p' "$MODDIR/policy.conf" 2>/dev/null | head -1)
+			[ -n "$xt_layout" ] || xt_layout=104
+			set -- "$@" --xt-layout "$xt_layout"
+			;;
+		esac
+		set -- "$@" "$feature"
 		set +e
-		"$MODDIR/bin/dnsk-preflight" --kmi "$(resolve_kmi 2>/dev/null || true)" \
-			--supported "$SUPPORTED" "$feature"
+		"$MODDIR/bin/dnsk-preflight" "$@"
 		rc=$?
 		set -e
 		return "$rc"
