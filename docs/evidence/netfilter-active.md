@@ -96,6 +96,23 @@ NETFILTER_ACTIVE_SMOKE_OK
 复测后 boot_id 未变, 无 dnsk 残留, `/proc/net/xt_recent` 随卸载移除.
 设备上的 dmesg `Call trace` 来自厂商 `iorap2` 模块, 与本套件无关.
 
+### 容器 netns smoke (2026-11-01)
+
+在 `unshare -n` 新 network namespace 内 (net:[4026534983]):
+
+```text
+ip link set lo up -> ok
+iptables -A INPUT -m addrtype --src-type LOCAL -j ACCEPT -> ok
+iptables -A OUTPUT -m recent --name dnsk_test --rsource --set -j REJECT -> ok
+/proc/net/xt_recent -> ok (per-net proc)
+iptables -S 显示两条规则; 宿主 netns 无 addrtype/recent 规则
+netns-rc=0
+```
+
+netns 退出后 `dnsk_netfilter` refcnt=0, rmmod rc=0; ns/devtmpfs/core 仍正常,
+boot_id 未变. 这条覆盖 droidspaces/chroot 网络基础路径; Docker/UFW/Fail2ban
+仍待云端 QEMU 验收.
+
 ## ABI 边界复核
 
 设备 BTF 与 DDK 6.12.76 模块 DWARF 对比 (2026-11-01, 104 构建):
