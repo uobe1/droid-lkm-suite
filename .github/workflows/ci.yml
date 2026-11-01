@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      build_profile:
+        description: ABI build profile id
+        type: choice
+        options:
+          - android16-6.12-xt104
+          - android16-6.12-xt128
+        default: android16-6.12-xt104
 
 permissions:
   contents: read
@@ -71,6 +79,9 @@ jobs:
           set -euxo pipefail
           KDIR="/opt/ddk/kdir/${{ matrix.kmi }}"
           test -d "$KDIR"
+          PROFILE="${{ inputs.build_profile || 'android16-6.12-xt104' }}"
+          eval "$(python3 "$GITHUB_WORKSPACE/tools/build_flags.py" \
+            --profile "$GITHUB_WORKSPACE/profiles/build/${PROFILE}.json")"
           make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
           mkdir -p "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}"
           cp "$GITHUB_WORKSPACE/dnsk_core.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
@@ -81,13 +92,13 @@ jobs:
             cp "$GITHUB_WORKSPACE/features/diag/dnsk_diag.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             make -C "$GITHUB_WORKSPACE/features/devtmpfs" KDIR="$KDIR" modules
             cp "$GITHUB_WORKSPACE/features/devtmpfs/dnsk_devtmpfs.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
-            make -C "$GITHUB_WORKSPACE/features/netfilter" KDIR="$KDIR" DNSK_XT_NOCOMPAT=1 modules
+            make -C "$GITHUB_WORKSPACE/features/netfilter" KDIR="$KDIR" DNSK_XT_NOCOMPAT="${DNSK_XT_NOCOMPAT:-}" modules
             cp "$GITHUB_WORKSPACE/features/netfilter/dnsk_netfilter.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             # The android16-6.12 device has 104-byte xt_match/xt_target while
             # the DDK headers carry the 128-byte CONFIG_COMPAT layout.  Build the
             # device artifact without the compat members; QEMU builds its own
             # separate compat module.
-            make -C "$GITHUB_WORKSPACE/features/ipset" KDIR="$KDIR" DNSK_XT_NOCOMPAT=1 modules
+            make -C "$GITHUB_WORKSPACE/features/ipset" KDIR="$KDIR" DNSK_XT_NOCOMPAT="${DNSK_XT_NOCOMPAT:-}" modules
             cp "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
           fi
           file "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"*.ko
@@ -164,6 +175,9 @@ jobs:
           file tools/bin/dnsk-preflight
       - name: Package dev artifact
         run: |
+          PROFILE="${{ inputs.build_profile || 'android16-6.12-xt104' }}"
+          eval "$(python3 tools/build_flags.py --profile "profiles/build/${PROFILE}.json")"
+          sed -i "s/^xt_layout=.*/xt_layout=${DNSK_XT_LAYOUT}/" ksu/policy.conf
           python tools/package.py --dev \
             --kmi android16-6.12 \
             --bin-root tools/bin \

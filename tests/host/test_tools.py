@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
+import build_flags  # noqa: E402
 import exports_guard  # noqa: E402
 import kmi_matrix  # noqa: E402
 
@@ -37,6 +38,19 @@ class KmiMatrixTests(unittest.TestCase):
                     continue
                 if name != "core":
                     self.assertEqual(feature["status"], "not-shipped", path)
+
+
+class BuildFlagsTests(unittest.TestCase):
+    def test_xt_profiles(self):
+        root = ROOT / "profiles" / "build"
+        pid, flags = build_flags.load(root / "android16-6.12-xt104.json")
+        self.assertEqual(pid, "android16-6.12-xt104")
+        self.assertEqual(flags["DNSK_XT_NOCOMPAT"], "1")
+        self.assertEqual(flags["DNSK_XT_LAYOUT"], "104")
+        pid, flags = build_flags.load(root / "android16-6.12-xt128.json")
+        self.assertEqual(pid, "android16-6.12-xt128")
+        self.assertEqual(flags["DNSK_XT_NOCOMPAT"], "")
+        self.assertEqual(flags["DNSK_XT_LAYOUT"], "128")
 
 
 class ExportsGuardTests(unittest.TestCase):
