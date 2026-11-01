@@ -29,6 +29,24 @@ rmmod: can't unload module 'dnsk_ipset': Resource temporarily unavailable
 引用; 测试在 RCU 回调前就执行了 `rmmod`. 测试已改为最多等待 10 秒重试,
 并在加载后检查 `xt_set` match 是否出现.
 
-## 当前状态
+## 重试结果 (run 41256636843)
 
-最终重试运行待完成; 不能把首次部分通过当作完整验收.
+等待 RCU 后重试卸载的版本已全部通过:
+
+```text
+DNSK_QEMU_XT_SET_OK
+DNSK_QEMU_IPSET_OK
+qemu_rc=0
+```
+
+该 run 的 boot job 仍被判失败, 原因是 workflow 只匹配通用标记
+`DNSK_QEMU_OK`, 而 active-ipset init 当时只打印 `DNSK_QEMU_IPSET_OK`;
+这是 CI 标记不匹配, 不是模块失败. 所有 active init 已统一追加
+`DNSK_QEMU_OK`, 最终复跑 (run 41257298547) 用于留下绿色 job 记录.
+
+## 边界
+
+已覆盖: 模块加载、`ipset` protocol 7 注册、`xt_set` match 出现、
+hash:ip/hash:net 的 create/add/test(命中/未命中)/list/destroy、卸载.
+未覆盖: 超时/计数器/comment/skbinfo、iptables `-m set` 规则、netns 隔离、
+Docker/UFW/Fail2ban 工作负载. 这些仍待后续验收.
