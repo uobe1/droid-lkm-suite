@@ -27,9 +27,11 @@
 
 - 校验 BTF header/type/string 边界, 64 MiB 上限;
 - 通过分块 `fread` 读取 sysfs (不依赖 `fseek`);
-- 找 `struct xt_match`/`xt_target`, 输出
-  `btf_layout.xt_match_size/xt_target_size/xt_ok`;
-- 指定 `--xt-layout` 时, size 不匹配即 `ok:false` 并返回非零;
+- 找 `struct xt_match`/`xt_target`, 校验 size 以及
+  `list/name/revision/match|target/checkentry/destroy/me/table/
+  matchsize|targetsize/usersize/hooks/proto/family` 的全部字节偏移;
+- 输出 `btf_layout.xt_match_size/xt_target_size/xt_ok`;
+- 指定 `--xt-layout 104|128` 时, size/offset 不匹配即 `ok:false` 并返回非零;
 - `dnskctl` 只为 ipset/netfilter 传该检查, core/ns/devtmpfs 不受影响.
 
 主机测试 `tests/host/test_preflight.py` 构造合成的 104/128 字节 BTF,
@@ -45,4 +47,5 @@
 
 - 静态断言按目标设备 104 布局; 其他 KMI/厂商 config 必须选择对应构建
   变体并在 profile 中设置 `xt_layout`.
-- preflight 当前校验 size; 如需强制字段偏移, 应扩展 BTF member 校验.
+- preflight 固定支持 104/128 两种 xt 布局; 其他布局必须新增 profile/构建变体,
+  不能只按 `uname` KMI 判断.
