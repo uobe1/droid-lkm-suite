@@ -112,6 +112,59 @@ FS_STRUCTS = [
 ]
 
 
+NS_STRUCTS = [
+    ("task_struct", 5184, [
+        ("pid", 1800), ("tgid", 1804), ("real_parent", 1816),
+        ("parent", 1824), ("group_leader", 1864), ("thread_pid", 1904),
+        ("nsproxy", 2384), ("signal", 2392), ("sighand", 2400),
+        ("real_cred", 2296), ("cred", 2304), ("cgroups", 2872),
+        ("cg_list", 2880), ("security", 3288), ("comm", 2320),
+        ("fs", 2360), ("files", 2368), ("mm", 1672),
+        ("active_mm", 1680),
+    ]),
+    ("nsproxy", 72, [
+        ("uts_ns", 8), ("ipc_ns", 16), ("mnt_ns", 24),
+        ("pid_ns_for_children", 32), ("net_ns", 40), ("time_ns", 48),
+        ("time_ns_for_children", 56), ("cgroup_ns", 64),
+    ]),
+    ("pid_namespace", 136, [
+        ("idr", 0), ("child_reaper", 48), ("level", 64), ("parent", 72),
+        ("user_ns", 80), ("ucounts", 88), ("ns", 104),
+        ("memfd_noexec_scope", 128),
+    ]),
+    ("ipc_namespace", 1264, [
+        ("ids", 0), ("sem_ctls", 792), ("mq_mnt", 960),
+        ("mq_sysctls", 1096), ("ipc_sysctls", 1208), ("user_ns", 1216),
+        ("ucounts", 1224), ("ns", 1240),
+    ]),
+    ("user_namespace", 632, [
+        ("uid_map", 0), ("gid_map", 64), ("parent", 192), ("level", 200),
+        ("ns", 216), ("ucounts", 488),
+    ]),
+    ("cred", 184, [
+        ("uid", 8), ("euid", 24), ("security", 128), ("user_ns", 144),
+        ("ucounts", 152),
+    ]),
+    ("pid", 112, [("count", 0), ("level", 4), ("tasks", 32)]),
+    ("upid", 16, [("nr", 0), ("ns", 8)]),
+    ("ns_common", 24, [("stashed", 0), ("ops", 8), ("inum", 16)]),
+    ("signal_struct", 1120, [
+        ("sigcnt", 0), ("nr_threads", 8), ("thread_head", 16),
+        ("shared_pending", 64),
+    ]),
+    ("sighand_struct", 2080, [("siglock", 0), ("action", 32)]),
+    ("cgroup", 1984, [
+        ("self", 0), ("flags", 216), ("level", 224), ("subsys", 616),
+        ("nr_dying_subsys", 680), ("e_csets", 736), ("psi", 1176),
+        ("bpf", 1184), ("freezer", 1904), ("ancestors", 1936),
+    ]),
+    ("css_set", 456, [
+        ("subsys", 0), ("refcount", 64), ("dfl_cgrp", 80),
+        ("cgrp_links", 336),
+    ]),
+]
+
+
 def mutate(structs, struct_name, member, offset):
     return [
         (name, size,
@@ -371,6 +424,51 @@ class PreflightTests(unittest.TestCase):
                                   check=False)
             data = json.loads(proc.stdout)
             self.assertFalse(data["btf_layout"]["boundary"]["fs"])
+            self.assertFalse(data["checks"]["boundary"])
+
+    def test_preflight_ns_btf_layout(self):
+        cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+        if not cc:
+            self.skipTest("no host C compiler")
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            binary = tmp / "dnsk-preflight"
+            subprocess.run(
+                [cc, "-O2", "-Wall", "-Wextra", "-std=c11", "-D_GNU_SOURCE",
+                 "-o", str(binary), str(ROOT / "tools/dnsk_preflight.c")],
+                check=True,
+            )
+            btf = tmp / "vmlinux.btf"
+            extra = NS_STRUCTS + BOUNDARY_STRUCTS
+            write_btf(btf, 104, 104, extra=extra)
+            base = [str(binary), "--btf", str(btf), "--feature", "ns",
+                    "--kmi", "android16-6.12",
+                    "--supported", str(ROOT / "ksu/supported_kmis.txt")]
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            boundary = data["btf_layout"]["boundary"]
+            self.assertTrue(boundary["checked_ns"])
+            self.assertTrue(boundary["ns"])
+            self.assertTrue(boundary["ok"])
+            self.assertTrue(data["checks"]["boundary"])
+
+            broken = mutate(extra, "task_struct", "nsproxy", 2392)
+            write_btf(btf, 104, 104, extra=broken)
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            boundary = data["btf_layout"]["boundary"]
+            self.assertFalse(boundary["ns"])
+            self.assertFalse(boundary["ok"])
+            self.assertFalse(data["checks"]["boundary"])
+
+            broken = mutate(extra, "nsproxy", "ipc_ns", 24)
+            write_btf(btf, 104, 104, extra=broken)
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False)
+            data = json.loads(proc.stdout)
+            self.assertFalse(data["btf_layout"]["boundary"]["ns"])
             self.assertFalse(data["checks"]["boundary"])
 
 

@@ -36,7 +36,8 @@ struct btf_member {
 struct btf_type_info {
 	uint32_t size;
 	uint32_t n;
-	struct btf_member members[64];
+	/* task_struct has 234 members; checks beyond the cap fail closed. */
+	struct btf_member members[256];
 };
 
 struct btf_field {
@@ -68,6 +69,7 @@ struct btf_layout {
 	int skb_ok;
 	int net_ok;
 	int fs_ok;
+	int ns_ok;
 };
 
 static uint32_t btf_rd32(const unsigned char *p)
@@ -319,8 +321,99 @@ static void btf_check_netfilter(const unsigned char *d, size_t len,
 		 nf->nat_hook && nf->nat_range2 && nf->rhashtable;
 }
 
+static void btf_check_ns(const unsigned char *d, size_t len,
+			 struct btf_layout *l)
+{
+	static const struct btf_field task[] = {
+		{ "pid", 1800 }, { "tgid", 1804 }, { "real_parent", 1816 },
+		{ "parent", 1824 }, { "group_leader", 1864 },
+		{ "thread_pid", 1904 }, { "nsproxy", 2384 },
+		{ "signal", 2392 }, { "sighand", 2400 },
+		{ "real_cred", 2296 }, { "cred", 2304 },
+		{ "cgroups", 2872 }, { "cg_list", 2880 },
+		{ "security", 3288 }, { "comm", 2320 }, { "fs", 2360 },
+		{ "files", 2368 }, { "mm", 1672 }, { "active_mm", 1680 },
+	};
+	static const struct btf_field nsproxy[] = {
+		{ "uts_ns", 8 }, { "ipc_ns", 16 }, { "mnt_ns", 24 },
+		{ "pid_ns_for_children", 32 }, { "net_ns", 40 },
+		{ "time_ns", 48 }, { "time_ns_for_children", 56 },
+		{ "cgroup_ns", 64 },
+	};
+	static const struct btf_field pidns[] = {
+		{ "idr", 0 }, { "child_reaper", 48 }, { "level", 64 },
+		{ "parent", 72 }, { "user_ns", 80 }, { "ucounts", 88 },
+		{ "ns", 104 }, { "memfd_noexec_scope", 128 },
+	};
+	static const struct btf_field ipcns[] = {
+		{ "ids", 0 }, { "sem_ctls", 792 }, { "mq_mnt", 960 },
+		{ "mq_sysctls", 1096 }, { "ipc_sysctls", 1208 },
+		{ "user_ns", 1216 }, { "ucounts", 1224 }, { "ns", 1240 },
+	};
+	static const struct btf_field userns[] = {
+		{ "uid_map", 0 }, { "gid_map", 64 }, { "parent", 192 },
+		{ "level", 200 }, { "ns", 216 }, { "ucounts", 488 },
+	};
+	static const struct btf_field cred[] = {
+		{ "uid", 8 }, { "euid", 24 }, { "security", 128 },
+		{ "user_ns", 144 }, { "ucounts", 152 },
+	};
+	static const struct btf_field pid[] = {
+		{ "count", 0 }, { "level", 4 }, { "tasks", 32 },
+	};
+	static const struct btf_field upid[] = {
+		{ "nr", 0 }, { "ns", 8 },
+	};
+	static const struct btf_field ns_common[] = {
+		{ "stashed", 0 }, { "ops", 8 }, { "inum", 16 },
+	};
+	static const struct btf_field signal_struct[] = {
+		{ "sigcnt", 0 }, { "nr_threads", 8 }, { "thread_head", 16 },
+		{ "shared_pending", 64 },
+	};
+	static const struct btf_field sighand_struct[] = {
+		{ "siglock", 0 }, { "action", 32 },
+	};
+	static const struct btf_field cgroup[] = {
+		{ "self", 0 }, { "flags", 216 }, { "level", 224 },
+		{ "subsys", 616 }, { "nr_dying_subsys", 680 },
+		{ "e_csets", 736 }, { "psi", 1176 }, { "bpf", 1184 },
+		{ "freezer", 1904 }, { "ancestors", 1936 },
+	};
+	static const struct btf_field css_set[] = {
+		{ "subsys", 0 }, { "refcount", 64 }, { "dfl_cgrp", 80 },
+		{ "cgrp_links", 336 },
+	};
+
+	l->ns_ok =
+		btf_fields_match(d, len, "task_struct", 5184, task,
+				 ARRAY_SIZE(task)) &&
+		btf_fields_match(d, len, "nsproxy", 72, nsproxy,
+				 ARRAY_SIZE(nsproxy)) &&
+		btf_fields_match(d, len, "pid_namespace", 136, pidns,
+				 ARRAY_SIZE(pidns)) &&
+		btf_fields_match(d, len, "ipc_namespace", 1264, ipcns,
+				 ARRAY_SIZE(ipcns)) &&
+		btf_fields_match(d, len, "user_namespace", 632, userns,
+				 ARRAY_SIZE(userns)) &&
+		btf_fields_match(d, len, "cred", 184, cred,
+				 ARRAY_SIZE(cred)) &&
+		btf_fields_match(d, len, "pid", 112, pid, ARRAY_SIZE(pid)) &&
+		btf_fields_match(d, len, "upid", 16, upid, ARRAY_SIZE(upid)) &&
+		btf_fields_match(d, len, "ns_common", 24, ns_common,
+				 ARRAY_SIZE(ns_common)) &&
+		btf_fields_match(d, len, "signal_struct", 1120, signal_struct,
+				 ARRAY_SIZE(signal_struct)) &&
+		btf_fields_match(d, len, "sighand_struct", 2080,
+				 sighand_struct, ARRAY_SIZE(sighand_struct)) &&
+		btf_fields_match(d, len, "cgroup", 1984, cgroup,
+				 ARRAY_SIZE(cgroup)) &&
+		btf_fields_match(d, len, "css_set", 456, css_set,
+				 ARRAY_SIZE(css_set));
+}
+
 static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
-			     int check_fs, struct btf_layout *l)
+			     int check_fs, int check_ns, struct btf_layout *l)
 {
 	static const struct btf_field mutex[] = {
 		{ "owner", 0 }, { "wait_lock", 8 }, { "wait_list", 16 },
@@ -439,6 +532,8 @@ static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
 			btf_fields_match(d, len, "file_system_type", 72,
 					 file_system_type,
 					 ARRAY_SIZE(file_system_type));
+	if (check_ns)
+		btf_check_ns(d, len, l);
 	if (!check_xt)
 		return;
 	l->xt_params_ok =
@@ -458,7 +553,8 @@ static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
 }
 
 static int btf_read_layout(const char *path, struct btf_layout *layout,
-			   int check_xt, int check_nf, int check_fs)
+			   int check_xt, int check_nf, int check_fs,
+			   int check_ns)
 {
 	FILE *fp;
 	unsigned char *data = NULL;
@@ -513,7 +609,7 @@ static int btf_read_layout(const char *path, struct btf_layout *layout,
 		btf_find_struct_info(data, used, "xt_match", &layout->match) == 0;
 	layout->found_target =
 		btf_find_struct_info(data, used, "xt_target", &layout->target) == 0;
-	btf_check_common(data, used, check_xt, check_fs, layout);
+	btf_check_common(data, used, check_xt, check_fs, check_ns, layout);
 	if (check_nf)
 		btf_check_netfilter(data, used, &layout->nf);
 	free(data);
@@ -713,6 +809,7 @@ int main(int argc, char **argv)
 	int check_nf;
 	int check_xt;
 	int check_fs;
+	int check_ns;
 	int btf;
 	int layout_ok;
 	int boundary_ok;
@@ -738,6 +835,7 @@ int main(int argc, char **argv)
 	check_nf = !strcmp(feature, "netfilter");
 	check_xt = check_nf || !strcmp(feature, "ipset");
 	check_fs = !strcmp(feature, "devtmpfs");
+	check_ns = !strcmp(feature, "ns");
 
 	if (uname(&uts) != 0) {
 		perror("uname");
@@ -750,7 +848,8 @@ int main(int argc, char **argv)
 	btf = access(btf_path, R_OK) == 0;
 	memset(&layout, 0, sizeof(layout));
 	if (btf)
-		btf_read_layout(btf_path, &layout, check_xt, check_nf, check_fs);
+		btf_read_layout(btf_path, &layout, check_xt, check_nf, check_fs,
+				check_ns);
 	if (xt_expected < 0)
 		layout_ok = 1;
 	else if (xt_expected == 104 || xt_expected == 128)
@@ -772,7 +871,8 @@ int main(int argc, char **argv)
 	boundary_ok = layout.locks_ok &&
 		      (!check_xt || (layout.xt_params_ok && layout.skb_ok &&
 				     layout.net_ok)) &&
-		      (!check_fs || layout.fs_ok);
+		      (!check_fs || layout.fs_ok) &&
+		      (!check_ns || layout.ns_ok);
 	nf_ok = !check_nf || layout.nf.ok;
 	nf_symbols = all_found(nf_required, ARRAY_SIZE(nf_required));
 	ok = page_size == 4096 && btf && layout_ok && boundary_ok && ksud &&
@@ -789,7 +889,8 @@ int main(int argc, char **argv)
 	       "\"xt_match_size\":%u,\"xt_target_size\":%u,"
 	       "\"xt_ok\":%s,\"boundary\":{\"locks\":%s,"
 	       "\"checked_xt\":%s,\"xt_params\":%s,\"skb\":%s,\"net\":%s,"
-	       "\"checked_fs\":%s,\"fs\":%s,\"ok\":%s},\"nf\":{\"checked\":%s,"
+	       "\"checked_fs\":%s,\"fs\":%s,"
+	       "\"checked_ns\":%s,\"ns\":%s,\"ok\":%s},\"nf\":{\"checked\":%s,"
 	       "\"hook_ops\":%s,\"hook_state\":%s,\"conn\":%s,"
 	       "\"pernet_ops\":%s,\"nfnetlink\":%s,\"nfnl_callback\":%s,"
 	       "\"nat_hook\":%s,\"nat_range2\":%s,"
@@ -806,6 +907,8 @@ int main(int argc, char **argv)
 	       layout.net_ok ? "true" : "false",
 	       check_fs ? "true" : "false",
 	       layout.fs_ok ? "true" : "false",
+	       check_ns ? "true" : "false",
+	       layout.ns_ok ? "true" : "false",
 	       boundary_ok ? "true" : "false",
 	       check_nf ? "true" : "false",
 	       layout.nf.hook_ops ? "true" : "false",
