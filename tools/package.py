@@ -140,7 +140,8 @@ def main() -> int:
         return 1
     for features in feature_files.values():
         for stem, ko in features.items():
-            if stem not in ("dnsk_ipset", "dnsk_netfilter", "dnsk_devtmpfs"):
+            if stem not in ("dnsk_ipset", "dnsk_netfilter", "dnsk_devtmpfs",
+                            "dnsk_ns"):
                 continue
             for mod_key, value in expected.items():
                 if mod_key == "dnsk_xt_layout" and stem == "dnsk_devtmpfs":

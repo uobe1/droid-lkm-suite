@@ -8,6 +8,7 @@
 #include "port.h"
 #include "ipc-backend.h"
 #include "core_bridge.h"
+#include "dnsk_ns_layout.h"
 #include "../gki-target.h"
 #ifdef DS_USERNS_LIVE
 #include "../userns/live.h"
