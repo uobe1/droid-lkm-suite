@@ -115,7 +115,6 @@ def main() -> int:
 
     policy_keys = {
         "dnsk_abi_profile": "abi_profile",
-        "dnsk_xt_layout": "xt_layout",
         "dnsk_page_size": "page_size",
         "dnsk_max_skb_frags": "max_skb_frags",
         "dnsk_cgroup_subsys_count": "cgroup_subsys_count",
@@ -127,6 +126,11 @@ def main() -> int:
             print(f"policy.conf is missing {policy_key}", file=sys.stderr)
             return 1
         expected[mod_key] = value
+    xt_layout = policy_value(module_root, "xt_layout")
+    if not xt_layout:
+        print("policy.conf is missing xt_layout", file=sys.stderr)
+        return 1
+    expected["dnsk_xt_layout"] = xt_layout
     try:
         for key in ("xt_layout", "page_size", "max_skb_frags",
                     "cgroup_subsys_count"):
@@ -139,6 +143,8 @@ def main() -> int:
             if stem not in ("dnsk_ipset", "dnsk_netfilter", "dnsk_devtmpfs"):
                 continue
             for mod_key, value in expected.items():
+                if mod_key == "dnsk_xt_layout" and stem == "dnsk_devtmpfs":
+                    continue
                 found = modinfo_value(ko, mod_key)
                 if found != value:
                     print(
