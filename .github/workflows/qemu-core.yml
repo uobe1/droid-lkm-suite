@@ -63,10 +63,8 @@ jobs:
           path: qemu
       - name: Install QEMU
         run: |
-          if ! sudo apt-get install -y --no-install-recommends qemu-system-arm cpio; then
-            sudo timeout 120 apt-get update
-            sudo apt-get install -y --no-install-recommends qemu-system-arm cpio
-          fi
+          sudo timeout 180 apt-get update || true
+          sudo apt-get install -y qemu-system-arm cpio qemu-efi-aarch64
       - name: Build initramfs
         shell: bash
         run: |
@@ -96,7 +94,7 @@ jobs:
         run: |
           set +e
           timeout 420 qemu-system-aarch64 \
-            -M virt -cpu max -m 2048 -smp 2 -nographic -no-reboot \
+            -M virt -cpu max -bios none -m 2048 -smp 2 -nographic -no-reboot \
             -kernel qemu/Image -initrd initramfs.cpio.gz \
             -append "console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0 module.sig_enforce=0" \
             2>&1 | tee qemu.log
