@@ -41,6 +41,29 @@ def git_commit(root: Path) -> str:
         return "unknown"
 
 
+def policy_value(module_root: Path, key: str) -> str | None:
+    for line in (module_root / "policy.conf").read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        if name == key:
+            return value
+    return None
+
+
+def modinfo_value(path: Path, key: str) -> str | None:
+    marker = key.encode() + b"="
+    data = path.read_bytes()
+    pos = data.find(marker)
+    if pos < 0:
+        return None
+    end = data.find(b"\0", pos)
+    if end < 0:
+        end = len(data)
+    return data[pos + len(marker):end].decode("ascii", "replace")
+
+
 def add_file(zf: zipfile.ZipFile, src: Path, arc: str, mode: int) -> None:
     info = zipfile.ZipInfo(arc)
     info.external_attr = (mode & 0xFFFF) << 16
@@ -89,6 +112,25 @@ def main() -> int:
                 continue
             found_features[ko.stem] = ko
         feature_files[kmi] = found_features
+
+    abi_profile = policy_value(module_root, "abi_profile")
+    xt_layout = policy_value(module_root, "xt_layout")
+    if not abi_profile or not xt_layout:
+        print("policy.conf is missing abi_profile/xt_layout", file=sys.stderr)
+        return 1
+    for kmi, features in feature_files.items():
+        for stem, ko in features.items():
+            if stem not in ("dnsk_ipset", "dnsk_netfilter"):
+                continue
+            for key, expected in (("dnsk_abi_profile", abi_profile),
+                                  ("dnsk_xt_layout", xt_layout)):
+                found = modinfo_value(ko, key)
+                if found != expected:
+                    print(
+                        f"{ko}: {key}={found!r} does not match policy {expected!r}",
+                        file=sys.stderr,
+                    )
+                    return 1
 
     dnskctl = (root / "tools" / "dnskctl").resolve()
     preflight = (bin_root / "dnsk-preflight").resolve()
@@ -147,6 +189,8 @@ def main() -> int:
             "status": "M1 development: core + namespace (android16-6.12); PID/IPC/SysV/mqueue smoke verified; full R/Docker/setns/nested gates pending; no release support",
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "source_commit": git_commit(root),
+            "abi_profile": abi_profile,
+            "xt_layout": int(xt_layout),
             "kmis": args.kmi,
             "features": {
                 kmi: ["core"] + sorted(feature_files[kmi].keys()) for kmi in args.kmi

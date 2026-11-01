@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import build_flags  # noqa: E402
 import exports_guard  # noqa: E402
 import kmi_matrix  # noqa: E402
+import package  # noqa: E402
 
 
 class KmiMatrixTests(unittest.TestCase):
@@ -120,6 +121,32 @@ class IpsetSourceTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r'\.target\s*=\s*set_target_', target_block)), 7)
         self.assertEqual(len(re.findall(r'\.family\s*=\s*NFPROTO_IPV[46]', target_block)), 7)
         self.assertEqual(len(re.findall(r'\.me\s*=\s*THIS_MODULE', target_block)), 7)
+
+
+class PackageStampTests(unittest.TestCase):
+    def test_policy_and_modinfo_roundtrip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "policy.conf").write_text(
+                "# comment\nabi_profile=android16-6.12-xt104\nxt_layout=104\n"
+            )
+            self.assertEqual(
+                package.policy_value(root, "abi_profile"),
+                "android16-6.12-xt104",
+            )
+            self.assertEqual(package.policy_value(root, "xt_layout"), "104")
+            self.assertIsNone(package.policy_value(root, "missing"))
+
+            ko = root / "dnsk_ipset.ko"
+            ko.write_bytes(
+                b"\x7fELF\0dnsk_xt_layout=104\0dnsk_abi_profile=android16-6.12-xt104\0"
+            )
+            self.assertEqual(package.modinfo_value(ko, "dnsk_xt_layout"), "104")
+            self.assertEqual(
+                package.modinfo_value(ko, "dnsk_abi_profile"),
+                "android16-6.12-xt104",
+            )
+            self.assertIsNone(package.modinfo_value(ko, "dnsk_missing"))
 
 
 class PackagingInputTests(unittest.TestCase):

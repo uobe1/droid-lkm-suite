@@ -34,6 +34,8 @@ KMI 只冻结导出符号和 KMI 类型，不冻结 config 相关的内部 struc
   `dnsk_xt_layout` stamp 与 `policy.conf`, 不一致即拒绝; 再跑
   `dnsk-preflight` 从设备 BTF 校验 size/全部成员偏移 (104/128). 任一失败即
   拒绝 `ksud insmod`; `policy.conf` 缺少 profile 字段同样拒绝.
+- `tools/package.py` 在打包时再次比对 ipset/netfilter 的 stamp 与
+  `policy.conf`, 并把 `abi_profile`/`xt_layout` 写入 manifest; 不一致不出包.
 
 ## 验证
 
