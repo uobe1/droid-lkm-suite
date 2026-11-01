@@ -45,11 +45,16 @@ dnsk_netfilter-y += \
 	vendor/netfilter/upstream/nft_fib_ipv6.o \
 	vendor/netfilter/upstream/nft_reject_ipv6.o
 ccflags-y += -DCONFIG_NF_TABLES_IPV4=1 -DCONFIG_NF_TABLES_IPV6=1 -DCONFIG_NF_TABLES_INET=1
-ifeq ($(DNSK_XT_NOCOMPAT),1)
-ccflags-y += -DDNSK_XT_NOCOMPAT=1
-LINUXINCLUDE := -I$(src)/../../core/include/compat_include $(LINUXINCLUDE)
+ifneq ($(DNSK_XT_LAYOUT),)
+ccflags-y += -DDNSK_XT_LAYOUT=$(DNSK_XT_LAYOUT)
 endif
 LINUXINCLUDE := -I$(src)/vendor/netfilter/compat $(LINUXINCLUDE)
+ifeq ($(DNSK_XT_NOCOMPAT),1)
+ccflags-y += -DDNSK_XT_NOCOMPAT=1
+# Must stay ahead of every other include dir so the shim sees x_tables.h
+# before the kernel tree and vendor copies.
+LINUXINCLUDE := -I$(src)/../../core/include/compat_include $(LINUXINCLUDE)
+endif
 ccflags-y += -I$(src)/vendor/netfilter -I$(srctree)
 ccflags-y += -I$(src)/../../core/include
 ccflags-y += -std=gnu11 -Wno-declaration-after-statement

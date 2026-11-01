@@ -73,6 +73,10 @@ module_path() {
 	printf '%s/kmi/%s/dnsk_%s.ko\n' "$MODDIR" "$kmi" "$feature"
 }
 
+module_layout() {
+	tr '\0' '\n' < "$1" | sed -n 's/^dnsk_xt_layout=//p' | head -n 1
+}
+
 is_loaded() {
 	name=$1
 	bb=$(find_busybox)
@@ -128,12 +132,18 @@ do_preflight() {
 		set -- --kmi "$(resolve_kmi 2>/dev/null || true)" --supported "$SUPPORTED"
 		case "$feature" in
 		ipset|netfilter)
-			xt_layout=$(sed -n 's/^xt_layout=//p' "$MODDIR/policy.conf" 2>/dev/null | head -1)
-			[ -n "$xt_layout" ] || xt_layout=104
+			xt_layout=$(sed -n 's/^xt_layout=//p' "$MODDIR/policy.conf" 2>/dev/null | head -n 1)
+			[ -n "$xt_layout" ] || die "policy.conf has no xt_layout; refusing to guess"
+			stamp=$(module_layout "$ko")
+			[ -n "$stamp" ] || die "module has no dnsk_xt_layout stamp: $ko"
+			[ "$stamp" = "$xt_layout" ] || \
+				die "module xt layout $stamp does not match policy $xt_layout: $ko"
 			set -- "$@" --xt-layout "$xt_layout"
 			;;
 		esac
 		set -- "$@" "$feature"
+		DNSK_KSUD=$(find_ksud 2>/dev/null || true)
+		export DNSK_KSUD
 		set +e
 		"$MODDIR/bin/dnsk-preflight" "$@"
 		rc=$?

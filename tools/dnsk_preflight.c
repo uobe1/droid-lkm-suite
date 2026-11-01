@@ -81,6 +81,8 @@ static int btf_find_struct_info(const unsigned char *d, size_t len,
 	if (len < 24 || btf_rd16(d) != 0xeb9f || d[2] != 1)
 		return -1;
 	hdr_len = btf_rd32(d + 4);
+	if (hdr_len < 24)
+		return -1;
 	type_off = btf_rd32(d + 8);
 	type_len = btf_rd32(d + 12);
 	str_off = btf_rd32(d + 16);
@@ -187,9 +189,9 @@ static int xt_layout_matches(const struct btf_type_info *t, uint32_t size,
 	uint32_t table = compat ? 96 : 80;
 	uint32_t size_off = compat ? 104 : 88;
 	uint32_t usersize = compat ? 108 : 92;
-	uint32_t hooks = compat ? 112 : 96;
-	uint32_t proto = compat ? 116 : 100;
-	uint32_t family = compat ? 118 : 102;
+	uint32_t hooks = compat ? 116 : 96;
+	uint32_t proto = compat ? 120 : 100;
+	uint32_t family = compat ? 122 : 102;
 
 	if (t->size != size)
 		return 0;
@@ -201,10 +203,17 @@ static int xt_layout_matches(const struct btf_type_info *t, uint32_t size,
 	    !member_is(t, "hooks", hooks) || !member_is(t, "proto", proto) ||
 	    !member_is(t, "family", family))
 		return 0;
-	if (target)
-		return member_is(t, "target", 48) &&
-		       member_is(t, "targetsize", size_off);
-	return member_is(t, "match", 48) && member_is(t, "matchsize", size_off);
+	if (!compat)
+		return target ? member_is(t, "target", 48) &&
+				member_is(t, "targetsize", size_off) :
+				member_is(t, "match", 48) &&
+				member_is(t, "matchsize", size_off);
+	if (!member_is(t, "compatsize", 112))
+		return 0;
+	return target ? member_is(t, "target", 48) &&
+			member_is(t, "targetsize", size_off) :
+			member_is(t, "match", 48) &&
+			member_is(t, "matchsize", size_off);
 }
 
 static int btf_read_layout(const char *path, struct btf_layout *layout)
@@ -224,6 +233,15 @@ static int btf_read_layout(const char *path, struct btf_layout *layout)
 			size_t next = cap ? cap * 2 : 1024 * 1024;
 			unsigned char *grown;
 
+			if (cap == 64 * 1024 * 1024) {
+				int c = fgetc(fp);
+
+				if (c == EOF)
+					break;
+				free(data);
+				fclose(fp);
+				return -1;
+			}
 			if (next > 64 * 1024 * 1024) {
 				free(data);
 				fclose(fp);
@@ -257,22 +275,37 @@ static int btf_read_layout(const char *path, struct btf_layout *layout)
 	return 0;
 }
 
+enum sym_id {
+	SYM_SYS_CALL_TABLE,
+	SYM_INIT_MM,
+	SYM_PANIC_NOTIFIER_LIST,
+	SYM_STOP_MACHINE,
+	SYM_REGISTER_KPROBE,
+	SYM_KALLSYMS_LOOKUP_NAME,
+	SYM_KALLSYMS_ON_EACH_SYMBOL,
+	SYM_DCACHE_CLEAN_INVAL_POC,
+	SYM_FLUSH_DCACHE_AREA,
+	SYM_COUNT,
+};
+
 struct sym_req {
 	const char *name;
 	int found;
 };
 
 static struct sym_req required[] = {
-	{ "sys_call_table", 0 },
-	{ "init_mm", 0 },
-	{ "panic_notifier_list", 0 },
-	{ "stop_machine", 0 },
-	{ "register_kprobe", 0 },
-	{ "kallsyms_lookup_name", 0 },
-	{ "kallsyms_on_each_symbol", 0 },
-	{ "dcache_clean_inval_poc", 0 },
-	{ "__flush_dcache_area", 0 },
+	[SYM_SYS_CALL_TABLE] = { "sys_call_table", 0 },
+	[SYM_INIT_MM] = { "init_mm", 0 },
+	[SYM_PANIC_NOTIFIER_LIST] = { "panic_notifier_list", 0 },
+	[SYM_STOP_MACHINE] = { "stop_machine", 0 },
+	[SYM_REGISTER_KPROBE] = { "register_kprobe", 0 },
+	[SYM_KALLSYMS_LOOKUP_NAME] = { "kallsyms_lookup_name", 0 },
+	[SYM_KALLSYMS_ON_EACH_SYMBOL] = { "kallsyms_on_each_symbol", 0 },
+	[SYM_DCACHE_CLEAN_INVAL_POC] = { "dcache_clean_inval_poc", 0 },
+	[SYM_FLUSH_DCACHE_AREA] = { "__flush_dcache_area", 0 },
 };
+
+_Static_assert(ARRAY_SIZE(required) == SYM_COUNT, "required symbol table out of sync");
 
 static int find_symbol(const char *name)
 {
@@ -347,6 +380,28 @@ static int supported_kmi(const char *path, const char *kmi)
 	return found;
 }
 
+static char *path_ksud(void)
+{
+	static char cand[PATH_MAX];
+	const char *p = getenv("PATH");
+
+	if (!p)
+		return NULL;
+	while (*p) {
+		size_t len = strcspn(p, ":");
+
+		if (len && len < sizeof(cand) - sizeof("/ksud")) {
+			snprintf(cand, sizeof(cand), "%.*s/ksud", (int)len, p);
+			if (access(cand, X_OK) == 0)
+				return cand;
+		}
+		p += len;
+		if (*p == ':')
+			p++;
+	}
+	return NULL;
+}
+
 static char *find_ksud(void)
 {
 	static char path[PATH_MAX];
@@ -356,7 +411,7 @@ static char *find_ksud(void)
 		"/data/adb/ksu/bin/ksud",
 	};
 
-	if (env && access(env, X_OK) == 0) {
+	if (env && env[0] && access(env, X_OK) == 0) {
 		snprintf(path, sizeof(path), "%s", env);
 		return path;
 	}
@@ -366,7 +421,7 @@ static char *find_ksud(void)
 			return path;
 		}
 	}
-	return NULL;
+	return path_ksud();
 }
 
 int main(int argc, char **argv)
@@ -424,12 +479,16 @@ int main(int argc, char **argv)
 	supported = supported_kmi(supported_path, kmi);
 	scan_kallsyms();
 
-	dcache = required[7].found || required[8].found;
-	resolver = required[5].found || required[6].found;
+	dcache = required[SYM_DCACHE_CLEAN_INVAL_POC].found ||
+		 required[SYM_FLUSH_DCACHE_AREA].found;
+	resolver = required[SYM_KALLSYMS_LOOKUP_NAME].found ||
+		   required[SYM_KALLSYMS_ON_EACH_SYMBOL].found;
 	ok = page_size == 4096 && btf && layout_ok && ksud && supported &&
-	     kmi[0] && required[0].found && required[1].found &&
-	     required[2].found && required[3].found && required[4].found &&
-	     dcache && resolver;
+	     kmi[0] && required[SYM_SYS_CALL_TABLE].found &&
+	     required[SYM_INIT_MM].found &&
+	     required[SYM_PANIC_NOTIFIER_LIST].found &&
+	     required[SYM_STOP_MACHINE].found &&
+	     required[SYM_REGISTER_KPROBE].found && dcache && resolver;
 
 	printf("{\"ok\":%s,\"release\":\"%s\",\"kmi\":\"%s\","
 	       "\"supported\":%s,\"page_size\":%lu,\"btf\":%s,"

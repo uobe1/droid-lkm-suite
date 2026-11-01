@@ -12,13 +12,15 @@
 - `core/include/compat_include/linux/netfilter/x_tables.h`: 对
   `DNSK_XT_NOCOMPAT=1` 构建, 在首次包含 `x_tables.h` 前 undef
   `CONFIG_NETFILTER_XTABLES_COMPAT`.
-- `core/include/dnsk_xt_layout.h`: 静态断言 104 字节及
-  `list/name/revision/match|target/checkentry/destroy/me/table/matchsize|
-  targetsize/usersize/hooks/proto/family` 的全部偏移.
-- ipset 与 netfilter 的 Kbuild 在设备构建传入 `DNSK_XT_NOCOMPAT=1`;
-  QEMU/stock GKI 使用默认 compat 构建.
-- `dnskctl preflight ipset|netfilter` 从 `policy.conf` 的 `xt_layout`
-  (`android16-6.12` 为 104) 传给 `dnsk-preflight`.
+- `core/include/dnsk_xt_layout.h`: 对 104/128 两种布局静态断言 size 及
+  `list/name/revision/match|target/checkentry/destroy/compat_from_user|
+  compat_to_user/me/table/matchsize|targetsize/usersize/compatsize/hooks/
+  proto/family` 的全部偏移, 并写入 `dnsk_xt_layout=` 模块 stamp.
+- ipset 与 netfilter 的 Kbuild 传递 `DNSK_XT_NOCOMPAT`/`DNSK_XT_LAYOUT`,
+  shim 保持在 `LINUXINCLUDE` 最前; 设备构建为 104, QEMU/stock GKI 为 128.
+  CI 构建后校验 `.ko` 内的 stamp 与 profile 一致.
+- `dnskctl load ipset|netfilter` 先比对 `.ko` stamp 与 `policy.conf` 的
+  `xt_layout`, 不一致即拒绝; 再把 `xt_layout` 传给 `dnsk-preflight`.
 
 ## dnsk-preflight
 

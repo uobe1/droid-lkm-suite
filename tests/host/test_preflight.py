@@ -9,7 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def write_btf(path: Path, match_size: int, target_size: int) -> None:
+def write_btf(path: Path, match_size: int, target_size: int,
+              family_override: int | None = None) -> None:
     import struct
 
     compat = match_size == 128
@@ -17,14 +18,15 @@ def write_btf(path: Path, match_size: int, target_size: int) -> None:
     table = 96 if compat else 80
     size_off = 104 if compat else 88
     usersize = 108 if compat else 92
-    hooks = 112 if compat else 96
-    proto = 116 if compat else 100
-    family = 118 if compat else 102
+    compatsize = 112 if compat else None
+    hooks = 116 if compat else 96
+    proto = 120 if compat else 100
+    family = 122 if compat else 102
 
     names = [
         "xt_match", "xt_target", "list", "name", "revision", "match",
         "target", "checkentry", "destroy", "me", "table", "matchsize",
-        "targetsize", "usersize", "hooks", "proto", "family",
+        "targetsize", "usersize", "compatsize", "hooks", "proto", "family",
     ]
     strtab = bytearray(b"\0")
     offsets = {}
@@ -32,15 +34,19 @@ def write_btf(path: Path, match_size: int, target_size: int) -> None:
         offsets[name] = len(strtab)
         strtab += name.encode() + b"\0"
 
-    def members(target: bool, size: int, target_off: int) -> list[tuple[str, int]]:
-        return [
+    def member_rows(target: bool, fam: int) -> list[tuple[str, int]]:
+        rows = [
             ("list", 0), ("name", 16), ("revision", 45),
             ("target" if target else "match", 48),
             ("checkentry", 56), ("destroy", 64), ("me", me),
-            ("table", table), ("targetsize" if target else "matchsize", size_off),
-            ("usersize", usersize), ("hooks", hooks), ("proto", proto),
-            ("family", family),
+            ("table", table),
+            ("targetsize" if target else "matchsize", size_off),
+            ("usersize", usersize),
         ]
+        if compatsize is not None:
+            rows.append(("compatsize", compatsize))
+        rows += [("hooks", hooks), ("proto", proto), ("family", fam)]
+        return rows
 
     types = bytearray()
 
@@ -49,8 +55,9 @@ def write_btf(path: Path, match_size: int, target_size: int) -> None:
         for member, off in rows:
             types.extend(struct.pack("<III", offsets[member], 1, off * 8))
 
-    add_struct("xt_match", match_size, members(False, match_size, match_size))
-    add_struct("xt_target", target_size, members(True, target_size, target_size))
+    match_family = family if family_override is None else family_override
+    add_struct("xt_match", match_size, member_rows(False, match_family))
+    add_struct("xt_target", target_size, member_rows(True, family))
     header = struct.pack(
         "<HBBIIIII",
         0xEB9F, 1, 0, 24, 0, len(types), len(types), len(strtab),
@@ -131,6 +138,19 @@ class PreflightTests(unittest.TestCase):
             data = json.loads(proc.stdout)
             self.assertFalse(data["btf_layout"]["xt_ok"])
             self.assertFalse(data["checks"]["xt_layout"])
+            self.assertNotEqual(proc.returncode, 0)
+
+            write_btf(btf, 104, 104, family_override=100)
+            proc = subprocess.run(
+                [str(binary), "--btf", str(btf), "--xt-layout", "104",
+                 "--kmi", "android16-6.12",
+                 "--supported", str(ROOT / "ksu/supported_kmis.txt")],
+                text=True, capture_output=True, check=False,
+            )
+            data = json.loads(proc.stdout)
+            self.assertFalse(data["btf_layout"]["xt_ok"])
+            self.assertFalse(data["checks"]["xt_layout"])
+            self.assertNotEqual(proc.returncode, 0)
 
 
 if __name__ == "__main__":

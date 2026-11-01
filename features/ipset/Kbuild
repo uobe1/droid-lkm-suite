@@ -11,14 +11,20 @@ dnsk_ipset-y := main.o \
 ccflags-y += -DCONFIG_IP_SET=1 -DCONFIG_IP_SET_HASH_IP=1 -DCONFIG_IP_SET_HASH_NET=1
 ccflags-y += -DCONFIG_NETFILTER_XT_SET=1 -DCONFIG_IP_SET_MAX=256
 
-ifeq ($(DNSK_XT_NOCOMPAT),1)
-ccflags-y += -DDNSK_XT_NOCOMPAT=1
-LINUXINCLUDE := -I$(src)/../../core/include/compat_include $(LINUXINCLUDE)
+ifneq ($(DNSK_XT_LAYOUT),)
+ccflags-y += -DDNSK_XT_LAYOUT=$(DNSK_XT_LAYOUT)
 endif
 
 # The vendored 6.12 ipset/uapi headers are used before the kernel tree copies
 # so the module does not depend on CONFIG_IP_SET being enabled in the KMI.
 LINUXINCLUDE := -I$(src)/vendor/linux/include $(LINUXINCLUDE)
+
+ifeq ($(DNSK_XT_NOCOMPAT),1)
+ccflags-y += -DDNSK_XT_NOCOMPAT=1
+# Must stay ahead of every other include dir so the shim sees x_tables.h
+# before the kernel tree and vendor copies.
+LINUXINCLUDE := -I$(src)/../../core/include/compat_include $(LINUXINCLUDE)
+endif
 
 ccflags-y += -std=gnu11 -Wno-declaration-after-statement
 ccflags-y += -I$(src)/../../core/include

@@ -15,14 +15,17 @@ KMI 只冻结导出符号和 KMI 类型，不冻结 config 相关的内部 struc
 - `profiles/abi/android16-6.12-xt128.json` (stock GKI 6.12):
   `"xtables_compat":1` -> compat 构建, `DNSK_XT_LAYOUT=128`.
 - `tools/build_flags.py` 校验 schema/abi key, 输出 shell 变量; CI 构建步骤
-  `eval` 这些变量并传给 ipset/netfilter Kbuild.
+  `eval` 这些变量并传给 ipset/netfilter Kbuild (`DNSK_XT_NOCOMPAT` 与
+  `DNSK_XT_LAYOUT`), 构建后校验 `.ko` 内的 `dnsk_xt_layout=` stamp.
 - CI `workflow_dispatch` 输入 `build_profile`, 默认 xt104; `push` 也使用
   默认值. `package-dev` 用同一 profile 把 `xt_layout` 写入 `policy.conf`.
 - `features/ipset` 与 `features/netfilter` 的 no-compat shim 在首次包含
-  `x_tables.h` 前关闭 `CONFIG_NETFILTER_XTABLES_COMPAT`;
-  `core/include/dnsk_xt_layout.h` 静态断言 104 字节及全部字段偏移.
-- `dnsk-preflight` 读取设备 BTF, 校验 size/全部成员偏移 (104/128);
-  `dnskctl load` 先跑 preflight, 失败即拒绝 `ksud insmod`.
+  `x_tables.h` 前关闭 `CONFIG_NETFILTER_XTABLES_COMPAT`; shim 保持在
+  `LINUXINCLUDE` 最前. `core/include/dnsk_xt_layout.h` 对 104/128 两种布局
+  静态断言 size 和全部字段偏移, 并生成 `dnsk_xt_layout=` 模块 stamp.
+- `dnskctl load ipset|netfilter` 先比对 `.ko` stamp 与 `policy.conf` 的
+  `xt_layout`, 不一致即拒绝; 再跑 `dnsk-preflight` 从设备 BTF 校验
+  size/全部成员偏移 (104/128). 任一失败即拒绝 `ksud insmod`.
 
 ## 验证
 
