@@ -21,3 +21,4 @@ endif
 LINUXINCLUDE := -I$(src)/vendor/linux/include $(LINUXINCLUDE)
 
 ccflags-y += -std=gnu11 -Wno-declaration-after-statement
+ccflags-y += -I$(src)/../../core/include
