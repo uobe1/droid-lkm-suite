@@ -124,6 +124,13 @@ class IpsetSourceTests(unittest.TestCase):
 
 
 class PackageStampTests(unittest.TestCase):
+    def test_stamp_keys_per_module(self):
+        for stem in ("dnsk_ipset", "dnsk_netfilter"):
+            self.assertIn("dnsk_xt_layout", package.stamp_keys(stem))
+        for stem in ("dnsk_ns", "dnsk_devtmpfs"):
+            self.assertNotIn("dnsk_xt_layout", package.stamp_keys(stem))
+            self.assertIn("dnsk_abi_profile", package.stamp_keys(stem))
+
     def test_policy_and_modinfo_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

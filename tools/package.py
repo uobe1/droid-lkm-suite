@@ -64,6 +64,18 @@ def modinfo_value(path: Path, key: str) -> str | None:
     return data[pos + len(marker):end].decode("ascii", "replace")
 
 
+def stamp_keys(stem: str) -> tuple[str, ...]:
+    keys = (
+        "dnsk_abi_profile",
+        "dnsk_page_size",
+        "dnsk_max_skb_frags",
+        "dnsk_cgroup_subsys_count",
+    )
+    if stem in ("dnsk_ipset", "dnsk_netfilter"):
+        return keys + ("dnsk_xt_layout",)
+    return keys
+
+
 def add_file(zf: zipfile.ZipFile, src: Path, arc: str, mode: int) -> None:
     info = zipfile.ZipInfo(arc)
     info.external_attr = (mode & 0xFFFF) << 16
@@ -143,10 +155,8 @@ def main() -> int:
             if stem not in ("dnsk_ipset", "dnsk_netfilter", "dnsk_devtmpfs",
                             "dnsk_ns"):
                 continue
-            for mod_key, value in expected.items():
-                if mod_key == "dnsk_xt_layout" and stem in (
-                        "dnsk_devtmpfs", "dnsk_ns"):
-                    continue
+            for mod_key in stamp_keys(stem):
+                value = expected[mod_key]
                 found = modinfo_value(ko, mod_key)
                 if found != value:
                     print(
