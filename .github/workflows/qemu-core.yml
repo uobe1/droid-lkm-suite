@@ -14,6 +14,13 @@ on:
           - active-ipset
           - docker
         default: baseline
+      kernel:
+        description: stock DDK kernel or Native oracle with container configs
+        type: choice
+        options:
+          - stock
+          - oracle
+        default: stock
       image_run_id:
         description: reuse qemu-6.12 artifact from this run id (empty = build)
         required: false
@@ -33,6 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build modules and boot Image
+        if: ${{ inputs.kernel != 'oracle' }}
         shell: bash
         run: |
           set -euxo pipefail
@@ -60,6 +68,35 @@ jobs:
           cp "$KDIR/.config" out/kernel.config
           grep -E '^CONFIG_(DEVTMPFS|SERIAL_AMBA_PL011|MODULE_SIG|MODULE_SIG_FORCE|MODULE_SIG_ALL|VIRTIO|9P_FS|KALLSYMS|CFI_CLANG|PID_NS|IPC_NS|SYSVIPC|NF_TABLES|IP_SET)=' \
             "$KDIR/.config" || true
+          ls -l out
+      - name: Build Native oracle Image
+        if: ${{ inputs.kernel == 'oracle' }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends bc bison flex libssl-dev libelf-dev dwarves
+          KDIR="/opt/ddk/kdir/android16-6.12"
+          "$KDIR/scripts/config" --file "$KDIR/.config" \
+            -e NAMESPACES -e UTS_NS -e IPC_NS -e PID_NS -e NET_NS -e USER_NS \
+            -e POSIX_MQUEUE -e POSIX_MQUEUE_SYSCTL -e SYSVIPC -e SYSVIPC_SYSCTL \
+            -e CGROUPS -e CGROUP_PIDS -e CGROUP_DEVICE -e MEMCG -e CGROUP_BPF -e PSI \
+            -e DEVTMPFS -e DEVTMPFS_MOUNT -e NF_TABLES -e NF_TABLES_INET \
+            -e NF_TABLES_IPV4 -e NF_TABLES_IPV6 \
+            -e IP_SET -e IP_SET_HASH_IP -e IP_SET_HASH_NET -e NETFILTER_XT_SET \
+            -e NETFILTER_XT_MATCH_ADDRTYPE -e NETFILTER_XT_TARGET_REJECT \
+            -e NETFILTER_XT_MATCH_RECENT \
+            -e TMPFS_XATTR -e TMPFS_POSIX_ACL -e FUSE_FS -e OVERLAY_FS \
+            -e VETH -e BRIDGE -e VIRTIO_NET -e VIRTIO_PCI -e VIRTIO_BLK \
+            -e SECCOMP -e SECCOMP_FILTER -d MODULE_SIG_FORCE
+          make -C "$KDIR" ARCH=arm64 LLVM=1 olddefconfig
+          grep -E '^CONFIG_(IPC_NS|PID_NS|USER_NS|POSIX_MQUEUE|CGROUP_PIDS|DEVTMPFS|NF_TABLES|IP_SET)=' "$KDIR/.config"
+          make -C "$KDIR" ARCH=arm64 LLVM=1 -j"$(nproc)" Image
+          mkdir -p out
+          OBJCOPY=$(command -v llvm-objcopy || command -v aarch64-linux-gnu-objcopy || command -v objcopy)
+          "$OBJCOPY" -O binary -R .note -R .note.gnu.build-id -R .comment -S "$KDIR/vmlinux" out/Image
+          cp "$KDIR/System.map" out/
+          cp "$KDIR/.config" out/kernel.config
           ls -l out
       - uses: actions/upload-artifact@v4
         with:
@@ -101,7 +138,9 @@ jobs:
           mkdir -p rootfs
           tar -xzf alpine.tar.gz -C rootfs
           mkdir -p rootfs/modules rootfs/proc rootfs/sys rootfs/dev rootfs/tmp
-          cp qemu/dnsk_*.ko rootfs/modules/
+          for ko in qemu/dnsk_*.ko; do
+            [ -e "$ko" ] && cp "$ko" rootfs/modules/
+          done
           curl -fsSL -o libmnl.apk \
             https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64/libmnl-1.0.5-r2.apk
           curl -fsSL -o ipset.apk \
