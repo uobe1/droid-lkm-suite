@@ -127,40 +127,50 @@ static int btf_find_struct(const unsigned char *d, size_t len,
 static int btf_read_layout(const char *path, struct btf_layout *layout)
 {
 	FILE *fp;
-	long size;
-	unsigned char *data;
-	size_t got;
+	unsigned char *data = NULL;
+	size_t cap = 0, used = 0;
+	size_t n;
+	int read_err;
 
 	memset(layout, 0, sizeof(*layout));
 	fp = fopen(path, "rb");
 	if (!fp)
 		return -1;
-	if (fseek(fp, 0, SEEK_END) != 0) {
-		fclose(fp);
-		return -1;
+	while (1) {
+		if (used == cap) {
+			size_t next = cap ? cap * 2 : 1024 * 1024;
+			unsigned char *grown;
+
+			if (next > 64 * 1024 * 1024) {
+				free(data);
+				fclose(fp);
+				return -1;
+			}
+			grown = realloc(data, next);
+			if (!grown) {
+				free(data);
+				fclose(fp);
+				return -1;
+			}
+			data = grown;
+			cap = next;
+		}
+		n = fread(data + used, 1, cap - used, fp);
+		used += n;
+		if (n == 0)
+			break;
 	}
-	size = ftell(fp);
-	if (size <= 0 || size > 64 * 1024 * 1024) {
-		fclose(fp);
-		return -1;
-	}
-	rewind(fp);
-	data = malloc((size_t)size);
-	if (!data) {
-		fclose(fp);
-		return -1;
-	}
-	got = fread(data, 1, (size_t)size, fp);
+	read_err = ferror(fp);
 	fclose(fp);
-	if (got != (size_t)size) {
+	if (read_err || used == 0) {
 		free(data);
 		return -1;
 	}
 	layout->found_match =
-		btf_find_struct(data, (size_t)size, "xt_match",
+		btf_find_struct(data, used, "xt_match",
 				&layout->xt_match_size) == 0;
 	layout->found_target =
-		btf_find_struct(data, (size_t)size, "xt_target",
+		btf_find_struct(data, used, "xt_target",
 				&layout->xt_target_size) == 0;
 	free(data);
 	return 0;
