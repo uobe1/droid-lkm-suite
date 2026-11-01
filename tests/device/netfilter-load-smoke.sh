@@ -7,7 +7,6 @@ set -u
 MODDIR=${DNSK_MODDIR:-/data/local/tmp/dnsk}
 KSUD=${DNSK_KSUD:-}
 BB=${DNSK_BUSYBOX:-}
-fail=0
 loaded=0
 
 if [ -z "$KSUD" ]; then
