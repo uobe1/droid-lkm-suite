@@ -113,21 +113,36 @@ def main() -> int:
             found_features[ko.stem] = ko
         feature_files[kmi] = found_features
 
-    abi_profile = policy_value(module_root, "abi_profile")
-    xt_layout = policy_value(module_root, "xt_layout")
-    if not abi_profile or not xt_layout:
-        print("policy.conf is missing abi_profile/xt_layout", file=sys.stderr)
+    policy_keys = {
+        "dnsk_abi_profile": "abi_profile",
+        "dnsk_xt_layout": "xt_layout",
+        "dnsk_page_size": "page_size",
+        "dnsk_max_skb_frags": "max_skb_frags",
+        "dnsk_cgroup_subsys_count": "cgroup_subsys_count",
+    }
+    expected: dict[str, str] = {}
+    for mod_key, policy_key in policy_keys.items():
+        value = policy_value(module_root, policy_key)
+        if not value:
+            print(f"policy.conf is missing {policy_key}", file=sys.stderr)
+            return 1
+        expected[mod_key] = value
+    try:
+        for key in ("xt_layout", "page_size", "max_skb_frags",
+                    "cgroup_subsys_count"):
+            int(expected[f"dnsk_{key}"])
+    except ValueError:
+        print("policy.conf has a non-numeric ABI value", file=sys.stderr)
         return 1
     for kmi, features in feature_files.items():
         for stem, ko in features.items():
             if stem not in ("dnsk_ipset", "dnsk_netfilter"):
                 continue
-            for key, expected in (("dnsk_abi_profile", abi_profile),
-                                  ("dnsk_xt_layout", xt_layout)):
-                found = modinfo_value(ko, key)
-                if found != expected:
+            for mod_key, value in expected.items():
+                found = modinfo_value(ko, mod_key)
+                if found != value:
                     print(
-                        f"{ko}: {key}={found!r} does not match policy {expected!r}",
+                        f"{ko}: {mod_key}={found!r} does not match policy {value!r}",
                         file=sys.stderr,
                     )
                     return 1
@@ -189,8 +204,11 @@ def main() -> int:
             "status": "M1 development: core + namespace (android16-6.12); PID/IPC/SysV/mqueue smoke verified; full R/Docker/setns/nested gates pending; no release support",
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "source_commit": git_commit(root),
-            "abi_profile": abi_profile,
-            "xt_layout": int(xt_layout),
+            "abi_profile": expected["dnsk_abi_profile"],
+            "xt_layout": int(expected["dnsk_xt_layout"]),
+            "page_size": int(expected["dnsk_page_size"]),
+            "max_skb_frags": int(expected["dnsk_max_skb_frags"]),
+            "cgroup_subsys_count": int(expected["dnsk_cgroup_subsys_count"]),
             "kmis": args.kmi,
             "features": {
                 kmi: ["core"] + sorted(feature_files[kmi].keys()) for kmi in args.kmi

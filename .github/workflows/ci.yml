@@ -209,6 +209,9 @@ jobs:
             --profile "profiles/abi/${PROFILE}.json" --kmi android16-6.12)"
           sed -i "s/^xt_layout=.*/xt_layout=${DNSK_XT_LAYOUT}/" ksu/policy.conf
           sed -i "s/^abi_profile=.*/abi_profile=${DNSK_ABI_PROFILE}/" ksu/policy.conf
+          sed -i "s/^page_size=.*/page_size=${DNSK_PAGE_SIZE}/" ksu/policy.conf
+          sed -i "s/^max_skb_frags=.*/max_skb_frags=${DNSK_MAX_SKB_FRAGS}/" ksu/policy.conf
+          sed -i "s/^cgroup_subsys_count=.*/cgroup_subsys_count=${DNSK_CGROUP_SUBSYS_COUNT}/" ksu/policy.conf
           python tools/package.py --dev \
             --kmi android16-6.12 \
             --bin-root tools/bin \

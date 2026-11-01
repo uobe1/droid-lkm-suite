@@ -73,12 +73,8 @@ module_path() {
 	printf '%s/kmi/%s/dnsk_%s.ko\n' "$MODDIR" "$kmi" "$feature"
 }
 
-module_layout() {
-	tr '\000' '\n' < "$1" | sed -n 's/^dnsk_xt_layout=//p' | head -n 1
-}
-
-module_abi_profile() {
-	tr '\000' '\n' < "$1" | sed -n 's/^dnsk_abi_profile=//p' | head -n 1
+module_modinfo() {
+	tr '\000' '\n' < "$1" | sed -n "s/^$2=//p" | head -n 1
 }
 
 is_loaded() {
@@ -138,16 +134,27 @@ do_preflight() {
 		ipset|netfilter)
 			xt_layout=$(sed -n 's/^xt_layout=//p' "$MODDIR/policy.conf" 2>/dev/null | head -n 1)
 			[ -n "$xt_layout" ] || die "policy.conf has no xt_layout; refusing to guess"
-			stamp=$(module_layout "$ko")
+			stamp=$(module_modinfo "$ko" dnsk_xt_layout)
 			[ -n "$stamp" ] || die "module has no dnsk_xt_layout stamp: $ko"
 			[ "$stamp" = "$xt_layout" ] || \
 				die "module xt layout $stamp does not match policy $xt_layout: $ko"
 			abi_profile=$(sed -n 's/^abi_profile=//p' "$MODDIR/policy.conf" 2>/dev/null | head -n 1)
 			[ -n "$abi_profile" ] || die "policy.conf has no abi_profile; refusing to guess"
-			module_profile=$(module_abi_profile "$ko")
+			module_profile=$(module_modinfo "$ko" dnsk_abi_profile)
 			[ -n "$module_profile" ] || die "module has no dnsk_abi_profile stamp: $ko"
 			[ "$module_profile" = "$abi_profile" ] || \
 				die "module ABI profile $module_profile does not match policy $abi_profile: $ko"
+			for pair in dnsk_page_size:page_size \
+				    dnsk_max_skb_frags:max_skb_frags \
+				    dnsk_cgroup_subsys_count:cgroup_subsys_count; do
+				mkey=${pair%%:*}
+				pkey=${pair#*:}
+				expected=$(sed -n "s/^${pkey}=//p" "$MODDIR/policy.conf" 2>/dev/null | head -n 1)
+				[ -n "$expected" ] || die "policy.conf has no $pkey; refusing to guess"
+				got=$(module_modinfo "$ko" "$mkey")
+				[ "$got" = "$expected" ] || \
+					die "module $mkey=$got does not match policy $pkey=$expected: $ko"
+			done
 			set -- "$@" --xt-layout "$xt_layout"
 			;;
 		esac
