@@ -29,6 +29,13 @@ enum dnsk_hook_type {
 	DNSK_HOOK_KPROBE = 1,
 	DNSK_HOOK_SYSCALL,
 	DNSK_HOOK_DATA,
+	/*
+	 * KRETPROBE: symbol is the target, target is the entry handler and
+	 * replacement is the return handler:
+	 *   int (*)(struct kretprobe_instance *, struct pt_regs *)
+	 *   int (*)(struct kretprobe_instance *, unsigned long, struct pt_regs *)
+	 */
+	DNSK_HOOK_KRETPROBE,
 };
 
 struct dnsk_hook_req {

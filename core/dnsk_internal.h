@@ -38,6 +38,15 @@ struct dnsk_hook {
 			void *target;
 			unsigned long original;
 		} data;
+		struct {
+			struct kretprobe krp;
+			const char *symbol;
+			unsigned long addr;
+			int (*entry_handler)(struct kretprobe_instance *,
+					     struct pt_regs *);
+			int (*ret_handler)(struct kretprobe_instance *,
+					   unsigned long, struct pt_regs *);
+		} kretprobe;
 	} u;
 };
 

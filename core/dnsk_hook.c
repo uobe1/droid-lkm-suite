@@ -36,6 +36,32 @@ static int dnsk_kprobe_pre(struct kprobe *kp, struct pt_regs *regs)
 	return 0;
 }
 
+static int dnsk_kretprobe_entry(struct kretprobe_instance *ri,
+				struct pt_regs *regs)
+{
+	struct dnsk_hook *hook =
+		container_of(ri->rp, struct dnsk_hook, u.kretprobe.krp);
+
+	if (!hook->active)
+		return 0;
+	if (hook->u.kretprobe.entry_handler)
+		return hook->u.kretprobe.entry_handler(ri, regs);
+	return 0;
+}
+
+static int dnsk_kretprobe_ret(struct kretprobe_instance *ri,
+			      unsigned long ret, struct pt_regs *regs)
+{
+	struct dnsk_hook *hook =
+		container_of(ri->rp, struct dnsk_hook, u.kretprobe.krp);
+
+	if (!hook->active)
+		return 0;
+	if (hook->u.kretprobe.ret_handler)
+		return hook->u.kretprobe.ret_handler(ri, ret, regs);
+	return 0;
+}
+
 int dnsk_hooks_init(void)
 {
 	memset(dnsk_hooks, 0, sizeof(dnsk_hooks));
@@ -57,6 +83,9 @@ static int dnsk_remove_locked(struct dnsk_hook *hook)
 	case DNSK_HOOK_DATA:
 		ret = dnsk_patch_pointer(hook->u.data.target,
 					 (void *)hook->u.data.original);
+		break;
+	case DNSK_HOOK_KRETPROBE:
+		unregister_kretprobe(&hook->u.kretprobe.krp);
 		break;
 	default:
 		ret = -EINVAL;
@@ -165,6 +194,30 @@ int dnsk_hook_add_internal(const struct dnsk_hook_req *req)
 			*req->original_out = (void *)original;
 		break;
 	}
+	case DNSK_HOOK_KRETPROBE:
+		if (!req->symbol || !req->target || !req->replacement) {
+			ret = -EINVAL;
+			break;
+		}
+		hook->u.kretprobe.symbol = req->symbol;
+		hook->u.kretprobe.entry_handler =
+			(int (*)(struct kretprobe_instance *, struct pt_regs *))
+			req->target;
+		hook->u.kretprobe.ret_handler =
+			(int (*)(struct kretprobe_instance *, unsigned long,
+				 struct pt_regs *))req->replacement;
+		hook->u.kretprobe.krp.kp.symbol_name = req->symbol;
+		hook->u.kretprobe.krp.entry_handler = dnsk_kretprobe_entry;
+		hook->u.kretprobe.krp.ret_handler = dnsk_kretprobe_ret;
+		ret = register_kretprobe(&hook->u.kretprobe.krp);
+		if (!ret) {
+			hook->u.kretprobe.addr =
+				(unsigned long)hook->u.kretprobe.krp.kp.addr;
+			if (req->original_out)
+				*req->original_out =
+					(void *)hook->u.kretprobe.addr;
+		}
+		break;
 	default:
 		ret = -EINVAL;
 		break;
