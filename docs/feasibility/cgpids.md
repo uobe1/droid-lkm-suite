@@ -93,6 +93,18 @@ kprobe `can_fork` PC-return、post_fork 计数与 `+pids`→`+memory`; 已知问
 trampoline BRK 导致写 cgroup.procs 硬崩、迁移任务不计、post_fork 并发超限、
 `pids.max=0` 语义错误、rmdir 失败丢限制. 本项目不重复这些做法.
 
+## 设备探测 (2026-11-01)
+
+- `/proc/cgroups` 无 pids；`/sys/fs/cgroup/cgroup.controllers` 在当前
+  Termux/mount namespace 下不可读（Android init namespace 才有 cgroup2 视图）。
+- kallsyms 中存在（地址受 kptr_restrict 隐藏，ksud 可解析）：
+  `cgroup_init_cftypes` (t)、`cgroup_addrm_files` (t)、`cgroup_mutex` (D)、
+  `cgroup_can_fork`/`cgroup_post_fork`/`cgroup_release` (T)、
+  `cgroup_migrate_execute` (t)、`have_canfork_callback` (d)。
+- 结论：LKM-alone 的 v2 虚拟控制器路径所需的静态符号/槽位存在；实现前仍需
+  在可读 cgroup2 的 namespace 中做 preflight（controllers、callback 槽、
+  init_css_set.dfl_cgrp）并在失败时不出现 pids 文件。
+
 ## 决策 (2026-11-01)
 
 用户接受 v1.0.0 采用 **v2-only 虚拟控制器**, cgroup v1 的未修改
