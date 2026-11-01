@@ -13,7 +13,7 @@ ccflags-y += -DCONFIG_NETFILTER_XT_SET=1 -DCONFIG_IP_SET_MAX=256
 
 ifeq ($(DNSK_XT_NOCOMPAT),1)
 ccflags-y += -DDNSK_XT_NOCOMPAT=1
-LINUXINCLUDE := -I$(src)/compat_include $(LINUXINCLUDE)
+LINUXINCLUDE := -I$(src)/../../core/include/compat_include $(LINUXINCLUDE)
 endif
 
 # The vendored 6.12 ipset/uapi headers are used before the kernel tree copies

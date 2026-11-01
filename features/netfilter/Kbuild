@@ -45,6 +45,10 @@ dnsk_netfilter-y += \
 	vendor/netfilter/upstream/nft_fib_ipv6.o \
 	vendor/netfilter/upstream/nft_reject_ipv6.o
 ccflags-y += -DCONFIG_NF_TABLES_IPV4=1 -DCONFIG_NF_TABLES_IPV6=1 -DCONFIG_NF_TABLES_INET=1
+ifeq ($(DNSK_XT_NOCOMPAT),1)
+ccflags-y += -DDNSK_XT_NOCOMPAT=1
+LINUXINCLUDE := -I$(src)/../../core/include/compat_include $(LINUXINCLUDE)
+endif
 LINUXINCLUDE := -I$(src)/vendor/netfilter/compat $(LINUXINCLUDE)
 ccflags-y += -I$(src)/vendor/netfilter -I$(srctree)
 ccflags-y += -std=gnu11 -Wno-declaration-after-statement

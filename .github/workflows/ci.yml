@@ -81,7 +81,7 @@ jobs:
             cp "$GITHUB_WORKSPACE/features/diag/dnsk_diag.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             make -C "$GITHUB_WORKSPACE/features/devtmpfs" KDIR="$KDIR" modules
             cp "$GITHUB_WORKSPACE/features/devtmpfs/dnsk_devtmpfs.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
-            make -C "$GITHUB_WORKSPACE/features/netfilter" KDIR="$KDIR" modules
+            make -C "$GITHUB_WORKSPACE/features/netfilter" KDIR="$KDIR" DNSK_XT_NOCOMPAT=1 modules
             cp "$GITHUB_WORKSPACE/features/netfilter/dnsk_netfilter.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             # The android16-6.12 device has 104-byte xt_match/xt_target while
             # the DDK headers carry the 128-byte CONFIG_COMPAT layout.  Build the

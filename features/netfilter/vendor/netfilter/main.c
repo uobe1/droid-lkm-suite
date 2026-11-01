@@ -7,6 +7,7 @@
 #include <linux/string.h>
 #include <net/net_namespace.h>
 #include <net/netns/nftables.h>
+#include "dnsk_xt_layout.h"
 
 static bool activate;
 static bool gki;
