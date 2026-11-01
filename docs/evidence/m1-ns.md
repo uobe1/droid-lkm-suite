@@ -76,8 +76,26 @@ ipcns:   ipc:[4026535013] same
 pid+ipc: pid 1 ipc:[4026535020] same
 ```
 
+## 2026-11-01 复测 (boot_id `aa1f26d0-...`)
+
+使用 CI run `41270878281` 的 6.12 build，当前代码无 ns 源改动：
+
+```text
+ksud insmod dnsk_ns.ko gki=1 activate=1 -> rc=0, refcnt=1
+droidspaces_ns: entry preflight passed: 21 functions, 20 syscalls, 6 callbacks
+droidspaces_ns: experimental namespace hooks active; module stays pinned until reboot
+run-ns-smoke.sh:
+  pid-ns / nested-pid-ns / ipc-ns / pid-ipc-ns all pass
+  mqueue-parent / mqueue-ipc / mqueue-pid-ipc all pass
+  namespace_cycles=100
+  NS_SMOKE_OK
+```
+
+`boot_id` 未变，无 Oops/BUG/panic。core 在 ns/devtmpfs 激活后 refcnt=1。
+
 ## 已知边界
 
 - 模块激活后 pinned；替换需重启。
-- 未测试：setns、nested PID、container reboot、100 容器、Docker、QEMU。
+- 未测试：setns 到已有 ns、container reboot、100 容器、Docker、QEMU ns。
+- nested PID 已由 `run-ns-smoke.sh` 覆盖。
 - 不得据此创建 tag 或宣称完整 PID/IPC 支持。
