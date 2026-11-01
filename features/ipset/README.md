@@ -10,9 +10,16 @@ Android GKI KMI `android16-6.12`。源码来自 AOSP 固定 tag，见
 ## 构建
 
 ```sh
+# stock-GKI/QEMU: kernel has CONFIG_NETFILTER_XTABLES_COMPAT=y (128-byte xt_match)
 make -C features/ipset KDIR=/opt/ddk/kdir/android16-6.12 modules
+
+# target 6.12.30 MTK device: XTABLES_COMPAT=n (104-byte xt_match/xt_target)
+make -C features/ipset KDIR=/opt/ddk/kdir/android16-6.12 DNSK_XT_NOCOMPAT=1 modules
 ```
 
+设备构建通过 `compat_include` shim 在首次包含 `x_tables.h` 前关闭
+`CONFIG_NETFILTER_XTABLES_COMPAT`; `main.c` 的静态断言固定 104 字节及全部
+字段偏移, 防止再次出现内核按 104 步长遍历 128 数组导致的 panic。
 输出 `features/ipset/dnsk_ipset.ko`。CI 的 `android16-6.12` 构建与 QEMU 产物
 会编译本模块；DDK 构建结果与导出检查以 CI 日志为准。
 
