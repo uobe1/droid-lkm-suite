@@ -447,12 +447,43 @@ static void btf_check_cgpids(const unsigned char *d, size_t len,
 		{ "subsys", 0 }, { "refcount", 64 }, { "dfl_cgrp", 80 },
 		{ "cgrp_links", 336 },
 	};
+	static const struct btf_field cftype[] = {
+		{ "name", 0 }, { "private", 64 }, { "max_write_len", 72 },
+		{ "flags", 80 }, { "file_offset", 84 }, { "ss", 88 },
+		{ "node", 96 }, { "kf_ops", 112 }, { "seq_show", 152 },
+		{ "write", 200 }, { "poll", 208 },
+	};
+	static const struct btf_field css_state[] = {
+		{ "cgroup", 0 }, { "ss", 8 }, { "refcnt", 16 },
+		{ "sibling", 32 }, { "children", 48 }, { "id", 80 },
+		{ "flags", 84 }, { "parent", 192 },
+	};
+	static const struct btf_field cgroup_file[] = {
+		{ "kn", 0 }, { "notified_at", 8 }, { "notify_timer", 16 },
+	};
+	static const struct btf_field kernfs_node[] = {
+		{ "parent", 8 }, { "name", 16 }, { "flags", 60 },
+		{ "priv", 104 },
+	};
+	static const struct btf_field cgroup_root[] = {
+		{ "subsys_mask", 8 }, { "cgrp", 64 }, { "nr_cgrps", 2056 },
+	};
 
 	l->cgpids_ok = btf_cgroup_subsys_ok(d, len) &&
 		       btf_fields_match(d, len, "cgroup", 1984, cgroup,
 					ARRAY_SIZE(cgroup)) &&
 		       btf_fields_match(d, len, "css_set", 456, css_set,
-					ARRAY_SIZE(css_set));
+					ARRAY_SIZE(css_set)) &&
+		       btf_fields_match(d, len, "cftype", 216, cftype,
+					ARRAY_SIZE(cftype)) &&
+		       btf_fields_match(d, len, "cgroup_subsys_state", 216,
+					css_state, ARRAY_SIZE(css_state)) &&
+		       btf_fields_match(d, len, "cgroup_file", 56, cgroup_file,
+					ARRAY_SIZE(cgroup_file)) &&
+		       btf_fields_match(d, len, "kernfs_node", 144, kernfs_node,
+					ARRAY_SIZE(kernfs_node)) &&
+		       btf_fields_match(d, len, "cgroup_root", 6272,
+					cgroup_root, ARRAY_SIZE(cgroup_root));
 }
 
 static void btf_check_common(const unsigned char *d, size_t len, int check_xt,

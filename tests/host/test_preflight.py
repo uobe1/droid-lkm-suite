@@ -162,6 +162,24 @@ NS_STRUCTS = [
         ("subsys", 0), ("refcount", 64), ("dfl_cgrp", 80),
         ("cgrp_links", 336),
     ]),
+    ("cftype", 216, [
+        ("name", 0), ("private", 64), ("max_write_len", 72),
+        ("flags", 80), ("file_offset", 84), ("ss", 88), ("node", 96),
+        ("kf_ops", 112), ("seq_show", 152), ("write", 200), ("poll", 208),
+    ]),
+    ("cgroup_subsys_state", 216, [
+        ("cgroup", 0), ("ss", 8), ("refcnt", 16), ("sibling", 32),
+        ("children", 48), ("id", 80), ("flags", 84), ("parent", 192),
+    ]),
+    ("cgroup_file", 56, [
+        ("kn", 0), ("notified_at", 8), ("notify_timer", 16),
+    ]),
+    ("kernfs_node", 144, [
+        ("parent", 8), ("name", 16), ("flags", 60), ("priv", 104),
+    ]),
+    ("cgroup_root", 6272, [
+        ("subsys_mask", 8), ("cgrp", 64), ("nr_cgrps", 2056),
+    ]),
 ]
 
 
@@ -179,6 +197,24 @@ CGPIDS_STRUCTS = [
     ("css_set", 456, [
         ("subsys", 0), ("refcount", 64), ("dfl_cgrp", 80),
         ("cgrp_links", 336),
+    ]),
+    ("cftype", 216, [
+        ("name", 0), ("private", 64), ("max_write_len", 72),
+        ("flags", 80), ("file_offset", 84), ("ss", 88), ("node", 96),
+        ("kf_ops", 112), ("seq_show", 152), ("write", 200), ("poll", 208),
+    ]),
+    ("cgroup_subsys_state", 216, [
+        ("cgroup", 0), ("ss", 8), ("refcnt", 16), ("sibling", 32),
+        ("children", 48), ("id", 80), ("flags", 84), ("parent", 192),
+    ]),
+    ("cgroup_file", 56, [
+        ("kn", 0), ("notified_at", 8), ("notify_timer", 16),
+    ]),
+    ("kernfs_node", 144, [
+        ("parent", 8), ("name", 16), ("flags", 60), ("priv", 104),
+    ]),
+    ("cgroup_root", 6272, [
+        ("subsys_mask", 8), ("cgrp", 64), ("nr_cgrps", 2056),
     ]),
 ]
 
