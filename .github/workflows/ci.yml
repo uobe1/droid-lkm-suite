@@ -60,14 +60,21 @@ jobs:
       matrix:
         include:
           - kmi: android12-5.10
+            profile: ""
           - kmi: android13-5.10
+            profile: ""
           - kmi: android13-5.15
+            profile: ""
           - kmi: android14-5.15
+            profile: ""
           - kmi: android14-6.1
+            profile: ""
           - kmi: android15-6.6
+            profile: ""
           - kmi: android16-6.12
             profile: ${{ inputs.build_profile || 'android16-6.12-xt104' }}
           - kmi: android17-6.18
+            profile: ""
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-20260828
