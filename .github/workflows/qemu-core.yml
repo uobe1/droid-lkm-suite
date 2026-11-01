@@ -13,12 +13,18 @@ on:
           - active-devtmpfs
           - active-ipset
         default: baseline
+      image_run_id:
+        description: reuse qemu-6.12 artifact from this run id (empty = build)
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
   image:
+    if: ${{ inputs.image_run_id == '' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/ylarod/ddk-min:android16-6.12-20260828
@@ -54,13 +60,22 @@ jobs:
 
   boot:
     needs: image
+    if: ${{ always() && (needs.image.result == 'success' || inputs.image_run_id != '') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
+        if: ${{ inputs.image_run_id == '' }}
         with:
           name: qemu-6.12
           path: qemu
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.image_run_id != '' }}
+        with:
+          name: qemu-6.12
+          path: qemu
+          run-id: ${{ inputs.image_run_id }}
+          github-token: ${{ github.token }}
       - name: Install QEMU
         run: |
           sudo timeout 180 apt-get update || true
