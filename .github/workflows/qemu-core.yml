@@ -63,8 +63,10 @@ jobs:
           path: qemu
       - name: Install QEMU
         run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-system-arm cpio
+          if ! sudo apt-get install -y --no-install-recommends qemu-system-arm cpio; then
+            sudo timeout 120 apt-get update
+            sudo apt-get install -y --no-install-recommends qemu-system-arm cpio
+          fi
       - name: Build initramfs
         shell: bash
         run: |
