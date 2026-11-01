@@ -94,7 +94,8 @@ run-ns-smoke.sh:
 `boot_id` 未变，无 Oops/BUG/panic。core 在 ns/devtmpfs 激活后 refcnt=1。
 
 组合容器 smoke：在新 PID+mount namespace 内挂载 devtmpfs，`mini_dev_ok`，
-PID ns `pid:[4026535006]`，退出后宿主无残留 mount。
+PID ns `pid:[4026535006]`，退出后宿主无残留 mount。droid-distro Debian
+容器内嵌套容器同样通过（`NESTED_DEV_OK`，PID 1 为 sh），宿主 `/dev` 未变。
 
 ## 已知边界
 

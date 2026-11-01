@@ -70,6 +70,18 @@ unshare -p -m -f --mount-proc /system/bin/sh -c '
 结果 `mini_dev_ok`，PID ns 为 `pid:[4026535006]`，退出后宿主
 `mount | grep dnsk-mini` 为空。说明 ns 与 devtmpfs 可在容器命名空间内组合使用。
 
+进一步在 droid-distro Debian 容器内做嵌套容器 smoke：
+
+```sh
+unshare --mount --propagation unchanged --pid --fork --mount-proc \
+  /bin/sh -c 'mount -t devtmpfs devtmpfs /dev &&
+    test -c /dev/null && test -c /dev/zero && readlink /proc/self/ns/pid'
+```
+
+输出 `NESTED_DEV_OK`、`pid:[4026535006]`、PID 1 为 `sh`；宿主的 `/dev`
+仍是 tmpfs，`boot_id` 未变，说明 devtmpfs 在嵌套 mount namespace 内可用且
+不污染宿主。
+
 ## QEMU active 尝试 (2026-11-01, run 41270172134)
 
 QEMU image 构建成功，但 stock DDK 内核用 busybox `insmod` 插入失败：
