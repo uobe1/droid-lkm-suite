@@ -69,6 +69,10 @@ docker import /alpine.tar.gz alpine:local || fail docker_import
 if docker run --rm --network none alpine:local /bin/sh -c \
 	'echo DOCKER_CONTAINER_OK; cat /proc/1/cgroup; id'; then
 	echo "DNSK_DOCKER_ISOLATED_OK"
+	docker run --rm --network none --pids-limit 32 alpine:local /bin/sh -c \
+		'n=0; while [ $n -lt 40 ]; do if (sleep 30 &) 2>/dev/null; then n=$((n+1)); else break; fi; done; \
+		 echo pids_spawned=$n; cat /sys/fs/cgroup/pids.max; cat /sys/fs/cgroup/pids.current' \
+		|| fail docker_pids_limit
 else
 	echo "isolated_run_failed; trying host namespaces"
 	docker run --rm --network host --pid host --ipc host --uts host \
