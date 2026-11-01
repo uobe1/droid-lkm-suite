@@ -12,18 +12,50 @@ ROOT = Path(__file__).resolve().parents[2]
 def write_btf(path: Path, match_size: int, target_size: int) -> None:
     import struct
 
-    strs = b"\0xt_match\0xt_target\0"
-    name_match = 1
-    name_target = len(b"\0xt_match\0")
-    types = b"".join(
-        struct.pack("<III", name, (4 << 24) | 0, size)
-        for name, size in ((name_match, match_size), (name_target, target_size))
-    )
+    compat = match_size == 128
+    me = 88 if compat else 72
+    table = 96 if compat else 80
+    size_off = 104 if compat else 88
+    usersize = 108 if compat else 92
+    hooks = 112 if compat else 96
+    proto = 116 if compat else 100
+    family = 118 if compat else 102
+
+    names = [
+        "xt_match", "xt_target", "list", "name", "revision", "match",
+        "target", "checkentry", "destroy", "me", "table", "matchsize",
+        "targetsize", "usersize", "hooks", "proto", "family",
+    ]
+    strtab = bytearray(b"\0")
+    offsets = {}
+    for name in names:
+        offsets[name] = len(strtab)
+        strtab += name.encode() + b"\0"
+
+    def members(target: bool, size: int, target_off: int) -> list[tuple[str, int]]:
+        return [
+            ("list", 0), ("name", 16), ("revision", 45),
+            ("target" if target else "match", 48),
+            ("checkentry", 56), ("destroy", 64), ("me", me),
+            ("table", table), ("targetsize" if target else "matchsize", size_off),
+            ("usersize", usersize), ("hooks", hooks), ("proto", proto),
+            ("family", family),
+        ]
+
+    types = bytearray()
+
+    def add_struct(name: str, size: int, rows: list[tuple[str, int]]) -> None:
+        types.extend(struct.pack("<III", offsets[name], (4 << 24) | len(rows), size))
+        for member, off in rows:
+            types.extend(struct.pack("<III", offsets[member], 1, off * 8))
+
+    add_struct("xt_match", match_size, members(False, match_size, match_size))
+    add_struct("xt_target", target_size, members(True, target_size, target_size))
     header = struct.pack(
         "<HBBIIIII",
-        0xEB9F, 1, 0, 24, 0, len(types), len(types), len(strs),
+        0xEB9F, 1, 0, 24, 0, len(types), len(types), len(strtab),
     )
-    path.write_bytes(header + types + strs)
+    path.write_bytes(header + bytes(types) + bytes(strtab))
 
 
 class PreflightTests(unittest.TestCase):
@@ -75,6 +107,17 @@ class PreflightTests(unittest.TestCase):
             data = json.loads(proc.stdout)
             self.assertEqual(data["btf_layout"]["xt_match_size"], 104)
             self.assertEqual(data["btf_layout"]["xt_target_size"], 104)
+            self.assertTrue(data["btf_layout"]["xt_ok"])
+            self.assertTrue(data["checks"]["xt_layout"])
+
+            write_btf(btf, 128, 128)
+            proc = subprocess.run(
+                [str(binary), "--btf", str(btf), "--xt-layout", "128",
+                 "--kmi", "android16-6.12",
+                 "--supported", str(ROOT / "ksu/supported_kmis.txt")],
+                text=True, capture_output=True, check=False,
+            )
+            data = json.loads(proc.stdout)
             self.assertTrue(data["btf_layout"]["xt_ok"])
             self.assertTrue(data["checks"]["xt_layout"])
 

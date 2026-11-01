@@ -28,9 +28,20 @@ _Thread_local int dnsk_android_tls_alignment_fix = 0;
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
+struct btf_member {
+	char name[32];
+	uint32_t bit_off;
+};
+
+struct btf_type_info {
+	uint32_t size;
+	uint32_t n;
+	struct btf_member members[24];
+};
+
 struct btf_layout {
-	uint32_t xt_match_size;
-	uint32_t xt_target_size;
+	struct btf_type_info match;
+	struct btf_type_info target;
 	int found_match;
 	int found_target;
 };
@@ -59,8 +70,8 @@ static const char *btf_str(const unsigned char *strs, size_t str_len,
 	return s;
 }
 
-static int btf_find_struct(const unsigned char *d, size_t len,
-			   const char *want, uint32_t *out_size)
+static int btf_find_struct_info(const unsigned char *d, size_t len,
+				const char *want, struct btf_type_info *out)
 {
 	uint32_t hdr_len, type_off, type_len, str_off, str_len;
 	const unsigned char *types;
@@ -87,11 +98,33 @@ static int btf_find_struct(const unsigned char *d, size_t len,
 		uint32_t size_type = btf_rd32(types + pos + 8);
 		unsigned int kind = (info >> 24) & 0x1f;
 		unsigned int vlen = info & 0xffff;
+		int kflag = (int)(info >> 31);
 		const char *name = btf_str(strs, str_len, name_off);
 
 		pos += 12;
 		if (name && kind == 4 && !strcmp(name, want)) {
-			*out_size = size_type;
+			unsigned int i;
+
+			if ((size_t)vlen * 12 > type_len - pos)
+				return -1;
+			out->size = size_type;
+			out->n = 0;
+			for (i = 0; i < vlen; i++) {
+				uint32_t mo = btf_rd32(types + pos);
+				uint32_t mb = btf_rd32(types + pos + 8);
+				const char *mn;
+
+				pos += 12;
+				if (i >= ARRAY_SIZE(out->members))
+					continue;
+				mn = btf_str(strs, str_len, mo);
+				out->members[out->n].bit_off =
+					(uint32_t)(kflag ? (mb & 0xffffff) : mb);
+				snprintf(out->members[out->n].name,
+					 sizeof(out->members[out->n].name),
+					 "%s", mn ? mn : "");
+				out->n++;
+			}
 			return 0;
 		}
 		switch (kind) {
@@ -122,6 +155,56 @@ static int btf_find_struct(const unsigned char *d, size_t len,
 			return -1;
 	}
 	return -1;
+}
+
+static int btf_member_off(const struct btf_type_info *t, const char *name,
+			  uint32_t *off)
+{
+	uint32_t i;
+
+	for (i = 0; i < t->n; i++) {
+		if (!strcmp(t->members[i].name, name)) {
+			*off = t->members[i].bit_off / 8;
+			return 0;
+		}
+	}
+	return -1;
+}
+
+static int member_is(const struct btf_type_info *t, const char *name,
+		     uint32_t expected)
+{
+	uint32_t off;
+
+	return btf_member_off(t, name, &off) == 0 && off == expected;
+}
+
+static int xt_layout_matches(const struct btf_type_info *t, uint32_t size,
+			     int target)
+{
+	int compat = size == 128;
+	uint32_t me = compat ? 88 : 72;
+	uint32_t table = compat ? 96 : 80;
+	uint32_t size_off = compat ? 104 : 88;
+	uint32_t usersize = compat ? 108 : 92;
+	uint32_t hooks = compat ? 112 : 96;
+	uint32_t proto = compat ? 116 : 100;
+	uint32_t family = compat ? 118 : 102;
+
+	if (t->size != size)
+		return 0;
+	if (!member_is(t, "list", 0) || !member_is(t, "name", 16) ||
+	    !member_is(t, "revision", 45) ||
+	    !member_is(t, "checkentry", 56) ||
+	    !member_is(t, "destroy", 64) || !member_is(t, "me", me) ||
+	    !member_is(t, "table", table) || !member_is(t, "usersize", usersize) ||
+	    !member_is(t, "hooks", hooks) || !member_is(t, "proto", proto) ||
+	    !member_is(t, "family", family))
+		return 0;
+	if (target)
+		return member_is(t, "target", 48) &&
+		       member_is(t, "targetsize", size_off);
+	return member_is(t, "match", 48) && member_is(t, "matchsize", size_off);
 }
 
 static int btf_read_layout(const char *path, struct btf_layout *layout)
@@ -167,11 +250,9 @@ static int btf_read_layout(const char *path, struct btf_layout *layout)
 		return -1;
 	}
 	layout->found_match =
-		btf_find_struct(data, used, "xt_match",
-				&layout->xt_match_size) == 0;
+		btf_find_struct_info(data, used, "xt_match", &layout->match) == 0;
 	layout->found_target =
-		btf_find_struct(data, used, "xt_target",
-				&layout->xt_target_size) == 0;
+		btf_find_struct_info(data, used, "xt_target", &layout->target) == 0;
 	free(data);
 	return 0;
 }
@@ -329,10 +410,16 @@ int main(int argc, char **argv)
 	memset(&layout, 0, sizeof(layout));
 	if (btf)
 		btf_read_layout(btf_path, &layout);
-	layout_ok = xt_expected < 0 ||
-		    (layout.found_match && layout.found_target &&
-		     layout.xt_match_size == (uint32_t)xt_expected &&
-		     layout.xt_target_size == (uint32_t)xt_expected);
+	if (xt_expected < 0)
+		layout_ok = 1;
+	else if (xt_expected == 104 || xt_expected == 128)
+		layout_ok = layout.found_match && layout.found_target &&
+			    xt_layout_matches(&layout.match,
+					      (uint32_t)xt_expected, 0) &&
+			    xt_layout_matches(&layout.target,
+					      (uint32_t)xt_expected, 1);
+	else
+		layout_ok = 0;
 	ksud = find_ksud();
 	supported = supported_kmi(supported_path, kmi);
 	scan_kallsyms();
@@ -352,7 +439,7 @@ int main(int argc, char **argv)
 	       ok ? "true" : "false", uts.release, kmi,
 	       supported ? "true" : "false", page_size,
 	       btf ? "true" : "false", ksud ? ksud : "",
-	       layout.xt_match_size, layout.xt_target_size,
+	       layout.match.size, layout.target.size,
 	       layout_ok ? "true" : "false");
 	for (size_t i = 0; i < ARRAY_SIZE(required); i++) {
 		printf("%s\"%s\":%s", i ? "," : "", required[i].name,
