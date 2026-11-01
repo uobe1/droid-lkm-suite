@@ -1,7 +1,7 @@
 # M1 devtmpfs evidence (android16-6.12)
 
-日期：2026-10-31。范围：`dnsk_devtmpfs.ko`，vendored Droidspaces 6.12 devtmpfs。
-没有 tag，没有 release 声明。
+日期：2026-10-31 / 2026-11-01。范围：`dnsk_devtmpfs.ko`，vendored Droidspaces
+6.12 devtmpfs。没有 tag，没有 release 声明。
 
 ## Build
 
@@ -28,6 +28,34 @@ droidspaces_devtmpfs: inactive: activate=1 and gki=1 are required
 
 - gate 正确：`activate=0` 不创建内部 mount、不安装 device hooks。
 - no-op `module_exit` 修复后，inactive 模式可正常卸载；`boot_id` 不变，无 Oops。
+
+## Active load (2026-11-01, boot_id `aa1f26d0-ea6d-4caf-8d95-6d25a953eb1f`)
+
+构建：CI run `41270878281` 的 6.12 build 成功（含 `dnsk_fs_layout.h` 静态断言
+和 ABI stamps；该 run 的 package 因旧 xt stamp 检查误报失败，已由 28911d9 修复）。
+设备上 `/proc/filesystems` 无原生 devtmpfs，因此 activation 走完整路径：
+
+```sh
+su -c 'ksud insmod .../dnsk_devtmpfs.ko gki=1 activate=1'
+su -c 'DNSK_DEVTMPFS_MNT=/data/local/tmp/dnsk-devtest \
+       /system/bin/sh .../devtmpfs-smoke.sh'
+```
+
+结果：
+
+```text
+insmod-rc=0
+dnsk_devtmpfs 126976 1
+ready=Y
+droidspaces_devtmpfs: device lifecycle active, ready=1 errors=0; pinned until reboot
+mounted /data/local/tmp/dnsk-devtest
+... dm-61 dm-60 ... iorap_dev ... video0 ...
+DEVTMPFS_SMOKE_OK
+```
+
+- 内部/公开 devtmpfs mount 创建了字符设备节点；宿主 `/dev` 的 mountinfo
+  未变化，测试 mount 已卸载，无残留。
+- `boot_id` 未变，无 Oops/BUG/panic；模块按设计在 active 后 pin，需重启卸载。
 
 ## QEMU active 尝试 (2026-11-01, run 41270172134)
 
@@ -59,7 +87,7 @@ QEMU initramfs 没有该加载器。故 QEMU active-devtmpfs **需要 ksud 等�
 
 ## Not tested
 
-- `activate=1` 设备生命周期 hooks、容器 `/dev` 节点、宿主 `/dev` 不变。
-- 测试脚本：`tests/device/devtmpfs-smoke.sh`（需 active 模块）。
+- 容器 `/dev` 工作负载（Droidspaces/Docker 使用该 devtmpfs）。
+- 设备重启后的持久化/自动加载策略（当前需手动 insmod；模块 pin）。
 
 不得据此宣称 devtmpfs 已支持。

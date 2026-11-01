@@ -7,5 +7,5 @@ attached to a release.
 
 Current stage: M0 core scaffold; `android16-6.12` additionally carries the
 `ns` and `devtmpfs` development modules (ns PID/IPC/SysV/mqueue smoke verified;
-devtmpfs inactive load verified, active pending reboot). All other feature
+devtmpfs active load/mount smoke verified, pinned by design). All other feature
 entries are `not-shipped`. No entry is validated.
