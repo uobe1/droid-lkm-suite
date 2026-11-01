@@ -1,4 +1,4 @@
-/* Registration order; core precedes expressions. */
+/* Registration order; core precedes expressions, xt units are last. */
 DS_NF_UNIT(xt_addrtype)
 DS_NF_UNIT(nf_tables_api)
 DS_NF_UNIT(nft_ct)
@@ -15,3 +15,6 @@ DS_NF_UNIT(nft_fib_ipv4)
 DS_NF_UNIT(nft_reject_ipv4)
 DS_NF_UNIT(nft_fib_ipv6)
 DS_NF_UNIT(nft_reject_ipv6)
+/* xt tables units register only with x_tables; no nft dependency either way. */
+DS_NF_UNIT(xt_reject)
+DS_NF_UNIT(xt_recent)

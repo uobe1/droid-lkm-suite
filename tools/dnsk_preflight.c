@@ -369,9 +369,10 @@ static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
 		{ "destructor_arg", 40 }, { "frags", 88 },
 	};
 	static const struct btf_field net[] = {
-		{ "user_ns", 80 }, { "sysctls", 176 }, { "ipv4", 768 },
-		{ "ipv6", 1536 }, { "nf", 2384 }, { "ct", 2608 },
-		{ "wext_nlevents", 2824 }, { "gen", 2848 }, { "xfrm", 2944 },
+		{ "user_ns", 80 }, { "proc_net", 160 }, { "sysctls", 176 },
+		{ "ipv4", 768 }, { "ipv6", 1536 }, { "nf", 2384 },
+		{ "ct", 2608 }, { "wext_nlevents", 2824 }, { "gen", 2848 },
+		{ "xfrm", 2944 },
 	};
 
 	l->locks_ok = btf_fields_match(d, len, "mutex", 48, mutex,

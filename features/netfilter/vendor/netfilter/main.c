@@ -13,7 +13,7 @@ static bool activate;
 static bool gki;
 module_param(activate, bool, 0400);
 module_param(gki, bool, 0400);
-MODULE_PARM_DESC(activate, "Register nftables/xt_addrtype after target validation");
+MODULE_PARM_DESC(activate, "Register nftables/xt units after target validation");
 MODULE_PARM_DESC(gki, "Allow the compiled android16-6.12 GKI family");
 
 static bool ds_gki_supported(void)
@@ -71,7 +71,7 @@ static int __init ds_netfilter_init(void)
         }
     }
 	registered = true;
-    pr_info("xt_addrtype and nftables registered; private per-net state\n");
+    pr_info("xt_addrtype and nftables registered; xt_REJECT/xt_RECENT registered; private per-net state\n");
     return 0;
 }
 static void __exit ds_netfilter_exit(void)
@@ -90,4 +90,4 @@ module_init(ds_netfilter_init);
 module_exit(ds_netfilter_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Shikochin");
-MODULE_DESCRIPTION("droid-lkm-suite xt_addrtype and nftables for android16-6.12 GKI");
+MODULE_DESCRIPTION("droid-lkm-suite xt_addrtype, xt_REJECT/xt_RECENT and nftables for android16-6.12 GKI");

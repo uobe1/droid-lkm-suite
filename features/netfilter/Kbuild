@@ -43,10 +43,26 @@ dnsk_netfilter-y += \
 	vendor/netfilter/upstream/nft_fib_ipv4.o \
 	vendor/netfilter/upstream/nft_reject_ipv4.o \
 	vendor/netfilter/upstream/nft_fib_ipv6.o \
-	vendor/netfilter/upstream/nft_reject_ipv6.o
+	vendor/netfilter/upstream/nft_reject_ipv6.o \
+	vendor/netfilter/xt_reject.o \
+	vendor/netfilter/upstream/ipt_REJECT.o \
+	vendor/netfilter/upstream/ip6t_REJECT.o \
+	vendor/netfilter/upstream/xt_recent.o
 ccflags-y += -DCONFIG_NF_TABLES_IPV4=1 -DCONFIG_NF_TABLES_IPV6=1 -DCONFIG_NF_TABLES_INET=1
 ifneq ($(DNSK_XT_LAYOUT),)
 ccflags-y += -DDNSK_XT_LAYOUT=$(DNSK_XT_LAYOUT)
+endif
+ifneq ($(DNSK_ABI_PROFILE),)
+ccflags-y += -DDNSK_ABI_PROFILE=\"$(DNSK_ABI_PROFILE)\"
+endif
+ifneq ($(DNSK_PAGE_SIZE),)
+ccflags-y += -DDNSK_PAGE_SIZE=$(DNSK_PAGE_SIZE)
+endif
+ifneq ($(DNSK_MAX_SKB_FRAGS),)
+ccflags-y += -DDNSK_MAX_SKB_FRAGS=$(DNSK_MAX_SKB_FRAGS)
+endif
+ifneq ($(DNSK_CGROUP_SUBSYS_COUNT),)
+ccflags-y += -DDNSK_CGROUP_SUBSYS_COUNT=$(DNSK_CGROUP_SUBSYS_COUNT)
 endif
 LINUXINCLUDE := -I$(src)/vendor/netfilter/compat $(LINUXINCLUDE)
 ifeq ($(DNSK_XT_NOCOMPAT),1)

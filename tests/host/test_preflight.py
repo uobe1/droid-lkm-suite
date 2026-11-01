@@ -85,8 +85,8 @@ BOUNDARY_STRUCTS = [
         ("frags", 88),
     ]),
     ("net", 4160, [
-        ("user_ns", 80), ("sysctls", 176), ("ipv4", 768),
-        ("ipv6", 1536), ("nf", 2384), ("ct", 2608),
+        ("user_ns", 80), ("proc_net", 160), ("sysctls", 176),
+        ("ipv4", 768), ("ipv6", 1536), ("nf", 2384), ("ct", 2608),
         ("wext_nlevents", 2824), ("gen", 2848), ("xfrm", 2944),
     ]),
 ]
