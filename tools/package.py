@@ -134,7 +134,7 @@ def main() -> int:
     except ValueError:
         print("policy.conf has a non-numeric ABI value", file=sys.stderr)
         return 1
-    for kmi, features in feature_files.items():
+    for features in feature_files.values():
         for stem, ko in features.items():
             if stem not in ("dnsk_ipset", "dnsk_netfilter"):
                 continue
