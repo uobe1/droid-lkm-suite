@@ -83,7 +83,11 @@ jobs:
             cp "$GITHUB_WORKSPACE/features/devtmpfs/dnsk_devtmpfs.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             make -C "$GITHUB_WORKSPACE/features/netfilter" KDIR="$KDIR" modules
             cp "$GITHUB_WORKSPACE/features/netfilter/dnsk_netfilter.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
-            make -C "$GITHUB_WORKSPACE/features/ipset" KDIR="$KDIR" modules
+            # The android16-6.12 device has 104-byte xt_match/xt_target while
+            # the DDK headers carry the 128-byte CONFIG_COMPAT layout.  Build the
+            # device artifact without the compat members; QEMU builds its own
+            # separate compat module.
+            make -C "$GITHUB_WORKSPACE/features/ipset" KDIR="$KDIR" DNSK_XT_NOCOMPAT=1 modules
             cp "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
           fi
           file "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"*.ko

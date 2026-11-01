@@ -17,6 +17,11 @@
 #include <linux/version.h>
 
 #include "units.h"
+#ifdef DNSK_XT_NOCOMPAT
+#include <linux/netfilter/x_tables.h>
+_Static_assert(sizeof(struct xt_match) == 104, "device xt_match layout");
+_Static_assert(sizeof(struct xt_target) == 104, "device xt_target layout");
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0) || \
 	LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)

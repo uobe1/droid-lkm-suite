@@ -11,6 +11,10 @@ dnsk_ipset-y := main.o \
 ccflags-y += -DCONFIG_IP_SET=1 -DCONFIG_IP_SET_HASH_IP=1 -DCONFIG_IP_SET_HASH_NET=1
 ccflags-y += -DCONFIG_NETFILTER_XT_SET=1 -DCONFIG_IP_SET_MAX=256
 
+ifdef DNSK_XT_NOCOMPAT
+ccflags-y += -DDNSK_XT_NOCOMPAT=1 -include $(src)/compat_off.h
+endif
+
 # The vendored 6.12 ipset/uapi headers are used before the kernel tree copies
 # so the module does not depend on CONFIG_IP_SET being enabled in the KMI.
 LINUXINCLUDE := -I$(src)/vendor/linux/include $(LINUXINCLUDE)
