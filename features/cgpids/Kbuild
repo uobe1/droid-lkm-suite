@@ -9,6 +9,9 @@ endif
 ifneq ($(DNSK_PAGE_SIZE),)
 ccflags-y += -DDNSK_PAGE_SIZE=$(DNSK_PAGE_SIZE)
 endif
+ifneq ($(DNSK_MAX_SKB_FRAGS),)
+ccflags-y += -DDNSK_MAX_SKB_FRAGS=$(DNSK_MAX_SKB_FRAGS)
+endif
 ifneq ($(DNSK_CGROUP_SUBSYS_COUNT),)
 ccflags-y += -DDNSK_CGROUP_SUBSYS_COUNT=$(DNSK_CGROUP_SUBSYS_COUNT)
 endif

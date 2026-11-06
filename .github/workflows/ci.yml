@@ -130,6 +130,7 @@ jobs:
             cp "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             make -C "$GITHUB_WORKSPACE/features/cgpids" KDIR="$KDIR" \
               DNSK_ABI_PROFILE="${DNSK_ABI_PROFILE:-}" DNSK_PAGE_SIZE="${DNSK_PAGE_SIZE:-}" \
+              DNSK_MAX_SKB_FRAGS="${DNSK_MAX_SKB_FRAGS:-}" \
               DNSK_CGROUP_SUBSYS_COUNT="${DNSK_CGROUP_SUBSYS_COUNT:-}" \
               DNSK_CGROUP_SUBSYS_LAYOUT="${DNSK_CGROUP_SUBSYS_LAYOUT:-}" \
               DNSK_CGROUP_SUBSYS_CAN_FORK="${DNSK_CGROUP_SUBSYS_CAN_FORK:-}" \
