@@ -103,7 +103,9 @@ done
 
 export DOCKER_RAMDISK=true
 if [ "$NET_OK" = 1 ]; then
-	DOCKER_NET_FLAGS="--iptables=true --ip6tables=false --userland-proxy=false"
+	# No CONFIG_BRIDGE_NETFILTER on this Image: the default userland proxy
+	# keeps ICC enabled, while the bridge still programs the nat DNAT rules.
+	DOCKER_NET_FLAGS="--iptables=true --ip6tables=false"
 else
 	DOCKER_NET_FLAGS="--iptables=false --ip6tables=false --bridge=none"
 fi
@@ -163,6 +165,7 @@ if [ "$NET_OK" = 1 ]; then
 		/bin/sh -c "wget -qO- http://$ip/index.html" | grep -q dns-ok || \
 		fail docker_net_c2c
 	iptables -S | grep -q DOCKER || fail docker_iptables
+	iptables -t nat -S DOCKER | grep -q 'DNAT' || fail docker_nat
 	echo "DNSK_DOCKER_NET_OK"
 fi
 
