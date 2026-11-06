@@ -171,7 +171,24 @@ jobs:
           open('versions.new', 'wb').write(data)
           PY
             aarch64-linux-gnu-objcopy --update-section __versions=versions.new "$ko"
+            python3 - <<'PY'
+          import struct
+          d = open('versions.new', 'rb').read()
+          for i in range(0, len(d) - 63, 64):
+              if d[i + 8:i + 64].split(b'\0')[0] == b'module_layout':
+                  print('patched module_layout crc', hex(struct.unpack_from('<Q', d, i)[0]))
+                  break
+          PY
           done
+      - name: Inspect device kernel symbols
+        if: ${{ inputs.mode == 'cgpids' }}
+        run: |
+          if [ -f device/vmlinux.elf ]; then
+            nm device/vmlinux.elf | grep -E 'module_layout|__crc_module_layout' || true
+            readelf -sW device/vmlinux.elf | grep -E 'module_layout|__crc_module_layout' || true
+          else
+            echo "vmlinux.elf not present" >&2
+          fi
       - name: Build loader and initramfs
         run: |
           set -euxo pipefail
