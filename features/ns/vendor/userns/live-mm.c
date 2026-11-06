@@ -9,33 +9,83 @@
 #include <linux/sched/task.h>
 #include <linux/user_namespace.h>
 #include <linux/iommu.h>
+#include <linux/hash.h>
+#include <linux/list.h>
 #include <asm/mmu_context.h>
 #include <asm/pgalloc.h>
 #include <trace/hooks/sched.h>
 #include "core.h"
 #include "live.h"
 extern struct kmem_cache *mm_cachep;
-extern struct mm_struct *ds_userns_mm_init_original(struct mm_struct *,
-    struct task_struct *, struct user_namespace *);
+extern struct mm_struct *ds_userns_mm_alloc_original(void);
+extern int ds_userns_dup_mmap_original(struct mm_struct *mm,
+				       struct mm_struct *oldmm);
 
-struct mm_struct *ds_userns_mm_init(struct mm_struct *mm, struct task_struct *p,
-    struct user_namespace *unused)
+/*
+ * The native mm_init() is inlined into mm_alloc()/dup_mm() on this build, so
+ * an entry hook on mm_init is not reliable.  Take one USER_NS reference for
+ * every mm created after this module loads and drop it in __mmdrop().  mms
+ * that predate the module stay untracked and are never put.
+ */
+#define DS_MM_HASH_BITS 6
+struct ds_mm_ref {
+	struct hlist_node node;
+	struct mm_struct *mm;
+};
+static struct hlist_head ds_mm_refs[1 << DS_MM_HASH_BITS];
+static DEFINE_SPINLOCK(ds_mm_refs_lock);
+
+static bool ds_mm_track(struct mm_struct *mm)
 {
-    struct user_namespace *owner;
-    struct mm_struct *ret;
+	struct ds_mm_ref *ref = kmalloc(sizeof(*ref), GFP_ATOMIC);
+	unsigned long flags;
 
-    /* The two native callers zero a fresh mm or memcpy the old mm. The
-     * compiler removes the now-unused third argument with USER_NS=n; never
-     * read it. A copied mm already identifies its owner; a zeroed mm belongs
-     * to current_user_ns(). No mm is published before this call returns.
-     */
-    owner = get_user_ns(mm->user_ns ? mm->user_ns : current_user_ns());
-    ret = ds_userns_mm_init_original(mm, p, NULL);
-    if (ret)
-        ret->user_ns = owner;
-    else
-        put_user_ns(owner);
-    return ret;
+	if (!ref)
+		return false;
+	ref->mm = mm;
+	spin_lock_irqsave(&ds_mm_refs_lock, flags);
+	hlist_add_head(&ref->node, &ds_mm_refs[hash_ptr(mm, DS_MM_HASH_BITS)]);
+	spin_unlock_irqrestore(&ds_mm_refs_lock, flags);
+	return true;
+}
+
+static bool ds_mm_untrack(struct mm_struct *mm)
+{
+	struct ds_mm_ref *ref, *found = NULL;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ds_mm_refs_lock, flags);
+	hlist_for_each_entry(ref, &ds_mm_refs[hash_ptr(mm, DS_MM_HASH_BITS)],
+			     node) {
+		if (ref->mm == mm) {
+			found = ref;
+			hlist_del(&ref->node);
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&ds_mm_refs_lock, flags);
+	kfree(found);
+	return found != NULL;
+}
+
+struct mm_struct *ds_userns_mm_alloc(void)
+{
+	struct mm_struct *mm = ds_userns_mm_alloc_original();
+
+	if (mm && ds_mm_track(mm))
+		mm->user_ns = get_user_ns(current_user_ns());
+	return mm;
+}
+
+int ds_userns_dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
+{
+	struct user_namespace *ns = oldmm->user_ns ? oldmm->user_ns :
+						     current_user_ns();
+	int ret = ds_userns_dup_mmap_original(mm, oldmm);
+
+	if (!ret && ds_mm_track(mm))
+		mm->user_ns = get_user_ns(ns);
+	return ret;
 }
 #define free_mm(mm) kmem_cache_free(mm_cachep, (mm))
 static inline void mm_free_pgd(struct mm_struct *mm)
@@ -145,7 +195,8 @@ void ds_userns_mmdrop(struct mm_struct *mm)
 	destroy_context(mm);
 	mmu_notifier_subscriptions_destroy(mm);
 	check_mm(mm);
-	put_user_ns(mm->user_ns);
+	if (ds_mm_untrack(mm))
+		put_user_ns(mm->user_ns);
 	mm_pasid_drop(mm);
 	mm_destroy_cid(mm);
 	percpu_counter_destroy_many(mm->rss_stat, NR_MM_COUNTERS);
