@@ -45,6 +45,8 @@ echo "DNSK_USERNS_LKM_OK"
 
 /userns_test || fail userns_test
 /fuse_test || fail fuse_test
+/mount_setattr_test || fail mount_setattr_selftest
+echo "DNSK_MOUNT_SETATTR_SELFTEST_OK"
 echo "DNSK_USERNS_OK"
 echo "DNSK_QEMU_OK"
 "$BB" poweroff -f
