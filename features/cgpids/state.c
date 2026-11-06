@@ -7,6 +7,7 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/sched/signal.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include "cgpids.h"
@@ -45,10 +46,40 @@ static bool dnsk_pids_pin_module(void)
 	return ok;
 }
 
+/*
+ * Tasks that predate the controller were never charged by the fork hook.
+ * Seed a new state with the current subtree population so their migration
+ * and exit paths stay balanced instead of driving the counter negative.
+ */
+static s64 dnsk_pids_subtree_tasks(struct cgroup *cgrp)
+{
+	struct task_struct *g, *t;
+	s64 nr = 0;
+
+	rcu_read_lock();
+	for_each_process_thread(g, t) {
+		struct css_set *cset;
+		struct cgroup *pos;
+
+		cset = rcu_dereference(t->cgroups);
+		if (!cset)
+			continue;
+		for (pos = cset->dfl_cgrp; pos; pos = pos->parent) {
+			if (pos == cgrp) {
+				nr++;
+				break;
+			}
+		}
+	}
+	rcu_read_unlock();
+	return nr;
+}
+
 struct dnsk_pids_state *dnsk_pids_ensure(struct cgroup *cgrp)
 {
 	struct dnsk_pids_state *st, *old;
 	unsigned long flags;
+	s64 seeded;
 
 	st = kzalloc(sizeof(*st), GFP_KERNEL);
 	if (!st)
@@ -64,6 +95,19 @@ struct dnsk_pids_state *dnsk_pids_ensure(struct cgroup *cgrp)
 	rcu_read_lock();
 	old = xa_load(&dnsk_pids_xa, (unsigned long)cgrp);
 	rcu_read_unlock();
+	if (old) {
+		spin_unlock_irqrestore(&dnsk_pids_lock, flags);
+		kfree(st);
+		return old;
+	}
+	spin_unlock_irqrestore(&dnsk_pids_lock, flags);
+
+	seeded = dnsk_pids_subtree_tasks(cgrp);
+	atomic64_set(&st->counter, seeded);
+	atomic64_set(&st->watermark, seeded);
+
+	spin_lock_irqsave(&dnsk_pids_lock, flags);
+	old = xa_load(&dnsk_pids_xa, (unsigned long)cgrp);
 	if (old) {
 		spin_unlock_irqrestore(&dnsk_pids_lock, flags);
 		kfree(st);
