@@ -390,11 +390,11 @@ jobs:
           fi
           # The runner extracts the rootfs as an unprivileged uid; the guest
           # runs as root and userns tests need a root-owned world-writable /tmp.
+          chmod 0755 rootfs/init
           sudo chown -R 0:0 rootfs
           sudo mkdir -p rootfs/tmp
           sudo chmod 1777 rootfs/tmp
-          chmod 0755 rootfs/init
-          (cd rootfs && find . | cpio -o -H newc | gzip -9) > initramfs.cpio.gz
+          sudo sh -c 'cd rootfs && find . | cpio -o -H newc' | gzip -9 > initramfs.cpio.gz
       - name: Boot and check
         shell: bash
         env:
