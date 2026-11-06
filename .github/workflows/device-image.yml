@@ -190,8 +190,12 @@ jobs:
         if: ${{ inputs.mode == 'cgpids' }}
         run: |
           if [ -f device/vmlinux.elf ]; then
-            nm device/vmlinux.elf | grep -E 'module_layout|__crc_module_layout' || true
-            readelf -sW device/vmlinux.elf | grep -E 'module_layout|__crc_module_layout' || true
+            nm device/vmlinux.elf | grep -E 'module_layout|__crc_module_layout|kcrctab' | head -20 || true
+            addr=$(nm device/vmlinux.elf | awk '/__kcrctab_module_layout/ {print $1; exit}')
+            if [ -n "$addr" ]; then
+              aarch64-linux-gnu-objdump -s --start-address=0x$addr                 --stop-address=$((0x$addr + 8)) device/vmlinux.elf || true
+            fi
+            strings device/vmlinux.elf | grep -m5 -E '6\.12\.30-android16|SMP preempt mod_unload' || true
           else
             echo "vmlinux.elf not present" >&2
           fi

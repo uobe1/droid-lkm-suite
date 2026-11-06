@@ -19,7 +19,8 @@ fi
 fail() {
 	echo "DNSK_QEMU_FAIL $*"
 	echo "DNSK_DEVICE_RELEASE=$(uname -r)"
-	"$BB" dmesg 2>/dev/null | tail -30
+	"$BB" dmesg 2>/dev/null | grep -iE 'module|vermagic|signature|dnsk' | tail -30
+	"$BB" dmesg 2>/dev/null | tail -10
 	"$BB" poweroff -f
 }
 
