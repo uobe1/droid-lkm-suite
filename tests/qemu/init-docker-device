@@ -59,6 +59,11 @@ if [ -x /ksud ]; then
 		NS_OK=1
 	fi
 	/ksud insmod /modules/dnsk_cgpids.ko || fail dnsk_cgpids_insmod
+	if [ -e /modules/dnsk_netfilter.ko ]; then
+		/ksud insmod /modules/dnsk_netfilter.ko gki=1 activate=1 || \
+			fail dnsk_netfilter_insmod
+		echo "DNSK_DOCKER_NETFILTER_OK"
+	fi
 elif [ -x /insmod_force ]; then
 	/insmod_force /modules/dnsk_core.ko || fail dnsk_core_insmod
 	if [ -e /modules/dnsk_ns.ko ]; then
@@ -76,6 +81,18 @@ echo "DNSK_DOCKER_NS_OK=$NS_OK"
 "$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup || fail cgroup2_mount
 echo "DNSK_DOCKER_DEVICE_CONTROLLERS=$(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null)"
 
+NET_OK=0
+if [ -x /sbin/iptables-legacy ] && [ -e /modules/dnsk_netfilter.ko ] &&
+   [ -x /ksud ]; then
+	ln -sf /sbin/iptables-legacy /sbin/iptables
+	ln -sf /sbin/ip6tables-legacy /sbin/ip6tables
+	ln -sf /sbin/iptables-legacy-restore /sbin/iptables-restore
+	ln -sf /sbin/ip6tables-legacy-restore /sbin/ip6tables-restore
+	ln -sf /sbin/iptables-legacy-save /sbin/iptables-save
+	ln -sf /sbin/ip6tables-legacy-save /sbin/ip6tables-save
+	NET_OK=1
+fi
+
 containerd >/var/log/containerd.log 2>&1 &
 i=0
 while [ ! -S /run/containerd/containerd.sock ] && [ "$i" -lt 60 ]; do
@@ -85,10 +102,15 @@ done
 [ -S /run/containerd/containerd.sock ] || fail containerd_socket
 
 export DOCKER_RAMDISK=true
+if [ "$NET_OK" = 1 ]; then
+	DOCKER_NET_FLAGS="--iptables=true --ip6tables=false --userland-proxy=false"
+else
+	DOCKER_NET_FLAGS="--iptables=false --ip6tables=false --bridge=none"
+fi
 dockerd --containerd /run/containerd/containerd.sock \
 	--data-root /var/lib/docker --exec-root /run/docker \
 	--pidfile /run/docker.pid --storage-driver vfs \
-	--iptables=false --ip6tables=false --bridge=none \
+	$DOCKER_NET_FLAGS \
 	--exec-opt native.cgroupdriver=cgroupfs \
 	>/var/log/dockerd.log 2>&1 &
 i=0
@@ -116,6 +138,32 @@ else
 		 echo pids_spawned=$n; cat /sys/fs/cgroup/pids.max; cat /sys/fs/cgroup/pids.current; \
 		 cat /sys/fs/cgroup/pids.peak; cat /sys/fs/cgroup/pids.events' \
 		|| fail docker_pids_limit
+fi
+
+if [ "$NET_OK" = 1 ]; then
+	docker network create dnsktest || fail docker_net_create
+	docker run -d --name web --network dnsktest -p 8080:80 alpine:local \
+		/bin/sh -c 'mkdir -p /www; echo dns-ok > /www/index.html; exec httpd -f -p 80 -h /www' \
+		|| fail docker_web_run
+	gw=$(docker network inspect dnsktest \
+		-f '{{(index .IPAM.Config 0).Gateway}}') || fail docker_gw
+	[ -n "$gw" ] || fail docker_gw_empty
+	i=0
+	while ! "$BB" wget -qO- "http://$gw:8080/index.html" 2>/dev/null | \
+		grep -q dns-ok; do
+		sleep 1
+		i=$((i + 1))
+		[ "$i" -lt 30 ] || fail docker_net_host
+	done
+	ip=$(docker inspect -f \
+		'{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' web) || \
+		fail docker_ip
+	[ -n "$ip" ] || fail docker_ip_empty
+	docker run --rm --network dnsktest alpine:local \
+		/bin/sh -c "wget -qO- http://$ip/index.html" | grep -q dns-ok || \
+		fail docker_net_c2c
+	iptables -S | grep -q DOCKER || fail docker_iptables
+	echo "DNSK_DOCKER_NET_OK"
 fi
 
 echo "DNSK_DOCKER_DEVICE_OK"

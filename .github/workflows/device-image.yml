@@ -373,6 +373,8 @@ jobs:
           elif [ "${{ inputs.mode }}" = "docker" ] || [ "${{ inputs.mode }}" = "ksud-docker" ]; then
             cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
             [ -e modules/dnsk_ns.ko ] && cp modules/dnsk_ns.ko rootfs/modules/
+            [ -e modules/dnsk_netfilter.ko ] && cp modules/dnsk_netfilter.ko rootfs/modules/
+            [ -e modules/dnsk_ipset.ko ] && cp modules/dnsk_ipset.ko rootfs/modules/
             if [ "${{ inputs.mode }}" = "ksud-docker" ]; then
               cp tests/qemu/assets/ksud rootfs/ksud
               chmod 0755 rootfs/ksud
@@ -388,6 +390,16 @@ jobs:
               aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
               cp insmod_force rootfs/insmod_force
             fi
+            # Docker bridge networking drives iptables; install the legacy
+            # backend (native xtables) for the NAT/addrtype checks.
+            curl -fsSL -o apk-tools.apk \
+              https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/apk-tools-static-2.14.13-r0.apk
+            rm -rf /tmp/apk-tools && mkdir -p /tmp/apk-tools
+            tar -xzf apk-tools.apk -C /tmp/apk-tools
+            /tmp/apk-tools/sbin/apk.static --root "$PWD/rootfs" \
+              --arch aarch64 --no-cache --allow-untrusted --no-scripts \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
+              add iptables-legacy
             cp tests/qemu/init-docker-device rootfs/init
             curl -fsSL -o docker.tgz \
               https://download.docker.com/linux/static/stable/aarch64/docker-29.7.2.tgz
@@ -445,6 +457,10 @@ jobs:
             grep -q 'DNSK_NS_DEVICE_OK' qemu.log
           elif [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
             grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
+            if [ "$MODE" = "ksud-docker" ]; then
+              grep -q 'DNSK_DOCKER_NETFILTER_OK' qemu.log
+              grep -q 'DNSK_DOCKER_NET_OK' qemu.log
+            fi
             grep -q 'DNSK_DOCKER_DEVICE_OK' qemu.log
           elif [ "$MODE" = "tmpfsx" ]; then
             grep -q 'DNSK_TMPFSX_LKM_OK' qemu.log
