@@ -24,6 +24,9 @@ struct super_block *ds_userns_alloc_super(struct file_system_type *, int,
     struct user_namespace *);
 void ds_userns_destroy_super_work(struct work_struct *);
 int ds_userns_ovl_fill_super(struct super_block *, struct fs_context *);
+struct mount_kattr;
+int ds_userns_do_mount_setattr(struct path *, struct mount_kattr *);
+struct user_namespace *ds_idmap_peek(void);
 struct stat;
 struct statx;
 int ds_userns_cp_statx(const struct kstat *, struct statx __user *);

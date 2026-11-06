@@ -32,6 +32,7 @@ extern struct mm_struct *ds_userns_mm_alloc(void);
 extern void ds_userns_wake_up_new_task(struct task_struct *p);
 extern u32 ds_userns_mount_setattr_original[], ds_userns_alloc_mnt_idmap_original[];
 extern u32 ds_userns_ovl_fill_super_original[];
+extern u32 ds_userns_do_mount_setattr_original[];
 extern long ds_userns_mount_setattr(const struct pt_regs *);
 struct user_namespace;
 struct mnt_idmap;
@@ -341,6 +342,8 @@ static struct ds_hook hooks[] = {
 		      ds_userns_alloc_mnt_idmap_original),
 	HOOK_ORIGINAL("ovl_fill_super", ds_userns_ovl_fill_super,
 		      ds_userns_ovl_fill_super_original),
+	HOOK_ORIGINAL("do_mount_setattr", ds_userns_do_mount_setattr,
+		      ds_userns_do_mount_setattr_original),
 	HOOK("make_vfsuid", ds_userns_make_vfsuid),
 	HOOK("make_vfsgid", ds_userns_make_vfsgid),
 	HOOK("from_vfsuid", ds_userns_from_vfsuid),

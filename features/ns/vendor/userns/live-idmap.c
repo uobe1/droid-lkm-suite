@@ -81,7 +81,7 @@ static bool ds_idmap_stash(struct user_namespace *ns)
 	return false;
 }
 
-static struct user_namespace *ds_idmap_peek(void)
+struct user_namespace *ds_idmap_peek(void)
 {
 	struct user_namespace *ns = NULL;
 	unsigned long flags;
