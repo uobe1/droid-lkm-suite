@@ -74,6 +74,9 @@ maxretry = 1
 enabled = true
 logpath = /var/log/auth.log
 port = ssh
+
+[sshd-ddos]
+enabled = false
 EOF
 : >/var/log/auth.log
 fail2ban-client -x start || fail f2b_start
