@@ -33,14 +33,14 @@ fi
 
 export LD_LIBRARY_PATH=/system/lib64
 "$BB" mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules
+/insmod_force /modules/selpermissive.ko || fail selpermissive_insmod
 /ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
 echo "DNSK_KSUD_LATE_LOAD_OK"
 
-# late-load returns while apply_kernelsu_rules() is still running; it commits
-# its own policy and forces enforce=1 about five seconds later.  Patch after
-# that, or the permissive domain and enforce=0 are overwritten.
-"$BB" sleep 8
-/ksud sepolicy patch 'permissive kernel' || fail sepolicy_permissive
+# KSU commits its policy and forces enforce=1 after late-load.  The helper
+# armed before late-load clears selinux_state.enforcing afterwards, which
+# restores exec/read for the kernel-domain initramfs.
+"$BB" sleep 10
 echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
 [ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
 echo "DNSK_SELINUX_AFTER_KSU=permissive"

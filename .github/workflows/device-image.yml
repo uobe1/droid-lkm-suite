@@ -146,7 +146,7 @@ jobs:
           test -n "$RELEASE"
           VERMAGIC="$RELEASE SMP preempt mod_unload modversions aarch64"
           echo "target vermagic: $VERMAGIC"
-          for ko in modules/dnsk_*.ko; do
+          for ko in modules/*.ko; do
             aarch64-linux-gnu-objcopy --dump-section .modinfo=modinfo.bin "$ko"
             python3 - "$VERMAGIC" <<'PY'
           import sys
@@ -254,6 +254,9 @@ jobs:
             cp -a tests/qemu/assets/android/. rootfs/
             chmod 0755 rootfs/system/bin/linker64
             rm -f rootfs/system/etc/ld.config.txt
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
             aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
             cp selinux_load rootfs/selinux_load
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
@@ -264,6 +267,9 @@ jobs:
             chmod 0755 rootfs/ksud
             cp -a tests/qemu/assets/android/. rootfs/
             chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
             aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
             cp selinux_load rootfs/selinux_load
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
@@ -274,6 +280,9 @@ jobs:
             chmod 0755 rootfs/ksud
             cp -a tests/qemu/assets/android/. rootfs/
             chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
             aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
             cp selinux_load rootfs/selinux_load
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
@@ -288,6 +297,9 @@ jobs:
               chmod 0755 rootfs/ksud
               cp -a tests/qemu/assets/android/. rootfs/
               chmod 0755 rootfs/system/bin/linker64
+              aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+              cp insmod_force rootfs/insmod_force
+              cp modules/selpermissive.ko rootfs/modules/
               aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
               cp selinux_load rootfs/selinux_load
               cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
