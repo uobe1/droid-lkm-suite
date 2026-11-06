@@ -156,10 +156,22 @@ struct mnt_idmap *ds_userns_alloc_mnt_idmap(struct user_namespace *userns)
 		userns = pending;
 	id = ds_userns_alloc_mnt_idmap_original(userns);
 	if (!IS_ERR(id)) {
+		struct dnsk_mnt_idmap {
+			struct {
+				u32 nr_extents;
+				struct {
+					u32 first;
+					u32 lower_first;
+					u32 count;
+				} extent[5];
+			} uid_map;
+		} *m = (void *)id;
 		vfsuid_t v = make_vfsuid(id, userns->parent, KUIDT_INIT(0));
 
-		pr_info("alloc_mnt_idmap: ret=%px userns=%px vfsuid0=%u\n",
-			id, userns, __vfsuid_val(v));
+		pr_info("alloc_mnt_idmap: ret=%px userns=%px vfsuid0=%u map=%u/%u/%u\n",
+			id, userns, __vfsuid_val(v), m->uid_map.nr_extents,
+			m->uid_map.extent[0].first,
+			m->uid_map.extent[0].lower_first);
 	} else {
 		pr_info("alloc_mnt_idmap: ret=%ld userns=%px\n", PTR_ERR(id),
 			userns);
