@@ -248,6 +248,8 @@ jobs:
             cp tests/qemu/assets/ksud rootfs/ksud
             chmod 0755 rootfs/ksud
             cp -a tests/qemu/assets/android rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            rm -f rootfs/system/etc/ld.config.txt
             cp tests/qemu/init-cgpids rootfs/init
           elif [ "${{ inputs.mode }}" = "docker" ]; then
             cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
