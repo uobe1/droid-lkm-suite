@@ -3,6 +3,7 @@
 #define DNSK_KSUD_CORE_H
 
 #include <linux/types.h>
+#include <linux/uidgid.h>
 
 struct path;
 struct rw_semaphore;
