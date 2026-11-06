@@ -65,6 +65,7 @@ int (*dnsk_cgroup_init_cftypes)(struct cgroup_subsys *ss,
 int (*dnsk_cgroup_addrm_files)(struct cgroup_subsys_state *css,
 			       struct cgroup *cgrp, struct cftype cfts[],
 			       bool is_add);
+void (*dnsk_kernfs_activate)(struct kernfs_node *kn);
 
 static struct dnsk_migrate_rec dnsk_migrate_recs[DNSK_MIGRATE_MAX];
 static int dnsk_migrate_nr;
@@ -171,12 +172,14 @@ static int dnsk_resolve_symbols(void)
 	dnsk_cgroup_rmdir = dnsk_api->resolve("cgroup_rmdir");
 	dnsk_cgroup_init_cftypes = dnsk_api->resolve("cgroup_init_cftypes");
 	dnsk_cgroup_addrm_files = dnsk_api->resolve("cgroup_addrm_files");
+	dnsk_kernfs_activate = dnsk_api->resolve("kernfs_activate");
 
 	if (!dnsk_of_css || !dnsk_cgroup_mutex || !dnsk_cgroup_base_files ||
 	    !dnsk_cgrp_dfl_root || !dnsk_cgroup_kf_syscall_ops ||
 	    !dnsk_memory_ss || !dnsk_have_canfork || !dnsk_have_release ||
 	    !dnsk_cgroup_mkdir || !dnsk_cgroup_rmdir ||
-	    !dnsk_cgroup_init_cftypes || !dnsk_cgroup_addrm_files) {
+	    !dnsk_cgroup_init_cftypes || !dnsk_cgroup_addrm_files ||
+	    !dnsk_kernfs_activate) {
 		pr_err("dnsk_cgpids: missing cgroup symbols\n");
 		return -ENOENT;
 	}

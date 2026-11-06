@@ -811,6 +811,7 @@ static struct sym_req cgpids_required[] = {
 	{ "of_css", 0 },
 	{ "cgroup_kf_syscall_ops", 0 },
 	{ "cgroup_base_files", 0 },
+	{ "kernfs_activate", 0 },
 };
 
 static int find_symbol_in(struct sym_req *tab, size_t n, const char *name)

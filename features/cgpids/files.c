@@ -74,6 +74,11 @@ static __nocfi noinline int dnsk_call_addrm(struct cgroup *cgrp, bool add)
 				       add);
 }
 
+static __nocfi noinline void dnsk_call_activate(struct kernfs_node *kn)
+{
+	dnsk_kernfs_activate(kn);
+}
+
 static __nocfi noinline struct cgroup_subsys_state *
 dnsk_call_of_css(struct kernfs_open_file *of)
 {
@@ -458,6 +463,8 @@ static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name,
 	add_ret = 0;
 	if (!st->files_added) {
 		add_ret = dnsk_call_addrm(child, true);
+		if (!add_ret)
+			dnsk_call_activate(child->kn);
 		pr_info("dnsk_cgpids: mkdir addrm=%d files=%d\n",
 			add_ret, st->files_added);
 		if (!add_ret)

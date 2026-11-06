@@ -60,6 +60,7 @@ extern int (*dnsk_cgroup_init_cftypes)(struct cgroup_subsys *ss,
 extern int (*dnsk_cgroup_addrm_files)(struct cgroup_subsys_state *css,
 				     struct cgroup *cgrp,
 				     struct cftype cfts[], bool is_add);
+extern void (*dnsk_kernfs_activate)(struct kernfs_node *kn);
 
 int dnsk_cgpids_files_init(void);
 void dnsk_cgpids_files_exit(void);
