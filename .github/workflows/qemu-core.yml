@@ -137,20 +137,20 @@ jobs:
               DNSK_CGROUP_SUBSYS_FORK DNSK_CGROUP_SUBSYS_EXIT \
               DNSK_CGROUP_SUBSYS_RELEASE DNSK_CGROUP_SUBSYS_ID \
               DNSK_SEQ_FILE_PRIVATE
-            # External-module modpost only reads Module.symvers by default;
-            # the freshly built tree exposes CRCs in vmlinux.symvers (GKI
-            # splits the two).  Without them the Android EXTENDED_MODVERSIONS
-            # writer emits an empty "= ;" array and the .mod.c fails to compile.
-            EXTRA_SYMVERS="$KDIR/vmlinux.symvers"
-            [ -f "$KDIR/Module.symvers" ] && \
-              EXTRA_SYMVERS="$EXTRA_SYMVERS $KDIR/Module.symvers"
-            make -C "$KDIR" M="$GITHUB_WORKSPACE" \
-              KBUILD_EXTRA_SYMBOLS="$EXTRA_SYMVERS" modules || {
+            # External-module modpost reads only $(objtree)/Module.symvers;
+            # an Image-only build may not have it.  Seed it from
+            # vmlinux.symvers instead of passing both through
+            # KBUILD_EXTRA_SYMBOLS (the files overlap and modpost then
+            # reports every export twice).
+            if [ ! -s "$KDIR/Module.symvers" ]; then
+              cp "$KDIR/vmlinux.symvers" "$KDIR/Module.symvers"
+            fi
+            make -C "$KDIR" M="$GITHUB_WORKSPACE" modules || {
               sed -n '1,60p' "$GITHUB_WORKSPACE/dnsk_core.mod.c" || true
               exit 1
             }
             make -C "$GITHUB_WORKSPACE/features/cgpids" KDIR="$KDIR" \
-              KBUILD_EXTRA_SYMBOLS="$EXTRA_SYMVERS $GITHUB_WORKSPACE/Module.symvers" \
+              KBUILD_EXTRA_SYMBOLS="$GITHUB_WORKSPACE/Module.symvers" \
               modules
             cp "$GITHUB_WORKSPACE/dnsk_core.ko" "$GITHUB_WORKSPACE/features/cgpids/dnsk_cgpids.ko" out/
           fi
