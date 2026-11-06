@@ -187,7 +187,7 @@ CGPIDS_STRUCTS = [
     ("cgroup_subsys", 256, [
         ("can_attach", 72), ("attach", 88), ("can_fork", 104),
         ("cancel_fork", 112), ("fork", 120), ("exit", 128),
-        ("release", 136), ("bind", 144),
+        ("release", 136), ("bind", 144), ("id", 156), ("name", 160),
     ]),
     ("cgroup", 1984, [
         ("self", 0), ("flags", 216), ("level", 224), ("subsys", 616),
@@ -196,7 +196,9 @@ CGPIDS_STRUCTS = [
     ]),
     ("css_set", 456, [
         ("subsys", 0), ("refcount", 64), ("dfl_cgrp", 80),
-        ("cgrp_links", 336),
+        ("nr_tasks", 88), ("mg_tasks", 112), ("cgrp_links", 336),
+        ("mg_node", 384), ("mg_src_cgrp", 400), ("mg_dst_cgrp", 408),
+        ("mg_dst_cset", 416),
     ]),
     ("cftype", 216, [
         ("name", 0), ("private", 64), ("max_write_len", 72),
@@ -215,6 +217,23 @@ CGPIDS_STRUCTS = [
     ]),
     ("cgroup_root", 6272, [
         ("subsys_mask", 8), ("cgrp", 64), ("nr_cgrps", 2056),
+    ]),
+    ("cgroup_taskset", 64, [
+        ("src_csets", 0), ("dst_csets", 16), ("nr_tasks", 32),
+    ]),
+    ("cgroup_mgctx", 104, [
+        ("preloaded_src_csets", 0), ("preloaded_dst_csets", 16),
+        ("tset", 32), ("ss_mask", 96),
+    ]),
+    ("kernfs_syscall_ops", 40, [
+        ("show_options", 0), ("mkdir", 8), ("rmdir", 16),
+        ("rename", 24), ("show_path", 32),
+    ]),
+    ("seq_file", 136, [
+        ("buf", 0), ("count", 24), ("private", 128),
+    ]),
+    ("task_struct", 5184, [
+        ("cgroups", 2872),
     ]),
 ]
 
@@ -541,6 +560,7 @@ class PreflightTests(unittest.TestCase):
             extra = CGPIDS_STRUCTS + BOUNDARY_STRUCTS
             write_btf(btf, 104, 104, extra=extra)
             base = [str(binary), "--btf", str(btf), "--feature", "cgpids",
+                    "--seq-private", "128",
                     "--kmi", "android16-6.12",
                     "--supported", str(ROOT / "ksu/supported_kmis.txt")]
             proc = subprocess.run(base, text=True, capture_output=True,

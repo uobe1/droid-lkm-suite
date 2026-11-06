@@ -167,6 +167,22 @@ do_preflight() {
 		devtmpfs|ns)
 			check_abi_stamps "$ko"
 			;;
+		cgpids)
+			check_abi_stamps "$ko"
+			for pair in dnsk_cgroup_subsys_layout:cgroup_subsys_layout \
+				    dnsk_seq_file_private:seq_file_private; do
+				mkey=${pair%%:*}
+				pkey=${pair#*:}
+				expected=$(sed -n "s/^${pkey}=//p" "$MODDIR/policy.conf" 2>/dev/null | head -n 1)
+				[ -n "$expected" ] || die "policy.conf has no $pkey; refusing to guess"
+				got=$(module_modinfo "$ko" "$mkey")
+				[ "$got" = "$expected" ] || \
+					die "module $mkey=$got does not match policy $pkey=$expected: $ko"
+			done
+			seq_private=$(sed -n 's/^seq_file_private=//p' "$MODDIR/policy.conf" 2>/dev/null | head -n 1)
+			[ -n "$seq_private" ] || die "policy.conf has no seq_file_private; refusing to guess"
+			set -- "$@" --seq-private "$seq_private"
+			;;
 		esac
 		set -- "$@" --feature "$feature"
 		DNSK_KSUD=$(find_ksud 2>/dev/null || true)
@@ -224,7 +240,10 @@ do_profile() {
 	profile=$1
 	case "$profile" in
 	core) set -- core ;;
-	docker-v1|docker-v2|droidspaces|nixos|ufw-fail2ban)
+	docker-v2|droidspaces|nixos|ufw-fail2ban)
+		set -- core ns devtmpfs netfilter ipset cgpids
+		;;
+	docker-v1)
 		set -- core ns devtmpfs netfilter ipset
 		;;
 	userns-full) set -- core ns userns ;;

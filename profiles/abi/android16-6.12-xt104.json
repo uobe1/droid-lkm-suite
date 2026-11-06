@@ -9,6 +9,7 @@
     "preempt_rt": 0,
     "lockdep": 0,
     "debug_mutexes": 0,
+    "seq_file_private": 128,
     "debug_spinlock": 0,
     "debug_rwsems": 0,
     "kasan_mode": "hw_tags",

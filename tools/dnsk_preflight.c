@@ -71,6 +71,7 @@ struct btf_layout {
 	int fs_ok;
 	int ns_ok;
 	int cgpids_ok;
+	int seq_private;
 };
 
 static uint32_t btf_rd32(const unsigned char *p)
@@ -431,7 +432,9 @@ static int btf_cgroup_subsys_ok(const unsigned char *d, size_t len)
 	       member_is(&t, "fork", 120) &&
 	       member_is(&t, "exit", 128) &&
 	       member_is(&t, "release", 136) &&
-	       member_is(&t, "bind", 144);
+	       member_is(&t, "bind", 144) &&
+	       member_is(&t, "id", 156) &&
+	       member_is(&t, "name", 160);
 }
 
 static void btf_check_cgpids(const unsigned char *d, size_t len,
@@ -445,7 +448,9 @@ static void btf_check_cgpids(const unsigned char *d, size_t len,
 	};
 	static const struct btf_field css_set[] = {
 		{ "subsys", 0 }, { "refcount", 64 }, { "dfl_cgrp", 80 },
-		{ "cgrp_links", 336 },
+		{ "nr_tasks", 88 }, { "mg_tasks", 112 }, { "cgrp_links", 336 },
+		{ "mg_node", 384 }, { "mg_src_cgrp", 400 },
+		{ "mg_dst_cgrp", 408 }, { "mg_dst_cset", 416 },
 	};
 	static const struct btf_field cftype[] = {
 		{ "name", 0 }, { "private", 64 }, { "max_write_len", 72 },
@@ -468,8 +473,30 @@ static void btf_check_cgpids(const unsigned char *d, size_t len,
 	static const struct btf_field cgroup_root[] = {
 		{ "subsys_mask", 8 }, { "cgrp", 64 }, { "nr_cgrps", 2056 },
 	};
+	static const struct btf_field cgroup_taskset[] = {
+		{ "src_csets", 0 }, { "dst_csets", 16 }, { "nr_tasks", 32 },
+	};
+	static const struct btf_field cgroup_mgctx[] = {
+		{ "preloaded_src_csets", 0 }, { "preloaded_dst_csets", 16 },
+		{ "tset", 32 }, { "ss_mask", 96 },
+	};
+	static const struct btf_field kernfs_syscall_ops[] = {
+		{ "show_options", 0 }, { "mkdir", 8 }, { "rmdir", 16 },
+		{ "rename", 24 }, { "show_path", 32 },
+	};
+	static const struct btf_field task[] = {
+		{ "cgroups", 2872 },
+	};
+	struct btf_type_info sf;
+	uint32_t seq_off;
+
+	l->seq_private = -1;
+	if (btf_find_struct_info(d, len, "seq_file", &sf) == 0 &&
+	    sf.size == 136 && btf_member_off(&sf, "private", &seq_off) == 0)
+		l->seq_private = (int)seq_off;
 
 	l->cgpids_ok = btf_cgroup_subsys_ok(d, len) &&
+		       l->seq_private >= 0 &&
 		       btf_fields_match(d, len, "cgroup", 1984, cgroup,
 					ARRAY_SIZE(cgroup)) &&
 		       btf_fields_match(d, len, "css_set", 456, css_set,
@@ -483,7 +510,18 @@ static void btf_check_cgpids(const unsigned char *d, size_t len,
 		       btf_fields_match(d, len, "kernfs_node", 144, kernfs_node,
 					ARRAY_SIZE(kernfs_node)) &&
 		       btf_fields_match(d, len, "cgroup_root", 6272,
-					cgroup_root, ARRAY_SIZE(cgroup_root));
+					cgroup_root, ARRAY_SIZE(cgroup_root)) &&
+		       btf_fields_match(d, len, "cgroup_taskset", 64,
+					cgroup_taskset,
+					ARRAY_SIZE(cgroup_taskset)) &&
+		       btf_fields_match(d, len, "cgroup_mgctx", 104,
+					cgroup_mgctx,
+					ARRAY_SIZE(cgroup_mgctx)) &&
+		       btf_fields_match(d, len, "kernfs_syscall_ops", 40,
+					kernfs_syscall_ops,
+					ARRAY_SIZE(kernfs_syscall_ops)) &&
+		       btf_fields_match(d, len, "task_struct", 5184, task,
+					ARRAY_SIZE(task));
 }
 
 static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
@@ -744,6 +782,29 @@ static struct sym_req nf_required[] = {
 	{ "nf_send_reset6", 0 },
 };
 
+/* Internal cgroup symbols needed by dnsk_cgpids; resolved through kallsyms. */
+static struct sym_req cgpids_required[] = {
+	{ "cgroup_mutex", 0 },
+	{ "cgrp_dfl_root", 0 },
+	{ "cgroup_init_cftypes", 0 },
+	{ "cgroup_addrm_files", 0 },
+	{ "cgroup_mkdir", 0 },
+	{ "cgroup_rmdir", 0 },
+	{ "cgroup_destroy_locked", 0 },
+	{ "cgroup_migrate_execute", 0 },
+	{ "cgroup_subtree_control_write", 0 },
+	{ "cgroup_controllers_show", 0 },
+	{ "cgroup_subtree_control_show", 0 },
+	{ "memory_cgrp_subsys", 0 },
+	{ "have_canfork_callback", 0 },
+	{ "have_release_callback", 0 },
+	{ "cgroup_taskset_first", 0 },
+	{ "cgroup_taskset_next", 0 },
+	{ "of_css", 0 },
+	{ "cgroup_kf_syscall_ops", 0 },
+	{ "cgroup_base_files", 0 },
+};
+
 static int find_symbol_in(struct sym_req *tab, size_t n, const char *name)
 {
 	for (size_t i = 0; i < n; i++)
@@ -773,6 +834,10 @@ static int scan_kallsyms(void)
 		idx = find_symbol_in(nf_required, ARRAY_SIZE(nf_required), name);
 		if (idx >= 0)
 			nf_required[idx].found = 1;
+		idx = find_symbol_in(cgpids_required, ARRAY_SIZE(cgpids_required),
+				     name);
+		if (idx >= 0)
+			cgpids_required[idx].found = 1;
 	}
 	fclose(fp);
 	return 0;
@@ -883,6 +948,7 @@ int main(int argc, char **argv)
 	unsigned long page_size;
 	const char *btf_path = "/sys/kernel/btf/vmlinux";
 	long xt_expected = -1;
+	long seq_expected = -1;
 	struct btf_layout layout;
 	int check_nf;
 	int check_xt;
@@ -894,6 +960,8 @@ int main(int argc, char **argv)
 	int boundary_ok;
 	int nf_ok;
 	int nf_symbols;
+	int cgpids_symbols;
+	int seq_ok;
 	int supported;
 	int dcache;
 	int resolver;
@@ -910,6 +978,8 @@ int main(int argc, char **argv)
 			feature = argv[++i];
 		else if (!strcmp(argv[i], "--xt-layout") && i + 1 < argc)
 			xt_expected = strtol(argv[++i], NULL, 10);
+		else if (!strcmp(argv[i], "--seq-private") && i + 1 < argc)
+			seq_expected = strtol(argv[++i], NULL, 10);
 	}
 	check_nf = !strcmp(feature, "netfilter");
 	check_xt = check_nf || !strcmp(feature, "ipset");
@@ -956,18 +1026,24 @@ int main(int argc, char **argv)
 		      (!check_cgpids || layout.cgpids_ok);
 	nf_ok = !check_nf || layout.nf.ok;
 	nf_symbols = all_found(nf_required, ARRAY_SIZE(nf_required));
+	cgpids_symbols = all_found(cgpids_required,
+				   ARRAY_SIZE(cgpids_required));
+	seq_ok = !check_cgpids ||
+		 (seq_expected >= 0 && layout.seq_private == seq_expected);
 	ok = page_size == 4096 && btf && layout_ok && boundary_ok && ksud &&
 	     supported && kmi[0] && required[SYM_SYS_CALL_TABLE].found &&
 	     required[SYM_INIT_MM].found &&
 	     required[SYM_PANIC_NOTIFIER_LIST].found &&
 	     required[SYM_STOP_MACHINE].found &&
 	     required[SYM_REGISTER_KPROBE].found && dcache && resolver &&
-	     nf_ok && (!check_nf || nf_symbols);
+	     nf_ok && (!check_nf || nf_symbols) && seq_ok &&
+	     (!check_cgpids || cgpids_symbols);
 
 	printf("{\"ok\":%s,\"feature\":\"%s\",\"release\":\"%s\","
 	       "\"kmi\":\"%s\",\"supported\":%s,\"page_size\":%lu,"
 	       "\"btf\":%s,\"ksud\":\"%s\",\"btf_layout\":{"
 	       "\"xt_match_size\":%u,\"xt_target_size\":%u,"
+	       "\"seq_file_private\":%d,"
 	       "\"xt_ok\":%s,\"boundary\":{\"locks\":%s,"
 	       "\"checked_xt\":%s,\"xt_params\":%s,\"skb\":%s,\"net\":%s,"
 	       "\"checked_fs\":%s,\"fs\":%s,"
@@ -980,7 +1056,7 @@ int main(int argc, char **argv)
 	       ok ? "true" : "false", feature, uts.release, kmi,
 	       supported ? "true" : "false", page_size,
 	       btf ? "true" : "false", ksud ? ksud : "",
-	       layout.match.size, layout.target.size,
+	       layout.match.size, layout.target.size, layout.seq_private,
 	       layout_ok ? "true" : "false",
 	       layout.locks_ok ? "true" : "false",
 	       check_xt ? "true" : "false",
@@ -1013,15 +1089,24 @@ int main(int argc, char **argv)
 		printf(",\"%s\":%s", nf_required[i].name,
 		       nf_required[i].found ? "true" : "false");
 	}
+	if (check_cgpids) {
+		for (size_t i = 0; i < ARRAY_SIZE(cgpids_required); i++) {
+			printf(",\"%s\":%s", cgpids_required[i].name,
+			       cgpids_required[i].found ? "true" : "false");
+		}
+	}
 	printf("},\"checks\":{\"page_size_4k\":%s,\"btf\":%s,"
 	       "\"kmi_supported\":%s,\"ksud\":%s,\"dcache\":%s,"
 	       "\"kallsyms_resolver\":%s,\"xt_layout\":%s,"
-	       "\"boundary\":%s,\"nf_abi\":%s,\"nf_symbols\":%s}}\n",
+	       "\"boundary\":%s,\"nf_abi\":%s,\"nf_symbols\":%s,"
+	       "\"cgpids_symbols\":%s,\"seq_private\":%s}}\n",
 	       page_size == 4096 ? "true" : "false", btf ? "true" : "false",
 	       supported ? "true" : "false", ksud ? "true" : "false",
 	       dcache ? "true" : "false", resolver ? "true" : "false",
 	       layout_ok ? "true" : "false", boundary_ok ? "true" : "false",
 	       nf_ok ? "true" : "false",
-	       (!check_nf || nf_symbols) ? "true" : "false");
+	       (!check_nf || nf_symbols) ? "true" : "false",
+	       (!check_cgpids || cgpids_symbols) ? "true" : "false",
+	       seq_ok ? "true" : "false");
 	return ok ? 0 : 1;
 }

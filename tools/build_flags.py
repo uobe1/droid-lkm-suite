@@ -29,6 +29,7 @@ CONFIG_SPECS = {
     "preempt_rt": ("bool", None),
     "lockdep": ("bool", None),
     "debug_mutexes": ("bool", None),
+    "seq_file_private": ("range", (64, 512)),
     "debug_spinlock": ("bool", None),
     "debug_rwsems": ("bool", None),
     "kasan_mode": ("enum", ("hw_tags", "sw_tags", "generic", "off")),
@@ -131,6 +132,7 @@ def flags_for(profile_id: str, config: dict[str, int | str]) -> dict[str, str]:
     flags["DNSK_PAGE_SIZE"] = str(config["page_size"])
     flags["DNSK_VA_BITS"] = str(config["va_bits"])
     flags["DNSK_MAX_SKB_FRAGS"] = str(config["max_skb_frags"])
+    flags["DNSK_SEQ_FILE_PRIVATE"] = str(config["seq_file_private"])
     flags["DNSK_CGROUP_SUBSYS_COUNT"] = str(config["cgroup_subsys_count"])
     if config["cgroup_subsys_layout"] == "vendor-256":
         flags.update({

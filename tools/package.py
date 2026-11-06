@@ -73,6 +73,8 @@ def stamp_keys(stem: str) -> tuple[str, ...]:
     )
     if stem in ("dnsk_ipset", "dnsk_netfilter"):
         return keys + ("dnsk_xt_layout",)
+    if stem == "dnsk_cgpids":
+        return keys + ("dnsk_cgroup_subsys_layout", "dnsk_seq_file_private")
     return keys
 
 
@@ -130,6 +132,8 @@ def main() -> int:
         "dnsk_page_size": "page_size",
         "dnsk_max_skb_frags": "max_skb_frags",
         "dnsk_cgroup_subsys_count": "cgroup_subsys_count",
+        "dnsk_cgroup_subsys_layout": "cgroup_subsys_layout",
+        "dnsk_seq_file_private": "seq_file_private",
     }
     expected: dict[str, str] = {}
     for mod_key, policy_key in policy_keys.items():
@@ -145,7 +149,8 @@ def main() -> int:
     expected["dnsk_xt_layout"] = xt_layout
     try:
         for key in ("xt_layout", "page_size", "max_skb_frags",
-                    "cgroup_subsys_count"):
+                    "cgroup_subsys_count", "cgroup_subsys_layout",
+                    "seq_file_private"):
             int(expected[f"dnsk_{key}"])
     except ValueError:
         print("policy.conf has a non-numeric ABI value", file=sys.stderr)
@@ -153,7 +158,7 @@ def main() -> int:
     for features in feature_files.values():
         for stem, ko in features.items():
             if stem not in ("dnsk_ipset", "dnsk_netfilter", "dnsk_devtmpfs",
-                            "dnsk_ns"):
+                            "dnsk_ns", "dnsk_cgpids"):
                 continue
             for mod_key in stamp_keys(stem):
                 value = expected[mod_key]
@@ -227,6 +232,8 @@ def main() -> int:
             "page_size": int(expected["dnsk_page_size"]),
             "max_skb_frags": int(expected["dnsk_max_skb_frags"]),
             "cgroup_subsys_count": int(expected["dnsk_cgroup_subsys_count"]),
+            "cgroup_subsys_layout": int(expected["dnsk_cgroup_subsys_layout"]),
+            "seq_file_private": int(expected["dnsk_seq_file_private"]),
             "kmis": args.kmi,
             "features": {
                 kmi: ["core"] + sorted(feature_files[kmi].keys()) for kmi in args.kmi

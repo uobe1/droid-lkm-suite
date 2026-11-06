@@ -24,5 +24,11 @@ MODULE_INFO(dnsk_max_skb_frags, __stringify(DNSK_MAX_SKB_FRAGS));
 #ifdef DNSK_CGROUP_SUBSYS_COUNT
 MODULE_INFO(dnsk_cgroup_subsys_count, __stringify(DNSK_CGROUP_SUBSYS_COUNT));
 #endif
+#ifdef DNSK_CGROUP_SUBSYS_LAYOUT
+MODULE_INFO(dnsk_cgroup_subsys_layout, __stringify(DNSK_CGROUP_SUBSYS_LAYOUT));
+#endif
+#ifdef DNSK_SEQ_FILE_PRIVATE
+MODULE_INFO(dnsk_seq_file_private, __stringify(DNSK_SEQ_FILE_PRIVATE));
+#endif
 
 #endif /* _DNSK_ABI_H */
