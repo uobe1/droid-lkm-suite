@@ -164,7 +164,7 @@ jobs:
                        libip4tc-1.8.10-r3 libip6tc-1.8.10-r3 \
                        libxtables-1.8.10-r3 libnftnl-1.2.6-r0 \
                        nftables-1.0.9-r2 gmp-6.3.0-r1 jansson-2.14-r4 \
-                       readline-8.2.10-r0 ncurses-libs-6.4_p20240420-r2; do
+                       readline-8.2.10-r0 libncursesw-6.4_p20240420-r2; do
               curl -fsSL -o "$pkg.apk" "$APK_BASE/$pkg.apk"
               tar -xzf "$pkg.apk" -C rootfs 2>/dev/null
             done
