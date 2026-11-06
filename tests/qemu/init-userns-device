@@ -53,7 +53,9 @@ if [ -w "$TR/kprobe_events" ]; then
 		 'r:ovl_layers ovl_get_layers $retval' \
 		 'r:ovl_pm ovl_parse_monolithic $retval' \
 		 'r:ovl_pp ovl_parse_param $retval' \
+		 'p:ovl_in ovl_init_fs_context' \
 		 'r:ovl_init ovl_init_fs_context $retval' \
+		 'p:fsm fs_context_for_mount fsname=+0(%x0):string init=+16(%x0):x64' \
 		 'r:vfs_tree vfs_get_tree $retval' \
 		 'r:vfs_ps vfs_parse_fs_string $retval' \
 		 'r:parse_m parse_monolithic_mount_data $retval' \
@@ -66,9 +68,12 @@ if [ -w "$TR/kprobe_events" ]; then
 	done
 	echo 1 >"$TR/events/kprobes/enable"
 fi
+echo 0 >/proc/sys/kernel/kptr_restrict 2>/dev/null
+grep -E ' (ovl_init_fs_context|fs_context_for_mount|legacy_init_fs_context)$' /proc/kallsyms
+grep -i overlay /proc/filesystems
 if ! /userns_test; then
 	"$BB" cat "$TR/kprobe_events" 2>/dev/null | tail -20
-	"$BB" cat "$TR/trace" 2>/dev/null | grep -E 'ovl_|vfs_|parse_m|cap:|getfs|fsc:' | tail -60
+	"$BB" cat "$TR/trace" 2>/dev/null | grep -E 'ovl_|vfs_|parse_m|cap:|getfs|fsc:|fsm:' | tail -60
 	fail userns_test
 fi
 /fuse_test || fail fuse_test
