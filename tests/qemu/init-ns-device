@@ -36,13 +36,13 @@ export LD_LIBRARY_PATH=/system/lib64
 /ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
 echo "DNSK_KSUD_LATE_LOAD_OK"
 
-# This ReSukiSU build forces enforcing when it sees permissive; enter its
-# permissive ksu domain through --allow-shell and clear enforce globally.
-"$BB" mkdir -p /system/bin
-cp /ksud /system/bin/su
-chmod 0755 /system/bin/su
-ln -sf /bin/sh /system/bin/sh
-/runas /system/bin/su -c 'echo 0 > /sys/fs/selinux/enforce' || fail selinux_permissive
+# This ReSukiSU build forces enforcing when it sees permissive.  Late-load
+# skips the execve hooks, so a copied su binary runs unprivileged; use the
+# GRANT_ROOT ioctl path instead and clear enforce from the ksu domain.
+cat >/tmp/dnsk_bootstrap.sh <<'EOS'
+echo 0 > /sys/fs/selinux/enforce
+EOS
+/runas /ksud debug su < /tmp/dnsk_bootstrap.sh || fail ksud_debug_su
 [ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
 echo "DNSK_SELINUX_AFTER_KSU=permissive"
 
