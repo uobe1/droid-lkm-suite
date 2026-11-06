@@ -112,3 +112,21 @@ PID/IPC preflight、分配/共享/延迟销毁与 `DNSK_USERNS_LKM_OK` 通过。
 
 门内同时检查原生 USER_NS：`create_user_ns` 在核心 kallsyms 中存在时拒绝
 加载，保留原生实现。
+
+## idmapped mount 的 !USER_NS 适配（开发中）
+
+`fs/namespace.c:build_mount_idmapped()` 在 `CONFIG_USER_NS=n` 下从
+`userns_fd` 解析出的命名空间会被内联 `get_user_ns()` 桩替换成
+`init_user_ns`，随后 `alloc_mnt_idmap(init)` 复制全等映射；同时
+`can_idmap_mount()` 会因 `mnt_userns == sb->s_user_ns` 返回 `EINVAL`。
+
+适配：
+- hook `__arm64_sys_mount_setattr`：进入时解析 `userns_fd` 对应命名空间，
+  按任务暂存一个引用，再走原生 trampoline；
+- hook `alloc_mnt_idmap`：当内核传入 `init_user_ns` 且当前任务有暂存时，
+  用真实命名空间复制 uid/gid map；调用返回后释放暂存引用；
+- `mount_setattr` 测试改为：helper A（映射 0→kuid 1）在自己的 mount ns
+  挂 tmpfs 并创建文件，init 通过 `setns` 进入；idmap 使用 helper B 的
+  命名空间，使文件 uid 从 1 变为 0。
+
+原生 USER_NS 内核仍在加载时直接拒绝，不启用这些 hook。

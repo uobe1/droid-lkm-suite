@@ -64,9 +64,10 @@ static int helper_map_write(pid_t pid, const char *name, const char *value)
  * and mounts a tmpfs there, so the superblock's s_user_ns is the helper's
  * namespace.  The initial userns can later setns into it.
  */
-static pid_t spawn_helper(int mount_tmpfs)
+static pid_t spawn_helper(int mount_tmpfs, unsigned int outer_id)
 {
 	int ready[2], go[2];
+	char map[64];
 	char byte;
 	pid_t pid;
 
@@ -115,9 +116,10 @@ static pid_t spawn_helper(int mount_tmpfs)
 	if (helper_map_write(pid, "setgroups", "deny") < 0 &&
 	    errno != ENOENT)
 		goto fail;
-	if (helper_map_write(pid, "uid_map", "0 1 1\n") < 0)
+	snprintf(map, sizeof(map), "0 %u 1\n", outer_id);
+	if (helper_map_write(pid, "uid_map", map) < 0)
 		goto fail;
-	if (helper_map_write(pid, "gid_map", "0 1 1\n") < 0)
+	if (helper_map_write(pid, "gid_map", map) < 0)
 		goto fail;
 	if (write(go[1], "g", 1) != 1)
 		goto fail;
@@ -136,10 +138,11 @@ fail:
 }
 
 /*
- * The tmpfs file is owned by kuid 1 (helper A mounts it under userns A).
- * The mount is idmapped with a different userns B mapping 0 -> kuid 1, so
- * the file must appear as uid 0 to the initial userns.  B and A are both
- * children of init, so only init may use B for the idmap.
+ * Helper A maps 0 -> kuid 1, owns the tmpfs and creates a file: the inode
+ * uid is kuid 1.  The mount idmap B maps 0 -> kuid 0, so the stat conversion
+ * is kuid 1 -> (fs userns A) uid 0 -> (idmap B) kuid 0: uid 1 becomes 0 in
+ * the initial userns.  Both namespaces are children of init, which performs
+ * the mount_setattr.
  */
 static int idmap_test(void)
 {
@@ -156,11 +159,11 @@ static int idmap_test(void)
 	if (saved_mnt < 0)
 		goto fail;
 	step = "spawn_sb";
-	pa = spawn_helper(1);
+	pa = spawn_helper(1, 1);
 	if (pa < 0)
 		goto fail;
 	step = "spawn_idmap";
-	pb = spawn_helper(0);
+	pb = spawn_helper(0, 0);
 	if (pb < 0)
 		goto fail;
 	step = "open_sb_ns";
