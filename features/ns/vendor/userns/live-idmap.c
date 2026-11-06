@@ -21,6 +21,7 @@
 #include <linux/uaccess.h>
 #include <linux/user_namespace.h>
 #include <linux/mnt_idmapping.h>
+#include <uapi/linux/mount.h>
 #include "live.h"
 
 #define DS_IDMAP_SLOTS 8
