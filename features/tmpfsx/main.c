@@ -38,6 +38,7 @@ static bool dnsk_fill_ready;
 static bool dnsk_evict_ready;
 static bool dnsk_feature_ready;
 static struct dnsk_acl_methods dnsk_acl_ops;
+static bool dnsk_acl_ready;
 
 static void dnsk_wire_sb(struct super_block *sb, void *arg)
 {
@@ -152,9 +153,8 @@ static int dnsk_resolve_symbols(void)
 	fc_ops = dnsk_api->resolve("shmem_fs_context_ops");
 
 	if (!dnsk_iops || !dnsk_dops || !dnsk_iterate_supers || !xattr_set ||
-	    !xattr_get || !xattr_list || !xattrs_free || !acl_from ||
-	    !acl_to || !user_ns || !acl_access || !acl_default || !fc_ops) {
-		pr_err("dnsk_tmpfsx: missing tmpfs, xattr or ACL symbols\n");
+	    !xattr_get || !xattr_list || !xattrs_free || !fc_ops) {
+		pr_err("dnsk_tmpfsx: missing tmpfs, xattr or fs_context symbols\n");
 		return -ENOENT;
 	}
 	parse_param = READ_ONCE(*(void **)((char *)fc_ops +
@@ -175,8 +175,16 @@ static int dnsk_resolve_symbols(void)
 				     (dnsk_xattrs_free_fn)xattrs_free);
 	if (ret)
 		return ret;
-	return dnsk_tmpfsx_acl_init(acl_from, acl_to, user_ns, acl_access,
-				    acl_default, &dnsk_acl_ops);
+	if (acl_from && acl_to && user_ns && acl_access && acl_default) {
+		ret = dnsk_tmpfsx_acl_init(acl_from, acl_to, user_ns, acl_access,
+					   acl_default, &dnsk_acl_ops);
+		if (ret)
+			return ret;
+		dnsk_acl_ready = true;
+	} else {
+		pr_info("dnsk_tmpfsx: native ACL handlers absent; xattr only\n");
+	}
+	return 0;
 }
 
 static struct dnsk_feature_desc dnsk_tmpfsx_desc = {
@@ -225,38 +233,45 @@ static int __init dnsk_tmpfsx_init(void)
 		goto out_iops;
 	dnsk_dops_ready = true;
 
-	ret = dnsk_add_acl_hook("tmpfsx.iops.get_inode_acl", dnsk_iops,
-				offsetof(struct inode_operations,
-					 get_inode_acl),
-				dnsk_acl_ops.get_inode_acl);
-	if (ret)
-		goto out_acl;
-	ret = dnsk_add_acl_hook("tmpfsx.iops.get_acl", dnsk_iops,
-				offsetof(struct inode_operations, get_acl),
-				dnsk_acl_ops.get_acl);
-	if (ret)
-		goto out_acl;
-	ret = dnsk_add_acl_hook("tmpfsx.iops.set_acl", dnsk_iops,
-				offsetof(struct inode_operations, set_acl),
-				dnsk_acl_ops.set_acl);
-	if (ret)
-		goto out_acl;
-	ret = dnsk_add_acl_hook("tmpfsx.dops.get_inode_acl", dnsk_dops,
-				offsetof(struct inode_operations,
-					 get_inode_acl),
-				dnsk_acl_ops.get_inode_acl);
-	if (ret)
-		goto out_acl;
-	ret = dnsk_add_acl_hook("tmpfsx.dops.get_acl", dnsk_dops,
-				offsetof(struct inode_operations, get_acl),
-				dnsk_acl_ops.get_acl);
-	if (ret)
-		goto out_acl;
-	ret = dnsk_add_acl_hook("tmpfsx.dops.set_acl", dnsk_dops,
-				offsetof(struct inode_operations, set_acl),
-				dnsk_acl_ops.set_acl);
-	if (ret)
-		goto out_acl;
+	if (dnsk_acl_ready) {
+		ret = dnsk_add_acl_hook("tmpfsx.iops.get_inode_acl", dnsk_iops,
+					offsetof(struct inode_operations,
+						 get_inode_acl),
+					dnsk_acl_ops.get_inode_acl);
+		if (ret)
+			goto out_acl;
+		ret = dnsk_add_acl_hook("tmpfsx.iops.get_acl", dnsk_iops,
+					offsetof(struct inode_operations,
+						 get_acl),
+					dnsk_acl_ops.get_acl);
+		if (ret)
+			goto out_acl;
+		ret = dnsk_add_acl_hook("tmpfsx.iops.set_acl", dnsk_iops,
+					offsetof(struct inode_operations,
+						 set_acl),
+					dnsk_acl_ops.set_acl);
+		if (ret)
+			goto out_acl;
+		ret = dnsk_add_acl_hook("tmpfsx.dops.get_inode_acl",
+					dnsk_dops,
+					offsetof(struct inode_operations,
+						 get_inode_acl),
+					dnsk_acl_ops.get_inode_acl);
+		if (ret)
+			goto out_acl;
+		ret = dnsk_add_acl_hook("tmpfsx.dops.get_acl", dnsk_dops,
+					offsetof(struct inode_operations,
+						 get_acl),
+					dnsk_acl_ops.get_acl);
+		if (ret)
+			goto out_acl;
+		ret = dnsk_add_acl_hook("tmpfsx.dops.set_acl", dnsk_dops,
+					offsetof(struct inode_operations,
+						 set_acl),
+					dnsk_acl_ops.set_acl);
+		if (ret)
+			goto out_acl;
+	}
 
 	ret = dnsk_add_acl_hook("tmpfsx.fc.parse_param", dnsk_fc_ops,
 				offsetof(struct fs_context_operations,

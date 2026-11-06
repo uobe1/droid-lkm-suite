@@ -13,9 +13,17 @@ on:
           - android16-6.12-xt104
           - android16-6.12-xt128
         default: android16-6.12-xt104
+      full_matrix:
+        description: Build all 8 KMIs (release matrix); default is android16-6.12 only
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
@@ -58,23 +66,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - kmi: android12-5.10
-            profile: ""
-          - kmi: android13-5.10
-            profile: ""
-          - kmi: android13-5.15
-            profile: ""
-          - kmi: android14-5.15
-            profile: ""
-          - kmi: android14-6.1
-            profile: ""
-          - kmi: android15-6.6
-            profile: ""
-          - kmi: android16-6.12
-            profile: ${{ inputs.build_profile || 'android16-6.12-xt104' }}
-          - kmi: android17-6.18
-            profile: ""
+        include: ${{ fromJSON(inputs.full_matrix && format('[{"kmi":"android12-5.10","profile":""},{"kmi":"android13-5.10","profile":""},{"kmi":"android13-5.15","profile":""},{"kmi":"android14-5.15","profile":""},{"kmi":"android14-6.1","profile":""},{"kmi":"android15-6.6","profile":""},{"kmi":"android16-6.12","profile":"{0}"},{"kmi":"android17-6.18","profile":""}]', inputs.build_profile || 'android16-6.12-xt104') || format('[{"kmi":"android16-6.12","profile":"{0}"}]', inputs.build_profile || 'android16-6.12-xt104')) }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-20260828
@@ -197,15 +189,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        kmi:
-          - android12-5.10
-          - android13-5.10
-          - android13-5.15
-          - android14-5.15
-          - android14-6.1
-          - android15-6.6
-          - android16-6.12
-          - android17-6.18
+        kmi: ${{ fromJSON(inputs.full_matrix && '["android12-5.10","android13-5.10","android13-5.15","android14-5.15","android14-6.1","android15-6.6","android16-6.12","android17-6.18"]' || '["android16-6.12"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

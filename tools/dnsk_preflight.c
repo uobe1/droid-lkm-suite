@@ -553,10 +553,15 @@ static void btf_check_tmpfsx(const unsigned char *d, size_t len,
 	static const struct btf_field simple_xattrs[] = {
 		{ "rb_root", 0 }, { "lock", 8 },
 	};
+	static const struct btf_field fc_ops[] = {
+		{ "parse_param", 16 }, { "parse_monolithic", 24 },
+	};
 
 	l->tmpfsx_ok =
 		btf_fields_match(d, len, "shmem_inode_info", 824, shmem_info,
 				 ARRAY_SIZE(shmem_info)) &&
+		btf_fields_match(d, len, "fs_context_operations", 48, fc_ops,
+				 ARRAY_SIZE(fc_ops)) &&
 		btf_fields_match(d, len, "xattr_handler", 48, xattr_handler,
 				 ARRAY_SIZE(xattr_handler)) &&
 		btf_fields_match(d, len, "inode_operations", 256, inode_ops,
@@ -861,6 +866,8 @@ static struct sym_req tmpfsx_required[] = {
 	{ "simple_xattr_list", 0 },
 	{ "simple_xattrs_free", 0 },
 	{ "iterate_supers", 0 },
+	{ "shmem_fs_context_ops", 0 },
+	{ "shmem_init_fs_context", 0 },
 };
 
 static int find_symbol_in(struct sym_req *tab, size_t n, const char *name)
