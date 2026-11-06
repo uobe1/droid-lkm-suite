@@ -124,6 +124,30 @@ jobs:
           else
             CC_WRAP=""
           fi
+          # Building Image rebuilds modpost from this source tree.  The shipped
+          # DDK binary emits a valid empty string literal for an empty
+          # __version_ext_names table, but this source writes "= ;", which
+          # clang rejects in every external module.  Patch the generator and
+          # rebuild it before Image so the external build picks up the fix.
+          python3 - <<'PY'
+          p = "/opt/ddk/src/android16-6.12/scripts/mod/modpost.c"
+          s = open(p).read()
+          old = ('\tbuf_printf(b, "__used __section(\\"__version_ext_names\\") =\\n");\n'
+                 '\tlist_for_each_entry(s, &mod->unresolved_symbols, list) {')
+          new = ('\tbuf_printf(b, "__used __section(\\"__version_ext_names\\") =");\n'
+                 '\t{\n'
+                 '\t\tstruct symbol *t;\n'
+                 '\t\tbool any = false;\n'
+                 '\n'
+                 '\t\tlist_for_each_entry(t, &mod->unresolved_symbols, list)\n'
+                 '\t\t\tif (t->module && t->crc_valid) { any = true; break; }\n'
+                 '\t\tbuf_printf(b, any ? "\\n" : " \\"\\"\\n");\n'
+                 '\t}\n'
+                 '\tlist_for_each_entry(s, &mod->unresolved_symbols, list) {')
+          assert old in s, "add_extended_versions pattern not found"
+          open(p, "w").write(s.replace(old, new, 1))
+          PY
+          make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 scripts/mod/modpost
           make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 CC="${CC_WRAP}clang" \
             -j"$(nproc)" Image
           mkdir -p out
