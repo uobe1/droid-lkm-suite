@@ -317,7 +317,7 @@ jobs:
             done
             cp tests/qemu/init-netfilter-device rootfs/init
           elif [ "${{ inputs.mode }}" = "userns" ]; then
-            cp modules/dnsk_core.ko modules/dnsk_ns.ko rootfs/modules/
+            cp modules/dnsk_core.ko modules/dnsk_ns.ko modules/dnsk_tmpfsx.ko rootfs/modules/
             cp tests/qemu/assets/ksud rootfs/ksud
             chmod 0755 rootfs/ksud
             cp -a tests/qemu/assets/android/. rootfs/
@@ -407,6 +407,8 @@ jobs:
             grep -q 'DNSK_TMPFSX_OK' qemu.log
           elif [ "$MODE" = "userns" ]; then
             grep -q 'DNSK_USERNS_LKM_OK' qemu.log
+            grep -q 'USERNS_IDMAP_OK' qemu.log
+            grep -q 'USERNS_OVERLAY_OK' qemu.log
             grep -q 'DNSK_USERNS_OK' qemu.log
           elif [ "$MODE" = "netfilter" ]; then
             grep -q 'DNSK_NETFILTER_LKM_OK' qemu.log
