@@ -18,3 +18,5 @@ DS_NF_UNIT(nft_reject_ipv6)
 /* xt tables units register only with x_tables; no nft dependency either way. */
 DS_NF_UNIT(xt_reject)
 DS_NF_UNIT(xt_recent)
+/* Legacy IPv6 nat table; no-op when the kernel already provides one. */
+DS_NF_UNIT(ip6nat)

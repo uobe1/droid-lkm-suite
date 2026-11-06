@@ -47,7 +47,8 @@ dnsk_netfilter-y += \
 	vendor/netfilter/xt_reject.o \
 	vendor/netfilter/upstream/ipt_REJECT.o \
 	vendor/netfilter/upstream/ip6t_REJECT.o \
-	vendor/netfilter/upstream/xt_recent.o
+	vendor/netfilter/upstream/xt_recent.o \
+	vendor/netfilter/ip6nat.o
 ccflags-y += -DCONFIG_NF_TABLES_IPV4=1 -DCONFIG_NF_TABLES_IPV6=1 -DCONFIG_NF_TABLES_INET=1
 ifneq ($(DNSK_XT_LAYOUT),)
 ccflags-y += -DDNSK_XT_LAYOUT=$(DNSK_XT_LAYOUT)
