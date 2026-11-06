@@ -169,6 +169,7 @@ static struct posix_acl *dnsk_get_inode_acl(struct inode *inode, int type,
 	if (!IS_POSIXACL(inode))
 		return NULL;
 	size = dnsk_simple_xattr_get(&info->xattrs, name, NULL, 0);
+	pr_err("dnsk_tmpfsx: acl get %s size=%zd\n", name, size);
 	if (size == -ENODATA)
 		return NULL;
 	if (size < 0)
@@ -221,8 +222,12 @@ static int dnsk_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 		return ret;
 	}
 	xret = dnsk_simple_xattr_set(&info->xattrs, name, value, size, 0);
+	pr_err("dnsk_tmpfsx: acl store %s size=%d ret=%ld\n", name, size,
+	       IS_ERR(xret) ? PTR_ERR(xret) : (xret ? 0 : -EIO));
 	kfree(value);
-	return IS_ERR(xret) ? PTR_ERR(xret) : 0;
+	if (IS_ERR(xret))
+		return PTR_ERR(xret);
+	return xret ? 0 : -EIO;
 }
 
 void dnsk_tmpfsx_evict_inode(struct inode *inode)
