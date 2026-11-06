@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #define _GNU_SOURCE
-// Minimal finit_module loader for QEMU: ignores modversions CRCs (the flag is
-// allowed without CONFIG_MODULE_FORCE_LOAD); vermagic is patched in CI.
+// Minimal finit_module loader for QEMU: caller patches vermagic and the
+// module_layout CRC.  Do NOT pass IGNORE_MODVERSIONS: it sets versindex=0,
+// which makes check_modstruct_version call try_to_force_load() and fail with
+// ENOEXEC when CONFIG_MODULE_FORCE_LOAD is off.
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/module.h>
@@ -23,7 +25,7 @@ int main(int argc, char **argv)
 		perror("open");
 		return 1;
 	}
-	ret = syscall(SYS_finit_module, fd, "", MODULE_INIT_IGNORE_MODVERSIONS);
+	ret = syscall(SYS_finit_module, fd, "", 0);
 	if (ret) {
 		fprintf(stderr, "finit_module %s: %s\n", argv[1], strerror(errno));
 		close(fd);
