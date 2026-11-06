@@ -108,6 +108,30 @@ oracle 配置检查：已有 `IP_NF_IPTABLES/NAT/MASQUERADE`、`IP_SET`、
 修复：oracle fragment 增加这三个选项，并在 initramfs 加入 `nftables`
 及其依赖（gmp/jansson/readline/ncurses）与 `iptables-legacy`，重跑 NAT。
 
+## NAT 端到端通过 (run 42208592119, 2026-11-06)
+
+oracle 内核打开 `NFT_NAT/NFT_CHAIN_NAT/NFT_COMPAT` 并加入 `nft` 工具后，
+Docker 29.7.2 的 bridge 端口映射在 QEMU 内走通：
+
+```text
+iptables v1.8.10 (nf_tables)
+nat_container_state=true nat_container_ip=172.17.0.2
+nat_host_ip=172.17.0.1
+DNSK_DOCKER_NAT_OK
+DNSK_DOCKER_OK
+DNSK_QEMU_OK
+```
+
+- 容器命令 `-p 18080:80`，用 busybox `nc -l -p 80` 返回
+  `DOCKER_NAT_OK`（Alpine 的 `httpd` 在 busybox-extras，不在 minirootfs）。
+- 三条路径均验证：容器 IP `172.17.0.2:80`、宿主地址的 published port、
+  `127.0.0.1:18080`。initramfs 必须先 `ifconfig lo up`，否则 loopback
+  不可达。
+- 容器 IP 取 `.NetworkSettings.Networks.bridge.IPAddress`；Docker 29 的
+  顶层 `NetworkSettings.IPAddress` 在容器/网络状态变化后不可靠。
+- 规则：`-A DOCKER ! -i docker0 -p tcp --dport 18080 -j DNAT
+  --to-destination 172.17.0.2:80`，由 iptables-nft 经 `nft_compat` 下发。
+
 ## 备注
 
 - Docker static 包来自
