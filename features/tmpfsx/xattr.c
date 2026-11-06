@@ -88,6 +88,10 @@ static struct posix_acl *(*dnsk_acl_from_xattr)(struct user_namespace *userns,
 static int (*dnsk_acl_to_xattr)(struct user_namespace *userns,
 				const struct posix_acl *acl, void *buffer,
 				size_t size);
+static void (*dnsk_acl_release)(struct posix_acl *acl);
+static int (*dnsk_set_posix_acl)(struct mnt_idmap *idmap,
+				 struct dentry *dentry, int type,
+				 struct posix_acl *acl);
 static struct user_namespace *dnsk_user_ns;
 
 static const char *dnsk_acl_xattr_name(int type)
@@ -95,6 +99,53 @@ static const char *dnsk_acl_xattr_name(int type)
 	return type == ACL_TYPE_ACCESS ? XATTR_NAME_POSIX_ACL_ACCESS :
 					 XATTR_NAME_POSIX_ACL_DEFAULT;
 }
+
+static int dnsk_acl_xattr_get(const struct xattr_handler *handler,
+			      struct dentry *dentry, struct inode *inode,
+			      const char *name, void *buffer, size_t size)
+{
+	struct shmem_inode_info *info = container_of(inode,
+						     struct shmem_inode_info,
+						     vfs_inode);
+
+	return dnsk_simple_xattr_get(&info->xattrs, handler->name, buffer,
+				     size);
+}
+
+static int dnsk_acl_xattr_set(const struct xattr_handler *handler,
+			      struct mnt_idmap *idmap, struct dentry *dentry,
+			      struct inode *inode, const char *name,
+			      const void *value, size_t size, int flags)
+{
+	struct posix_acl *acl = NULL;
+	int ret;
+
+	if (!IS_POSIXACL(inode))
+		return -EOPNOTSUPP;
+	if (value) {
+		acl = dnsk_acl_from_xattr(dnsk_user_ns, value, size);
+		if (IS_ERR(acl))
+			return PTR_ERR(acl);
+	}
+	ret = dnsk_set_posix_acl(idmap, dentry, handler->flags, acl);
+	if (acl)
+		dnsk_acl_release(acl);
+	return ret;
+}
+
+static const struct xattr_handler dnsk_acl_access_handler = {
+	.name = XATTR_NAME_POSIX_ACL_ACCESS,
+	.flags = ACL_TYPE_ACCESS,
+	.get = dnsk_acl_xattr_get,
+	.set = dnsk_acl_xattr_set,
+};
+
+static const struct xattr_handler dnsk_acl_default_handler = {
+	.name = XATTR_NAME_POSIX_ACL_DEFAULT,
+	.flags = ACL_TYPE_DEFAULT,
+	.get = dnsk_acl_xattr_get,
+	.set = dnsk_acl_xattr_set,
+};
 
 static struct posix_acl *dnsk_get_inode_acl(struct inode *inode, int type,
 					    bool rcu)
@@ -195,17 +246,19 @@ int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
 }
 
 int dnsk_tmpfsx_acl_init(void *from_xattr, void *to_xattr, void *user_ns,
-			 void *access_handler, void *default_handler,
+			 void *release_acl, void *set_posix_acl,
 			 struct dnsk_acl_methods *methods)
 {
-	if (!from_xattr || !to_xattr || !user_ns || !access_handler ||
-	    !default_handler || !methods)
+	if (!from_xattr || !to_xattr || !user_ns || !release_acl ||
+	    !set_posix_acl || !methods)
 		return -EINVAL;
 	dnsk_acl_from_xattr = (typeof(dnsk_acl_from_xattr))from_xattr;
 	dnsk_acl_to_xattr = (typeof(dnsk_acl_to_xattr))to_xattr;
+	dnsk_acl_release = (typeof(dnsk_acl_release))release_acl;
+	dnsk_set_posix_acl = (typeof(dnsk_set_posix_acl))set_posix_acl;
 	dnsk_user_ns = user_ns;
-	dnsk_tmpfsx_handlers[3] = access_handler;
-	dnsk_tmpfsx_handlers[4] = default_handler;
+	dnsk_tmpfsx_handlers[3] = &dnsk_acl_access_handler;
+	dnsk_tmpfsx_handlers[4] = &dnsk_acl_default_handler;
 	methods->get_inode_acl = (void *)dnsk_get_inode_acl;
 	methods->get_acl = (void *)dnsk_get_acl;
 	methods->set_acl = (void *)dnsk_set_acl;

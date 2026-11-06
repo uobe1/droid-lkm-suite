@@ -134,7 +134,7 @@ static int dnsk_add_kprobe_hook(const char *key, const char *symbol, void *fn)
 static int dnsk_resolve_symbols(void)
 {
 	void *xattr_set, *xattr_get, *xattr_list, *xattrs_free;
-	void *acl_from, *acl_to, *user_ns, *acl_access, *acl_default;
+	void *acl_from, *acl_to, *user_ns, *acl_release, *acl_set;
 	void *fc_ops, *parse_param;
 	int ret;
 
@@ -148,8 +148,8 @@ static int dnsk_resolve_symbols(void)
 	acl_from = dnsk_api->resolve("posix_acl_from_xattr");
 	acl_to = dnsk_api->resolve("posix_acl_to_xattr");
 	user_ns = dnsk_api->resolve("init_user_ns");
-	acl_access = dnsk_api->resolve("posix_acl_access_xattr_handler");
-	acl_default = dnsk_api->resolve("posix_acl_default_xattr_handler");
+	acl_release = dnsk_api->resolve("posix_acl_release");
+	acl_set = dnsk_api->resolve("set_posix_acl");
 	fc_ops = dnsk_api->resolve("shmem_fs_context_ops");
 
 	if (!dnsk_iops || !dnsk_dops || !dnsk_iterate_supers || !xattr_set ||
@@ -175,9 +175,9 @@ static int dnsk_resolve_symbols(void)
 				     (dnsk_xattrs_free_fn)xattrs_free);
 	if (ret)
 		return ret;
-	if (acl_from && acl_to && user_ns && acl_access && acl_default) {
-		ret = dnsk_tmpfsx_acl_init(acl_from, acl_to, user_ns, acl_access,
-					   acl_default, &dnsk_acl_ops);
+	if (acl_from && acl_to && user_ns && acl_release && acl_set) {
+		ret = dnsk_tmpfsx_acl_init(acl_from, acl_to, user_ns,
+					   acl_release, acl_set, &dnsk_acl_ops);
 		if (ret)
 			return ret;
 		dnsk_acl_ready = true;

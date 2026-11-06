@@ -109,7 +109,7 @@ jobs:
             -e NETFILTER_XT_MATCH_RECENT \
             -e TMPFS_XATTR -e TMPFS_POSIX_ACL -e FUSE_FS -e OVERLAY_FS \
             -e VETH -e BRIDGE -e VIRTIO_NET -e VIRTIO_PCI -e VIRTIO_BLK \
-            -e SECCOMP -e SECCOMP_FILTER -d MODULE_SIG_FORCE \
+            -e SECCOMP -e SECCOMP_FILTER -d MODULE_SIG_FORCE -d MODULE_SIG \
             -d TRIM_UNUSED_KSYMS -d MODULE_SIG_ALL -d MODULE_SIG_PROTECT \
             --set-str MODULE_SIG_PROTECT_LIST ""
           if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
@@ -137,7 +137,10 @@ jobs:
               DNSK_CGROUP_SUBSYS_FORK DNSK_CGROUP_SUBSYS_EXIT \
               DNSK_CGROUP_SUBSYS_RELEASE DNSK_CGROUP_SUBSYS_ID \
               DNSK_SEQ_FILE_PRIVATE
-            make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
+            make -C "$KDIR" M="$GITHUB_WORKSPACE" modules || {
+              sed -n '1,60p' "$GITHUB_WORKSPACE/dnsk_core.mod.c" || true
+              exit 1
+            }
             make -C "$GITHUB_WORKSPACE/features/cgpids" KDIR="$KDIR" modules
             cp "$GITHUB_WORKSPACE/dnsk_core.ko" "$GITHUB_WORKSPACE/features/cgpids/dnsk_cgpids.ko" out/
           fi
