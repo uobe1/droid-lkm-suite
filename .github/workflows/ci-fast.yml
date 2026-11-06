@@ -29,11 +29,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build android16 modules
         shell: bash
+        env:
+          PROFILE: ${{ inputs.build_profile }}
         run: |
           set -euxo pipefail
           KDIR="/opt/ddk/kdir/android16-6.12"
           eval "$(python3 tools/build_flags.py \
-            --profile "profiles/abi/${{ inputs.build_profile }}.json" \
+            --profile "profiles/abi/${PROFILE}.json" \
             --kmi android16-6.12)"
           make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
           mkdir -p out
