@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
-# tmpfs xattr on the beryl device Image: mounts that predate the module and
-# mounts created after it must both expose user.* xattrs.
+# tmpfs xattr on the beryl device Image.  dnsk_tmpfsx imports unexported
+# tmpfs helpers, so it is loaded through ksud, not the raw module loader.
 
 BB=/bin/busybox
 export PATH=/usr/bin:/bin:/sbin:/usr/sbin
@@ -17,15 +17,31 @@ fi
 
 fail() {
 	echo "DNSK_QEMU_FAIL $*"
-	"$BB" dmesg 2>/dev/null | grep -iE 'dnsk_tmpfsx|dnsk_core|module|vermagic|refus' | tail -20
+	"$BB" dmesg 2>/dev/null | grep -iE 'dnsk_tmpfsx|dnsk_core|kernelsu|module|symbol|vermagic' | tail -20
 	"$BB" poweroff -f
 }
 
-"$BB" mkdir -p /early /late
+if [ -x /selinux_load ] && [ -f /policy.gz ]; then
+	"$BB" mkdir -p /sys/fs/selinux
+	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
+	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
+	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+	echo "DNSK_SELINUX_POLICY_OK enforce=$(cat /sys/fs/selinux/enforce)"
+fi
+
+"$BB" mkdir -p /early /late /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules
 mount -t tmpfs tmpfs /early || fail early_mount
 
-/insmod_force /modules/dnsk_core.ko || fail core_insmod
-/insmod_force /modules/dnsk_tmpfsx.ko || fail tmpfsx_insmod
+export LD_LIBRARY_PATH=/system/lib64
+/ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
+/ksud sepolicy patch 'permissive kernel' || fail sepolicy_permissive
+echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+[ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
+echo "DNSK_SELINUX_AFTER_KSU=permissive"
+
+/ksud insmod /modules/dnsk_core.ko || fail core_insmod
+/ksud insmod /modules/dnsk_tmpfsx.ko || fail tmpfsx_insmod
 echo "DNSK_TMPFSX_LKM_OK"
 
 mount -t tmpfs tmpfs /late || fail late_mount
