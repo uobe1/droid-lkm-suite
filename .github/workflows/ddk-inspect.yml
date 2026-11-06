@@ -1,0 +1,42 @@
+name: ddk-inspect
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:android16-6.12-20260828
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect modpost and symvers
+        shell: bash
+        run: |
+          set -uxo pipefail
+          KDIR=/opt/ddk/kdir/android16-6.12
+          SRC=/opt/ddk/src/android16-6.12
+          ls -l "$KDIR/Module.symvers" "$KDIR/vmlinux.symvers" 2>&1 || true
+          wc -l "$KDIR/Module.symvers" 2>/dev/null || true
+          head -3 "$KDIR/Module.symvers" 2>/dev/null || true
+          grep -c 'module_layout' "$KDIR/Module.symvers" 2>/dev/null || true
+          echo '=== add_extended_versions ==='
+          grep -n -A45 'static void add_extended_versions' "$SRC/scripts/mod/modpost.c"
+          echo '=== add_versions ==='
+          grep -n -A40 'static void add_versions' "$SRC/scripts/mod/modpost.c"
+          echo '=== config ==='
+          grep -E 'CONFIG_(MODVERSIONS|BASIC_MODVERSIONS|EXTENDED_MODVERSIONS)=' "$KDIR/.config" || true
+          mkdir -p /tmp/modtest
+          printf 'obj-m := modtest.o\n' >/tmp/modtest/Makefile
+          cat >/tmp/modtest/modtest.c <<'EOF'
+#include <linux/module.h>
+#include <linux/kernel.h>
+static int __init mt_init(void) { pr_info("modtest\n"); return 0; }
+static void __exit mt_exit(void) {}
+module_init(mt_init); module_exit(mt_exit);
+MODULE_LICENSE("GPL");
+EOF
+          make -C "$KDIR" M=/tmp/modtest modules V=1 || true
+          echo '=== generated ==='
+          sed -n '1,60p' /tmp/modtest/modtest.mod.c 2>/dev/null || true
