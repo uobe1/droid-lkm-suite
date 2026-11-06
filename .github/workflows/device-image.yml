@@ -1,0 +1,128 @@
+name: device-image
+
+on:
+  workflow_dispatch:
+    inputs:
+      rom_url:
+        description: fastboot images .tgz URL (beryl)
+        required: true
+        default: "https://bkt-sgp-miui-ota-update-alisgp.oss-ap-southeast-1.aliyuncs.com/OS3.0.305.0.WOQCNXM/beryl_images_OS3.0.305.0.WOQCNXM_20260416.0000.00_16.0_cn_49a1fa8b77.tgz"
+      mode:
+        description: baseline kernel boot check
+        type: choice
+        options:
+          - baseline
+        default: baseline
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates \
+            python3 python3-pip cpio lz4 zstd
+          python3 -m pip install --break-system-packages vmlinux-to-elf==1.4.0
+      - name: Extract boot image (streaming)
+        env:
+          ROM_URL: ${{ inputs.rom_url }}
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 "$ROM_URL" | \
+            tar -xz --wildcards --strip-components=2 '*/images/boot.img'
+          test -s boot.img
+          ls -l boot.img
+      - name: Unpack boot image
+        run: |
+          set -euxo pipefail
+          curl -fsSL -o unpack_bootimg.py \
+            https://raw.githubusercontent.com/LineageOS/android_system_tools_mkbootimg/f85a2fd5640de3688033b0c253c9f1489f223a11/unpack_bootimg.py
+          python3 unpack_bootimg.py --boot_img boot.img --out boot --format=mkbootimg
+          file boot/kernel
+          if file boot/kernel | grep -q 'gzip compressed'; then
+            gzip -dc boot/kernel > Image
+          elif file boot/kernel | grep -q 'LZ4'; then
+            lz4 -d boot/kernel Image
+          else
+            cp boot/kernel Image
+          fi
+          test -s Image
+          strings Image | grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+-android[0-9]+' > release.txt || true
+          cat release.txt || true
+      - name: Recover symbols
+        run: |
+          set -euxo pipefail
+          if vmlinux-to-elf Image vmlinux.elf; then
+            file vmlinux.elf
+            readelf -h vmlinux.elf | head -20
+            nm vmlinux.elf 2>/dev/null | wc -l
+          else
+            echo "vmlinux-to-elf failed; analysis-only artifact omitted" >&2
+          fi
+          strings Image | grep -m1 ttyAMA || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: device-boot
+          path: |
+            Image
+            release.txt
+            vmlinux.elf
+          if-no-files-found: warn
+
+  boot:
+    needs: extract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: device-boot
+          path: device
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-arm qemu-system-common qemu-system-data cpio
+      - name: Build initramfs
+        run: |
+          set -euxo pipefail
+          curl -fsSL -o alpine.tar.gz \
+            https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.3-aarch64.tar.gz
+          mkdir -p rootfs
+          tar -xzf alpine.tar.gz -C rootfs
+          cp tests/qemu/init-device rootfs/init
+          chmod 0755 rootfs/init
+          (cd rootfs && find . | cpio -o -H newc | gzip -9) > initramfs.cpio.gz
+      - name: Boot and check
+        shell: bash
+        run: |
+          set +e
+          timeout 600 qemu-system-aarch64 \
+            -M virt -cpu max -m 4096 -smp 4 -nographic -no-reboot \
+            -kernel device/Image -initrd initramfs.cpio.gz \
+            -append "console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0" \
+            2>&1 | tee qemu.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "qemu_rc=$rc"
+          cat device/release.txt 2>/dev/null || true
+          if [ "$rc" -ne 0 ]; then
+            echo "device kernel did not exit cleanly" >&2
+            exit 1
+          fi
+          grep -q 'DNSK_DEVICE_KERNEL_OK' qemu.log
+          grep -q 'DNSK_QEMU_OK' qemu.log
+          if grep -Eq 'Kernel panic|Oops|BUG:|CFI failure' qemu.log; then
+            echo "kernel failure in device-image QEMU log" >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: device-image-log
+          path: qemu.log
+          if-no-files-found: error
