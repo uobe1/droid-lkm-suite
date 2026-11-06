@@ -20,6 +20,7 @@ on:
         options:
           - stock
           - oracle
+          - oracle-nopids
         default: stock
       image_run_id:
         description: reuse qemu-6.12 artifact from this run id (empty = build)
@@ -40,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build modules and boot Image
-        if: ${{ inputs.kernel != 'oracle' }}
+        if: ${{ inputs.kernel == 'stock' }}
         shell: bash
         run: |
           set -euxo pipefail
@@ -70,7 +71,7 @@ jobs:
             "$KDIR/.config" || true
           ls -l out
       - name: Build Native oracle Image
-        if: ${{ inputs.kernel == 'oracle' }}
+        if: ${{ inputs.kernel == 'oracle' || inputs.kernel == 'oracle-nopids' }}
         shell: bash
         run: |
           set -euxo pipefail
@@ -94,9 +95,27 @@ jobs:
             -e TMPFS_XATTR -e TMPFS_POSIX_ACL -e FUSE_FS -e OVERLAY_FS \
             -e VETH -e BRIDGE -e VIRTIO_NET -e VIRTIO_PCI -e VIRTIO_BLK \
             -e SECCOMP -e SECCOMP_FILTER -d MODULE_SIG_FORCE
+          if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
+            "$SRC/scripts/config" --file "$KDIR/.config" -d CGROUP_PIDS
+          fi
           make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 olddefconfig
           grep -E '^CONFIG_(IPC_NS|PID_NS|USER_NS|POSIX_MQUEUE|CGROUP_PIDS|DEVTMPFS|NF_TABLES|IP_SET)=' "$KDIR/.config"
           make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 -j"$(nproc)" Image
+          mkdir -p out
+          if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
+            eval "$(python3 "$GITHUB_WORKSPACE/tools/build_flags.py" \
+              --profile "$GITHUB_WORKSPACE/profiles/abi/android16-6.12-xt128.json" \
+              --kmi android16-6.12)"
+            export DNSK_ABI_PROFILE DNSK_PAGE_SIZE DNSK_MAX_SKB_FRAGS \
+              DNSK_CGROUP_SUBSYS_COUNT DNSK_CGROUP_SUBSYS_LAYOUT \
+              DNSK_CGROUP_SUBSYS_CAN_FORK DNSK_CGROUP_SUBSYS_CANCEL_FORK \
+              DNSK_CGROUP_SUBSYS_FORK DNSK_CGROUP_SUBSYS_EXIT \
+              DNSK_CGROUP_SUBSYS_RELEASE DNSK_CGROUP_SUBSYS_ID \
+              DNSK_SEQ_FILE_PRIVATE
+            make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
+            make -C "$GITHUB_WORKSPACE/features/cgpids" KDIR="$KDIR" modules
+            cp "$GITHUB_WORKSPACE/dnsk_core.ko" "$GITHUB_WORKSPACE/features/cgpids/dnsk_cgpids.ko" out/
+          fi
           mkdir -p out
           OBJCOPY=$(command -v llvm-objcopy || command -v aarch64-linux-gnu-objcopy || command -v objcopy)
           "$OBJCOPY" -O binary -R .note -R .note.gnu.build-id -R .comment -S "$KDIR/vmlinux" out/Image
@@ -189,10 +208,14 @@ jobs:
             SMP=4
             TIMEOUT=1200
           fi
+          APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0 module.sig_enforce=0"
+          if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
+            APPEND="$APPEND dnsk_lkm=1"
+          fi
           timeout "$TIMEOUT" qemu-system-aarch64 \
             -M virt -cpu max -m "$MEM" -smp "$SMP" -nographic -no-reboot \
             -kernel qemu/Image -initrd initramfs.cpio.gz \
-            -append "console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0 module.sig_enforce=0" \
+            -append "$APPEND" \
             2>&1 | tee qemu.log
           rc=${PIPESTATUS[0]}
           set -e

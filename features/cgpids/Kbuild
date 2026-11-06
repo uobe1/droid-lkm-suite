@@ -3,7 +3,6 @@ obj-m := dnsk_cgpids.o
 
 dnsk_cgpids-y := main.o state.o files.o
 
-ccflags-y += -DCONFIG_CGROUP_PIDS=1
 ifneq ($(DNSK_ABI_PROFILE),)
 ccflags-y += -DDNSK_ABI_PROFILE=\"$(DNSK_ABI_PROFILE)\"
 endif

@@ -30,8 +30,20 @@ fail() {
 	"$BB" poweroff -f
 }
 
+if grep -q 'dnsk_lkm=1' /proc/cmdline; then
+	"$BB" insmod /modules/dnsk_core.ko || fail dnsk_core_insmod
+	"$BB" insmod /modules/dnsk_cgpids.ko || fail dnsk_cgpids_insmod
+	echo "DNSK_CGPIDS_LKM_OK"
+	if grep -q '^pids' /proc/cgroups; then
+		fail cgpids_native_pids_present
+	fi
+fi
+
 echo "DNSK_QEMU_DOCKER_BOOT $(cat /proc/sys/kernel/osrelease)"
 "$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup || fail cgroup2_mount
+if grep -q 'dnsk_lkm=1' /proc/cmdline; then
+	echo "cgpids_lkm_controllers=$(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null)"
+fi
 iptables --version || fail iptables_missing
 iptables -t nat -L -n >/dev/null 2>&1 || fail iptables_kernel
 
@@ -79,7 +91,8 @@ if docker run --rm --network none alpine:local /bin/sh -c \
 	echo "DNSK_DOCKER_ISOLATED_OK"
 	docker run --rm --network none --pids-limit 32 alpine:local /bin/sh -c \
 		'n=0; while [ $n -lt 40 ]; do if (sleep 30 &) 2>/dev/null; then n=$((n+1)); else break; fi; done; \
-		 echo pids_spawned=$n; cat /sys/fs/cgroup/pids.max; cat /sys/fs/cgroup/pids.current' \
+		 echo pids_spawned=$n; cat /sys/fs/cgroup/pids.max; cat /sys/fs/cgroup/pids.current; \
+		 cat /sys/fs/cgroup/pids.peak; cat /sys/fs/cgroup/pids.events' \
 		|| fail docker_pids_limit
 else
 	echo "isolated_run_failed; trying host namespaces"
