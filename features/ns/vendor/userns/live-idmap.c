@@ -37,8 +37,6 @@ static struct ds_idmap_pending ds_idmap_slots[DS_IDMAP_SLOTS];
 extern long ds_userns_mount_setattr_original(const struct pt_regs *regs);
 extern struct mnt_idmap *
 ds_userns_alloc_mnt_idmap_original(struct user_namespace *userns);
-extern vfsuid_t make_vfsuid(struct mnt_idmap *idmap,
-			    struct user_namespace *fs_userns, kuid_t kuid);
 extern bool proc_ns_file(const struct file *file);
 
 static struct user_namespace *ds_userns_from_fd(unsigned int fd)
@@ -130,9 +128,6 @@ long ds_userns_mount_setattr(const struct pt_regs *regs)
 	    (attr.attr_set & MOUNT_ATTR_IDMAP))
 		ns = ds_userns_from_fd(attr.userns_fd);
 
-	pr_info("mount_setattr: attr_set=%llx fd=%llu ns=%px\n",
-		(unsigned long long)attr.attr_set,
-		(unsigned long long)attr.userns_fd, ns);
 	if (ns && !ds_idmap_stash(ns)) {
 		put_user_ns(ns);
 		return -ENOMEM;
@@ -148,49 +143,13 @@ long ds_userns_mount_setattr(const struct pt_regs *regs)
 struct mnt_idmap *ds_userns_alloc_mnt_idmap(struct user_namespace *userns)
 {
 	struct user_namespace *pending = ds_idmap_peek();
-	struct mnt_idmap *id;
 
-	pr_info("alloc_mnt_idmap: in=%px pending=%px init=%px\n", userns,
-		pending, &init_user_ns);
+	/*
+	 * build_mount_idmapped() loses the fd's namespace through the
+	 * !USER_NS get_user_ns() stub; use the namespace stashed by the
+	 * mount_setattr entry hook instead.
+	 */
 	if (pending && userns == &init_user_ns)
 		userns = pending;
-	id = ds_userns_alloc_mnt_idmap_original(userns);
-	if (!IS_ERR(id)) {
-		struct dnsk_mnt_idmap {
-			struct {
-				u32 nr_extents;
-				struct {
-					u32 first;
-					u32 lower_first;
-					u32 count;
-				} extent[5];
-			} uid_map;
-		} *m = (void *)id;
-		vfsuid_t v = make_vfsuid(id, userns->parent, KUIDT_INIT(0));
-
-		pr_info("alloc_mnt_idmap: ret=%px userns=%px vfsuid0=%u map=%u/%u/%u\n",
-			id, userns, __vfsuid_val(v), m->uid_map.nr_extents,
-			m->uid_map.extent[0].first,
-			m->uid_map.extent[0].lower_first);
-		{
-			struct user_namespace fake = { };
-			struct mnt_idmap *id2;
-
-			fake.uid_map = userns->uid_map;
-			fake.gid_map = userns->gid_map;
-			fake.parent = userns->parent;
-			id2 = ds_userns_alloc_mnt_idmap_original(&fake);
-			if (!IS_ERR(id2)) {
-				vfsuid_t v2 = make_vfsuid(id2, userns->parent,
-							  KUIDT_INIT(0));
-
-				pr_info("alloc_mnt_idmap: fake=%px vfsuid0=%u\n",
-					id2, __vfsuid_val(v2));
-			}
-		}
-	} else {
-		pr_info("alloc_mnt_idmap: ret=%ld userns=%px\n", PTR_ERR(id),
-			userns);
-	}
-	return id;
+	return ds_userns_alloc_mnt_idmap_original(userns);
 }

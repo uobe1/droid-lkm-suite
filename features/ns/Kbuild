@@ -34,7 +34,7 @@ dnsk_ns-y += \
 	vendor/userns/nsfs-original.o vendor/userns/live-vfs.o \
 	vendor/userns/live-exec.o vendor/userns/live-mm.o \
 	vendor/userns/mm-original.o vendor/userns/live-idmap.o \
-	vendor/userns/live-idmap-original.o
+	vendor/userns/live-idmap-original.o vendor/userns/live-mnt-idmapping.o
 ccflags-y += -DCONFIG_USER_NS=1 -DDS_USERNS_LIVE=1
 ccflags-y += -include $(src)/vendor/userns/live-names.h
 ccflags-y += -I$(src)/vendor/userns/compat

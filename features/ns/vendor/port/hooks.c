@@ -13,6 +13,8 @@
 #include <linux/sched/task.h>
 #include <linux/bpf.h>
 #include <linux/perf_event.h>
+#include <linux/mnt_idmapping.h>
+#include <linux/uidgid.h>
 #include "fs/fuse/fuse_i.h"
 #include "core.h"
 #include "port.h"
@@ -33,6 +35,14 @@ extern long ds_userns_mount_setattr(const struct pt_regs *);
 struct user_namespace;
 struct mnt_idmap;
 extern struct mnt_idmap *ds_userns_alloc_mnt_idmap(struct user_namespace *);
+extern vfsuid_t ds_userns_make_vfsuid(struct mnt_idmap *,
+				      struct user_namespace *, kuid_t);
+extern vfsgid_t ds_userns_make_vfsgid(struct mnt_idmap *,
+				      struct user_namespace *, kgid_t);
+extern kuid_t ds_userns_from_vfsuid(struct mnt_idmap *,
+				    struct user_namespace *, vfsuid_t);
+extern kgid_t ds_userns_from_vfsgid(struct mnt_idmap *,
+				    struct user_namespace *, vfsgid_t);
 #include <linux/user_namespace.h>
 #include <linux/utsname.h>
 #endif
@@ -328,6 +338,10 @@ static struct ds_hook hooks[] = {
 		      ds_userns_mount_setattr_original),
 	HOOK_ORIGINAL("alloc_mnt_idmap", ds_userns_alloc_mnt_idmap,
 		      ds_userns_alloc_mnt_idmap_original),
+	HOOK("make_vfsuid", ds_userns_make_vfsuid),
+	HOOK("make_vfsgid", ds_userns_make_vfsgid),
+	HOOK("from_vfsuid", ds_userns_from_vfsuid),
+	HOOK("from_vfsgid", ds_userns_from_vfsgid),
 #endif
 	HOOK_ORIGINAL("perf_event_alloc", ds_perf_event_alloc, ds_perf_alloc_original),
 	HOOK_ORIGINAL("free_event_rcu", ds_perf_free_event_rcu, ds_perf_free_original),
