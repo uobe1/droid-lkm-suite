@@ -55,7 +55,7 @@ if [ -x /ksud ]; then
 	echo "DNSK_SELINUX_AFTER_KSU=permissive"
 	/ksud insmod /modules/dnsk_core.ko || fail dnsk_core_insmod
 	if [ -e /modules/dnsk_ns.ko ]; then
-		/ksud insmod /modules/dnsk_ns.ko activate=1 || fail dnsk_ns_insmod
+		/ksud insmod /modules/dnsk_ns.ko gki=1 activate=1 || fail dnsk_ns_insmod
 		NS_OK=1
 	fi
 	/ksud insmod /modules/dnsk_cgpids.ko || fail dnsk_cgpids_insmod

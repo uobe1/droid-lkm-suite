@@ -46,7 +46,7 @@ echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
 echo "DNSK_SELINUX_AFTER_KSU=permissive"
 
 /ksud insmod /modules/dnsk_core.ko || fail core_insmod
-/ksud insmod /modules/dnsk_ns.ko activate=1 || fail ns_insmod
+/ksud insmod /modules/dnsk_ns.ko gki=1 activate=1 || fail ns_insmod
 echo "DNSK_NS_LKM_OK"
 
 boot_before=$(cat /proc/sys/kernel/random/boot_id)
