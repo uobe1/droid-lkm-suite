@@ -82,7 +82,7 @@ EOF
 : >/var/log/auth.log
 fail2ban-client -x start || fail f2b_start
 "$BB" sleep 3
-TS=$("$BB" date "+%b %d %H:%M:%S")
+TS=$("$BB" date "+%b %e %H:%M:%S")
 echo "$TS localhost sshd[1234]: Failed password for root from 10.9.8.7 port 2222 ssh2" >>/var/log/auth.log
 echo "DNSK_F2B_LINE=$TS"
 "$BB" sleep 12
