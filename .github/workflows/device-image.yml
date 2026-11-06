@@ -407,7 +407,7 @@ jobs:
             /tmp/apk-tools/sbin/apk.static --root "$PWD/rootfs" \
               --arch aarch64 --no-cache --allow-untrusted --no-scripts \
               --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
-              add iptables-legacy
+              add iptables-legacy iptables
             cp tests/qemu/init-docker-device rootfs/init
             curl -fsSL -o docker.tgz \
               https://download.docker.com/linux/static/stable/aarch64/docker-29.7.2.tgz
