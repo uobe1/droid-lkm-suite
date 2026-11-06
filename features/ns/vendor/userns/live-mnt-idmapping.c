@@ -22,18 +22,15 @@ struct ds_mnt_idmap {
 	refcount_t count;
 };
 
-extern char nop_mnt_idmap[];
-extern char invalid_mnt_idmap[];
-
 vfsuid_t ds_userns_make_vfsuid(struct mnt_idmap *idmap,
 			       struct user_namespace *fs_userns, kuid_t kuid)
 {
 	struct ds_mnt_idmap *id = (void *)idmap;
 	uid_t uid;
 
-	if ((void *)idmap == (void *)nop_mnt_idmap)
+	if (idmap == &nop_mnt_idmap)
 		return VFSUIDT_INIT(kuid);
-	if ((void *)idmap == (void *)invalid_mnt_idmap)
+	if (idmap == &invalid_mnt_idmap)
 		return INVALID_VFSUID;
 	if (fs_userns == &init_user_ns)
 		uid = __kuid_val(kuid);
@@ -50,9 +47,9 @@ vfsgid_t ds_userns_make_vfsgid(struct mnt_idmap *idmap,
 	struct ds_mnt_idmap *id = (void *)idmap;
 	gid_t gid;
 
-	if ((void *)idmap == (void *)nop_mnt_idmap)
+	if (idmap == &nop_mnt_idmap)
 		return VFSGIDT_INIT(kgid);
-	if ((void *)idmap == (void *)invalid_mnt_idmap)
+	if (idmap == &invalid_mnt_idmap)
 		return INVALID_VFSGID;
 	if (fs_userns == &init_user_ns)
 		gid = __kgid_val(kgid);
@@ -69,9 +66,9 @@ kuid_t ds_userns_from_vfsuid(struct mnt_idmap *idmap,
 	struct ds_mnt_idmap *id = (void *)idmap;
 	uid_t uid;
 
-	if ((void *)idmap == (void *)nop_mnt_idmap)
+	if (idmap == &nop_mnt_idmap)
 		return AS_KUIDT(vfsuid);
-	if ((void *)idmap == (void *)invalid_mnt_idmap)
+	if (idmap == &invalid_mnt_idmap)
 		return INVALID_UID;
 	uid = map_id_up(&id->uid_map, __vfsuid_val(vfsuid));
 	if (uid == (uid_t)-1)
@@ -87,9 +84,9 @@ kgid_t ds_userns_from_vfsgid(struct mnt_idmap *idmap,
 	struct ds_mnt_idmap *id = (void *)idmap;
 	gid_t gid;
 
-	if ((void *)idmap == (void *)nop_mnt_idmap)
+	if (idmap == &nop_mnt_idmap)
 		return AS_KGIDT(vfsgid);
-	if ((void *)idmap == (void *)invalid_mnt_idmap)
+	if (idmap == &invalid_mnt_idmap)
 		return INVALID_GID;
 	gid = map_id_up(&id->gid_map, __vfsgid_val(vfsgid));
 	if (gid == (gid_t)-1)
