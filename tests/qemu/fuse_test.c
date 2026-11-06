@@ -375,6 +375,8 @@ int main(void)
 {
 	char opts[128], buf[32] = {0};
 	int fd, pipefd[2], i, ret;
+	uid_t outer_uid = getuid();
+	gid_t outer_gid = getgid();
 	pid_t pid;
 
 	if (access("/dev/fuse", F_OK) < 0) {
@@ -393,8 +395,8 @@ int main(void)
 		perror("fuse unshare user");
 		return 1;
 	}
-	if (map_id("/proc/self/uid_map", "/proc/self/setgroups", getuid()) < 0 ||
-	    map_id("/proc/self/gid_map", NULL, getgid()) < 0) {
+	if (map_id("/proc/self/uid_map", "/proc/self/setgroups", outer_uid) < 0 ||
+	    map_id("/proc/self/gid_map", NULL, outer_gid) < 0) {
 		perror("fuse id map");
 		return 1;
 	}
