@@ -437,6 +437,20 @@ static int btf_cgroup_subsys_ok(const unsigned char *d, size_t len)
 	       member_is(&t, "name", 160);
 }
 
+static int btf_kernfs_syscall_ops_ok(const unsigned char *d, size_t len)
+{
+	struct btf_type_info t;
+
+	if (btf_find_struct_info(d, len, "kernfs_syscall_ops", &t) != 0)
+		return 0;
+	/* Android KABI appends reserved fields; the callbacks stay at 0..32. */
+	if (t.size != 40 && t.size != 72)
+		return 0;
+	return member_is(&t, "show_options", 0) && member_is(&t, "mkdir", 8) &&
+	       member_is(&t, "rmdir", 16) && member_is(&t, "rename", 24) &&
+	       member_is(&t, "show_path", 32);
+}
+
 static void btf_check_cgpids(const unsigned char *d, size_t len,
 			     struct btf_layout *l)
 {
@@ -480,10 +494,6 @@ static void btf_check_cgpids(const unsigned char *d, size_t len,
 		{ "preloaded_src_csets", 0 }, { "preloaded_dst_csets", 16 },
 		{ "tset", 32 }, { "ss_mask", 96 },
 	};
-	static const struct btf_field kernfs_syscall_ops[] = {
-		{ "show_options", 0 }, { "mkdir", 8 }, { "rmdir", 16 },
-		{ "rename", 24 }, { "show_path", 32 },
-	};
 	static const struct btf_field task[] = {
 		{ "cgroups", 2872 },
 	};
@@ -517,9 +527,7 @@ static void btf_check_cgpids(const unsigned char *d, size_t len,
 		       btf_fields_match(d, len, "cgroup_mgctx", 104,
 					cgroup_mgctx,
 					ARRAY_SIZE(cgroup_mgctx)) &&
-		       btf_fields_match(d, len, "kernfs_syscall_ops", 40,
-					kernfs_syscall_ops,
-					ARRAY_SIZE(kernfs_syscall_ops)) &&
+		       btf_kernfs_syscall_ops_ok(d, len) &&
 		       btf_fields_match(d, len, "task_struct", 5184, task,
 					ARRAY_SIZE(task));
 }
