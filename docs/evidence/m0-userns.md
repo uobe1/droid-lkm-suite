@@ -100,3 +100,15 @@ PID/IPC preflight、分配/共享/延迟销毁与 `DNSK_USERNS_LKM_OK` 通过。
 修正：同时 hook `__arm64_sys_unshare` 到 `ds_unshare` 包装
 （`ds_ksys_unshare`），并在 live 初始化前用核心 kallsyms 检查原生
 `create_user_ns`；存在原生 USER_NS 时拒绝加载，保留原生实现。门重跑中。
+
+## 基础设备门通过（2026-11-06，run 42255695799）
+
+`__arm64_sys_unshare` 入口 hook 生效后，beryl Image 上：
+
+- preflight：111 functions / 39 syscalls / 7 callbacks；
+- PID/IPC 自检与模块加载通过（`DNSK_USERNS_LKM_OK`）；
+- `unshare(CLONE_NEWUSER)` + `uid_map`/`gid_map` + 嵌套 userns 通过
+  （`USERNS_TEST_OK uid=0 gid=0`，`DNSK_USERNS_OK`）。
+
+门内同时检查原生 USER_NS：`create_user_ns` 在核心 kallsyms 中存在时拒绝
+加载，保留原生实现。
