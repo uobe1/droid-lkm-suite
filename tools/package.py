@@ -224,7 +224,7 @@ def main() -> int:
             "schema": 1,
             "dev": True,
             "tagged": False,
-            "status": "M1 development: core + namespace (android16-6.12); PID/IPC/SysV/mqueue smoke verified; full R/Docker/setns/nested gates pending; no release support",
+            "status": "android16-6.12 development build: ns/userns (idmap, overlay, FUSE, mount_setattr selftests), Docker 29.x cgroup v2 with legacy+nft bridge/NAT, UFW/Fail2ban, netfilter/ipset, tmpfs ACL. Dev artifact only; 8-KMI release matrix deferred by the owner.",
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "source_commit": git_commit(root),
             "abi_profile": expected["dnsk_abi_profile"],
@@ -244,7 +244,7 @@ def main() -> int:
         zf.writestr("verification.json", json.dumps({
             "dev": True,
             "tagged": False,
-            "note": "Dev artifact. Core + namespace development; PID/IPC/SysV/mqueue smoke verified, full gates pending. No release/tag before all 8 KMI and all feature gates pass.",
+            "note": "Dev artifact for android16-6.12. Feature gates listed in manifest.json passed on the beryl Image. No release/tag while the 8-KMI matrix is deferred.",
         }, indent=2, sort_keys=True))
 
     print(f"package: {args.out}")
