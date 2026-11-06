@@ -20,7 +20,8 @@
 #define MOUNT_ATTR_IDMAP 0x00100000
 #endif
 
-struct mount_attr {
+/* Avoid a clash with <linux/mount.h> on newer cross toolchains. */
+struct dnsk_mount_attr {
 	unsigned long long attr_set;
 	unsigned long long attr_clr;
 	unsigned long long propagation;
@@ -57,7 +58,7 @@ static int map_id(const char *file, const char *setgroups, unsigned int id)
 static int idmap_test(void)
 {
 	char byte, path[64];
-	struct mount_attr attr = { .attr_set = MOUNT_ATTR_IDMAP };
+	struct dnsk_mount_attr attr = { .attr_set = MOUNT_ATTR_IDMAP };
 	struct stat st;
 	int pipefd[2], ufd, fd, ret;
 	pid_t pid;

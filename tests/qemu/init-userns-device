@@ -44,6 +44,7 @@ echo "DNSK_SELINUX_AFTER_KSU=permissive"
 echo "DNSK_USERNS_LKM_OK"
 
 /userns_test || fail userns_test
+/fuse_test || fail fuse_test
 echo "DNSK_USERNS_OK"
 echo "DNSK_QEMU_OK"
 "$BB" poweroff -f

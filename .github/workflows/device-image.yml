@@ -330,6 +330,8 @@ jobs:
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
             aarch64-linux-gnu-gcc -static -O2 -o userns_test tests/qemu/userns_test.c
             cp userns_test rootfs/userns_test
+            aarch64-linux-gnu-gcc -static -O2 -o fuse_test tests/qemu/fuse_test.c
+            cp fuse_test rootfs/fuse_test
             cp tests/qemu/init-userns-device rootfs/init
           elif [ "${{ inputs.mode }}" = "docker" ] || [ "${{ inputs.mode }}" = "ksud-docker" ]; then
             cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
@@ -409,6 +411,7 @@ jobs:
             grep -q 'DNSK_USERNS_LKM_OK' qemu.log
             grep -q 'USERNS_IDMAP_OK' qemu.log
             grep -q 'USERNS_OVERLAY_OK' qemu.log
+            grep -q 'USERNS_FUSE_OK' qemu.log
             grep -q 'DNSK_USERNS_OK' qemu.log
           elif [ "$MODE" = "netfilter" ]; then
             grep -q 'DNSK_NETFILTER_LKM_OK' qemu.log
