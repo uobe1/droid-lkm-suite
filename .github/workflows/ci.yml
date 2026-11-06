@@ -128,11 +128,24 @@ jobs:
               DNSK_MAX_SKB_FRAGS="${DNSK_MAX_SKB_FRAGS:-}" \
               DNSK_CGROUP_SUBSYS_COUNT="${DNSK_CGROUP_SUBSYS_COUNT:-}" modules
             cp "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
+            make -C "$GITHUB_WORKSPACE/features/cgpids" KDIR="$KDIR" \
+              DNSK_ABI_PROFILE="${DNSK_ABI_PROFILE:-}" DNSK_PAGE_SIZE="${DNSK_PAGE_SIZE:-}" \
+              DNSK_CGROUP_SUBSYS_COUNT="${DNSK_CGROUP_SUBSYS_COUNT:-}" \
+              DNSK_CGROUP_SUBSYS_LAYOUT="${DNSK_CGROUP_SUBSYS_LAYOUT:-}" \
+              DNSK_CGROUP_SUBSYS_CAN_FORK="${DNSK_CGROUP_SUBSYS_CAN_FORK:-}" \
+              DNSK_CGROUP_SUBSYS_CANCEL_FORK="${DNSK_CGROUP_SUBSYS_CANCEL_FORK:-}" \
+              DNSK_CGROUP_SUBSYS_FORK="${DNSK_CGROUP_SUBSYS_FORK:-}" \
+              DNSK_CGROUP_SUBSYS_EXIT="${DNSK_CGROUP_SUBSYS_EXIT:-}" \
+              DNSK_CGROUP_SUBSYS_RELEASE="${DNSK_CGROUP_SUBSYS_RELEASE:-}" \
+              DNSK_CGROUP_SUBSYS_ID="${DNSK_CGROUP_SUBSYS_ID:-}" \
+              DNSK_SEQ_FILE_PRIVATE="${DNSK_SEQ_FILE_PRIVATE:-}" modules
+            cp "$GITHUB_WORKSPACE/features/cgpids/dnsk_cgpids.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             # dnskctl compares these stamps with policy.conf before insmod.
             for ko in "$GITHUB_WORKSPACE/features/netfilter/dnsk_netfilter.ko" \
                       "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko" \
                       "$GITHUB_WORKSPACE/features/devtmpfs/dnsk_devtmpfs.ko" \
-                      "$GITHUB_WORKSPACE/features/ns/dnsk_ns.ko"; do
+                      "$GITHUB_WORKSPACE/features/ns/dnsk_ns.ko" \
+                      "$GITHUB_WORKSPACE/features/cgpids/dnsk_cgpids.ko"; do
               for stamp in "dnsk_abi_profile=${PROFILE}" \
                            "dnsk_page_size=${DNSK_PAGE_SIZE}" \
                            "dnsk_max_skb_frags=${DNSK_MAX_SKB_FRAGS}" \
@@ -147,6 +160,14 @@ jobs:
                       "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko"; do
               grep -aq "dnsk_xt_layout=${DNSK_XT_LAYOUT}" "$ko" || {
                 echo "missing dnsk_xt_layout=${DNSK_XT_LAYOUT} stamp: $ko" >&2
+                exit 1
+              }
+            done
+            ko="$GITHUB_WORKSPACE/features/cgpids/dnsk_cgpids.ko"
+            for stamp in "dnsk_cgroup_subsys_layout=${DNSK_CGROUP_SUBSYS_LAYOUT}" \
+                         "dnsk_seq_file_private=${DNSK_SEQ_FILE_PRIVATE}"; do
+              grep -aq "$stamp" "$ko" || {
+                echo "missing $stamp stamp: $ko" >&2
                 exit 1
               }
             done

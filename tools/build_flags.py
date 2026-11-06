@@ -138,16 +138,24 @@ def flags_for(profile_id: str, config: dict[str, int | str]) -> dict[str, str]:
         flags.update({
             "DNSK_CGROUP_SUBSYS_LAYOUT": "256",
             "DNSK_CGROUP_SUBSYS_CAN_FORK": "104",
+            "DNSK_CGROUP_SUBSYS_CANCEL_FORK": "112",
             "DNSK_CGROUP_SUBSYS_FORK": "120",
             "DNSK_CGROUP_SUBSYS_EXIT": "128",
+            "DNSK_CGROUP_SUBSYS_RELEASE": "136",
+            "DNSK_CGROUP_SUBSYS_ID": "156",
+            "DNSK_CGROUP_SUBSYS_NAME": "160",
             "DNSK_CGROUP_HAS_CSS_KILLED": "0",
         })
     else:
         flags.update({
             "DNSK_CGROUP_SUBSYS_LAYOUT": "264",
             "DNSK_CGROUP_SUBSYS_CAN_FORK": "112",
+            "DNSK_CGROUP_SUBSYS_CANCEL_FORK": "120",
             "DNSK_CGROUP_SUBSYS_FORK": "128",
             "DNSK_CGROUP_SUBSYS_EXIT": "136",
+            "DNSK_CGROUP_SUBSYS_RELEASE": "144",
+            "DNSK_CGROUP_SUBSYS_ID": "164",
+            "DNSK_CGROUP_SUBSYS_NAME": "168",
             "DNSK_CGROUP_HAS_CSS_KILLED": "1",
         })
     return flags

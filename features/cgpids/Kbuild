@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: GPL-2.0-only
+obj-m := dnsk_cgpids.o
+
+dnsk_cgpids-y := main.o state.o files.o
+
+ccflags-y += -DCONFIG_CGROUP_PIDS=1
+ifneq ($(DNSK_ABI_PROFILE),)
+ccflags-y += -DDNSK_ABI_PROFILE=\"$(DNSK_ABI_PROFILE)\"
+endif
+ifneq ($(DNSK_PAGE_SIZE),)
+ccflags-y += -DDNSK_PAGE_SIZE=$(DNSK_PAGE_SIZE)
+endif
+ifneq ($(DNSK_CGROUP_SUBSYS_COUNT),)
+ccflags-y += -DDNSK_CGROUP_SUBSYS_COUNT=$(DNSK_CGROUP_SUBSYS_COUNT)
+endif
+ifneq ($(DNSK_CGROUP_SUBSYS_LAYOUT),)
+ccflags-y += -DDNSK_CGROUP_SUBSYS_LAYOUT=$(DNSK_CGROUP_SUBSYS_LAYOUT)
+endif
+ifneq ($(DNSK_CGROUP_SUBSYS_CAN_FORK),)
+ccflags-y += -DDNSK_CGROUP_SUBSYS_CAN_FORK=$(DNSK_CGROUP_SUBSYS_CAN_FORK)
+endif
+ifneq ($(DNSK_CGROUP_SUBSYS_CANCEL_FORK),)
+ccflags-y += -DDNSK_CGROUP_SUBSYS_CANCEL_FORK=$(DNSK_CGROUP_SUBSYS_CANCEL_FORK)
+endif
+ifneq ($(DNSK_CGROUP_SUBSYS_FORK),)
+ccflags-y += -DDNSK_CGROUP_SUBSYS_FORK=$(DNSK_CGROUP_SUBSYS_FORK)
+endif
+ifneq ($(DNSK_CGROUP_SUBSYS_EXIT),)
+ccflags-y += -DDNSK_CGROUP_SUBSYS_EXIT=$(DNSK_CGROUP_SUBSYS_EXIT)
+endif
+ifneq ($(DNSK_CGROUP_SUBSYS_RELEASE),)
+ccflags-y += -DDNSK_CGROUP_SUBSYS_RELEASE=$(DNSK_CGROUP_SUBSYS_RELEASE)
+endif
+ifneq ($(DNSK_CGROUP_SUBSYS_ID),)
+ccflags-y += -DDNSK_CGROUP_SUBSYS_ID=$(DNSK_CGROUP_SUBSYS_ID)
+endif
+ifneq ($(DNSK_SEQ_FILE_PRIVATE),)
+ccflags-y += -DDNSK_SEQ_FILE_PRIVATE=$(DNSK_SEQ_FILE_PRIVATE)
+endif
+
+ccflags-y += -I$(src)/../../core/include -I$(src)
+ccflags-y += -std=gnu11 -Wno-declaration-after-statement

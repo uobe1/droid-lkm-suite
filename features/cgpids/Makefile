@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-2.0-only
+KDIR ?= /lib/modules/$(shell uname -r)/build
+PWD := $(shell pwd)
+
+.PHONY: all modules clean
+
+all:
+	@test -n "$(KDIR)" || { echo "Set KDIR to a prepared kernel build directory." >&2; exit 1; }
+	$(MAKE) -C "$(KDIR)" M="$(PWD)" \
+		DNSK_ABI_PROFILE="$(DNSK_ABI_PROFILE)" \
+		DNSK_PAGE_SIZE="$(DNSK_PAGE_SIZE)" \
+		DNSK_CGROUP_SUBSYS_COUNT="$(DNSK_CGROUP_SUBSYS_COUNT)" \
+		DNSK_CGROUP_SUBSYS_LAYOUT="$(DNSK_CGROUP_SUBSYS_LAYOUT)" \
+		DNSK_CGROUP_SUBSYS_CAN_FORK="$(DNSK_CGROUP_SUBSYS_CAN_FORK)" \
+		DNSK_CGROUP_SUBSYS_CANCEL_FORK="$(DNSK_CGROUP_SUBSYS_CANCEL_FORK)" \
+		DNSK_CGROUP_SUBSYS_FORK="$(DNSK_CGROUP_SUBSYS_FORK)" \
+		DNSK_CGROUP_SUBSYS_EXIT="$(DNSK_CGROUP_SUBSYS_EXIT)" \
+		DNSK_CGROUP_SUBSYS_RELEASE="$(DNSK_CGROUP_SUBSYS_RELEASE)" \
+		DNSK_CGROUP_SUBSYS_ID="$(DNSK_CGROUP_SUBSYS_ID)" \
+		DNSK_SEQ_FILE_PRIVATE="$(DNSK_SEQ_FILE_PRIVATE)" \
+		modules
+
+modules: all
+
+clean:
+	$(MAKE) -C "$(KDIR)" M="$(PWD)" clean
