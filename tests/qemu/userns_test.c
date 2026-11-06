@@ -194,6 +194,11 @@ static int child_idmap_test(void)
 		      &attr, sizeof(attr));
 	if (ret < 0)
 		goto fail_tree;
+	step = "clone_stat";
+	if (fstatat(tfd, "f", &st, 0) == 0)
+		printf("IDMAP_CLONE_UID=%u\n", (unsigned)st.st_uid);
+	else
+		printf("IDMAP_CLONE_STAT_ERR=%d\n", errno);
 	step = "mkdir_target";
 	if (mkdir("/tmp/idmap2", 0755) < 0 && errno != EEXIST)
 		goto fail_tree;
