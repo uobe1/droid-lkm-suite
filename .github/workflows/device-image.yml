@@ -244,6 +244,7 @@ jobs:
             cp tests/qemu/init-cgpids rootfs/init
           elif [ "${{ inputs.mode }}" = "docker" ]; then
             cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
+            [ -e modules/dnsk_ns.ko ] && cp modules/dnsk_ns.ko rootfs/modules/
             aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
             cp insmod_force rootfs/insmod_force
             cp tests/qemu/init-docker-device rootfs/init
