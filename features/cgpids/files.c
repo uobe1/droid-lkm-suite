@@ -27,14 +27,7 @@ static_assert(offsetof(struct cgroup, self) == 0);
 static_assert(offsetof(struct cgroup, kn) == 264);
 static_assert(offsetof(struct cgroup_subsys_state, cgroup) == 0);
 static_assert(offsetof(struct cgroup_subsys_state, parent) == 192);
-static_assert(offsetof(struct css_set, dfl_cgrp) == 80);
-static_assert(offsetof(struct css_set, mg_tasks) == 112);
-static_assert(offsetof(struct css_set, mg_node) == 384);
-static_assert(offsetof(struct css_set, mg_src_cgrp) == 400);
-static_assert(offsetof(struct css_set, mg_dst_cgrp) == 408);
-static_assert(offsetof(struct css_set, mg_dst_cset) == 416);
-/* task_struct offset varies with the kernel config; the module is built
- * against the same headers as the target kernel. */
+/* css_set/task offsets vary with config; build against the target KDIR. */
 static_assert(offsetof(struct seq_file, buf) == 0);
 static_assert(offsetof(struct seq_file, count) == 24);
 static_assert(offsetof(struct seq_file, private) == DNSK_SEQ_FILE_PRIVATE);
