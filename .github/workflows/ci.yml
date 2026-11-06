@@ -66,7 +66,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON((github.event.inputs.full_matrix == 'true') && format('[{"kmi":"android12-5.10","profile":""},{"kmi":"android13-5.10","profile":""},{"kmi":"android13-5.15","profile":""},{"kmi":"android14-5.15","profile":""},{"kmi":"android14-6.1","profile":""},{"kmi":"android15-6.6","profile":""},{"kmi":"android16-6.12","profile":"{0}"},{"kmi":"android17-6.18","profile":""}]', github.event.inputs.build_profile || 'android16-6.12-xt104') || format('[{"kmi":"android16-6.12","profile":"{0}"}]', github.event.inputs.build_profile || 'android16-6.12-xt104')) }}
+        include: ${{ fromJSON((github.event.inputs.full_matrix == 'true') && replace('[{"kmi":"android12-5.10","profile":""},{"kmi":"android13-5.10","profile":""},{"kmi":"android13-5.15","profile":""},{"kmi":"android14-5.15","profile":""},{"kmi":"android14-6.1","profile":""},{"kmi":"android15-6.6","profile":""},{"kmi":"android16-6.12","profile":"PROFILE"},{"kmi":"android17-6.18","profile":""}]', 'PROFILE', github.event.inputs.build_profile || 'android16-6.12-xt104') || replace('[{"kmi":"android16-6.12","profile":"PROFILE"}]', 'PROFILE', github.event.inputs.build_profile || 'android16-6.12-xt104')) }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-20260828
