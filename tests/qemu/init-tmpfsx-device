@@ -57,9 +57,13 @@ echo data >/early/g || fail evict_file
 "$BB" rm -f /early/g
 "$BB" sync
 
-"$BB" mkdir -p /acl
+"$BB" mkdir -p /acl /aclled
 /acl_test /acl || fail acl_test
 echo "DNSK_TMPFSX_ACL_OK"
+
+mount -t tmpfs -o acl tmpfs /aclled || fail acl_legacy_mount
+/acl_test /aclled existing || fail acl_legacy
+echo "DNSK_TMPFSX_ACL_LEGACY_OK"
 
 echo "DNSK_TMPFSX_OK"
 echo "DNSK_QEMU_OK"

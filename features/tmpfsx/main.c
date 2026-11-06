@@ -108,6 +108,7 @@ static int dnsk_add_acl_hook(const char *key, void *table, size_t off,
 static void dnsk_del_acl_hooks(void)
 {
 	dnsk_api->hook_del("tmpfsx.init_fs_context");
+	dnsk_api->hook_del("tmpfsx.fc.parse_monolithic");
 	dnsk_api->hook_del("tmpfsx.fc.parse_param");
 	dnsk_tmpfsx_mount_exit();
 	dnsk_api->hook_del("tmpfsx.dops.set_acl");
@@ -135,7 +136,7 @@ static int dnsk_resolve_symbols(void)
 {
 	void *xattr_set, *xattr_get, *xattr_list, *xattrs_free;
 	void *acl_from, *acl_to, *user_ns, *acl_release, *acl_set;
-	void *fc_ops, *parse_param;
+	void *fc_ops, *parse_param, *parse_monolithic;
 	int ret;
 
 	dnsk_iops = dnsk_api->resolve("shmem_inode_operations");
@@ -164,9 +165,17 @@ static int dnsk_resolve_symbols(void)
 		pr_err("dnsk_tmpfsx: shmem fs_context has no parse_param\n");
 		return -EOPNOTSUPP;
 	}
+	parse_monolithic = READ_ONCE(*(void **)((char *)fc_ops +
+				offsetof(struct fs_context_operations,
+					 parse_monolithic)));
+	if (!parse_monolithic) {
+		pr_err("dnsk_tmpfsx: shmem fs_context has no parse_monolithic\n");
+		return -EOPNOTSUPP;
+	}
 	dnsk_fc_ops = fc_ops;
 	ret = dnsk_tmpfsx_mount_init(
-		(int (*)(struct fs_context *, struct fs_parameter *))parse_param);
+		(int (*)(struct fs_context *, struct fs_parameter *))parse_param,
+		(int (*)(struct fs_context *, void *))parse_monolithic);
 	if (ret)
 		return ret;
 	ret = dnsk_tmpfsx_xattr_init((dnsk_xattr_set_fn)xattr_set,
@@ -277,6 +286,12 @@ static int __init dnsk_tmpfsx_init(void)
 				offsetof(struct fs_context_operations,
 					 parse_param),
 				(void *)dnsk_tmpfsx_parse_param);
+	if (ret)
+		goto out_acl;
+	ret = dnsk_add_acl_hook("tmpfsx.fc.parse_monolithic", dnsk_fc_ops,
+				offsetof(struct fs_context_operations,
+					 parse_monolithic),
+				(void *)dnsk_tmpfsx_parse_monolithic);
 	if (ret)
 		goto out_acl;
 	ret = dnsk_add_kprobe_hook("tmpfsx.init_fs_context",

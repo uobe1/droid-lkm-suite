@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -56,29 +57,35 @@ int main(int argc, char **argv)
 		},
 	};
 	int fsfd, mfd, fd;
+	bool existing;
 	ssize_t n;
 
-	if (argc != 2) {
-		fprintf(stderr, "usage: %s <mountpoint>\n", argv[0]);
+	if (argc < 2 || argc > 3) {
+		fprintf(stderr, "usage: %s <mountpoint> [existing]\n", argv[0]);
 		return 2;
 	}
 	target = argv[1];
+	existing = argc == 3 && !strcmp(argv[2], "existing");
 
-	fsfd = syscall(SYS_fsopen, "tmpfs", 0);
-	if (fsfd < 0)
-		return fail("fsopen");
-	if (syscall(SYS_fsconfig, fsfd, FSCONFIG_SET_FLAG, "acl", NULL, 0) < 0)
-		return fail("fsconfig acl");
-	if (syscall(SYS_fsconfig, fsfd, FSCONFIG_CMD_CREATE, NULL, NULL, 0) < 0)
-		return fail("fsconfig create");
-	mfd = syscall(SYS_fsmount, fsfd, 0, 0);
-	if (mfd < 0)
-		return fail("fsmount");
-	if (syscall(SYS_move_mount, mfd, "", AT_FDCWD, target,
-		    MOVE_MOUNT_F_EMPTY_PATH) < 0)
-		return fail("move_mount");
-	close(mfd);
-	close(fsfd);
+	if (!existing) {
+		fsfd = syscall(SYS_fsopen, "tmpfs", 0);
+		if (fsfd < 0)
+			return fail("fsopen");
+		if (syscall(SYS_fsconfig, fsfd, FSCONFIG_SET_FLAG, "acl",
+			    NULL, 0) < 0)
+			return fail("fsconfig acl");
+		if (syscall(SYS_fsconfig, fsfd, FSCONFIG_CMD_CREATE, NULL,
+			    NULL, 0) < 0)
+			return fail("fsconfig create");
+		mfd = syscall(SYS_fsmount, fsfd, 0, 0);
+		if (mfd < 0)
+			return fail("fsmount");
+		if (syscall(SYS_move_mount, mfd, "", AT_FDCWD, target,
+			    MOVE_MOUNT_F_EMPTY_PATH) < 0)
+			return fail("move_mount");
+		close(mfd);
+		close(fsfd);
+	}
 
 	snprintf(path, sizeof(path), "%s/file", target);
 	fd = open(path, O_CREAT | O_RDWR, 0600);
