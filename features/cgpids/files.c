@@ -429,6 +429,7 @@ static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name,
 	struct dnsk_pids_state *st;
 	int ret, add_ret;
 
+	pr_info("dnsk_cgpids: mkdir name=%s\n", name);
 	ret = dnsk_call_mkdir(parent_kn, name, mode);
 	if (ret)
 		return ret;
@@ -438,6 +439,8 @@ static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name,
 
 	mutex_lock(dnsk_cgroup_mutex);
 	child = dnsk_find_child(parent, name);
+	pr_info("dnsk_cgpids: mkdir parent=%px child=%px dfl=%d\n",
+		parent, child, child ? dnsk_on_dfl(child) : -1);
 	if (!child || !dnsk_on_dfl(child)) {
 		mutex_unlock(dnsk_cgroup_mutex);
 		return 0;
@@ -450,6 +453,8 @@ static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name,
 	add_ret = 0;
 	if (!st->files_added) {
 		add_ret = dnsk_call_addrm(child, true);
+		pr_info("dnsk_cgpids: mkdir addrm=%d files=%d\n",
+			add_ret, st->files_added);
 		if (!add_ret)
 			st->files_added = true;
 	}
@@ -545,6 +550,8 @@ void dnsk_cgpids_install_sysops(void)
 
 	orig_mkdir = ops->mkdir;
 	orig_rmdir = ops->rmdir;
+	pr_info("dnsk_cgpids: sysops mkdir=%ps rmdir=%ps\n",
+		orig_mkdir, orig_rmdir);
 	WRITE_ONCE(ops->mkdir, dnsk_mkdir);
 	WRITE_ONCE(ops->rmdir, dnsk_rmdir);
 }
