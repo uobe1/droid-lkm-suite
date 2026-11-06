@@ -14,6 +14,7 @@
 
 DEFINE_XARRAY(dnsk_pids_xa);
 DEFINE_SPINLOCK(dnsk_pids_lock);
+rwlock_t *dnsk_tasklist_lock;
 static bool dnsk_pids_pinned;
 
 struct dnsk_pids_state *dnsk_pids_lookup(struct cgroup *cgrp)
@@ -56,7 +57,7 @@ static s64 dnsk_pids_subtree_tasks(struct cgroup *cgrp)
 	struct task_struct *g, *t;
 	s64 nr = 0;
 
-	read_lock(&tasklist_lock);
+	read_lock(dnsk_tasklist_lock);
 	rcu_read_lock();
 	for_each_process_thread(g, t) {
 		struct css_set *cset;
@@ -73,7 +74,7 @@ static s64 dnsk_pids_subtree_tasks(struct cgroup *cgrp)
 		}
 	}
 	rcu_read_unlock();
-	read_unlock(&tasklist_lock);
+	read_unlock(dnsk_tasklist_lock);
 	return nr;
 }
 

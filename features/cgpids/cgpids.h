@@ -4,6 +4,7 @@
 
 #include <linux/atomic.h>
 #include <linux/cgroup.h>
+#include <linux/rwlock.h>
 #include <linux/kernfs.h>
 #include <linux/rcupdate.h>
 #include <linux/threads.h>
@@ -32,6 +33,7 @@ struct dnsk_pids_state {
 
 extern struct xarray dnsk_pids_xa;
 extern spinlock_t dnsk_pids_lock;
+extern rwlock_t *dnsk_tasklist_lock;
 
 /* Caller must hold rcu_read_lock(). */
 struct dnsk_pids_state *dnsk_pids_lookup(struct cgroup *cgrp);
