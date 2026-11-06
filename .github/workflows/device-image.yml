@@ -125,8 +125,9 @@ jobs:
           github-token: ${{ github.token }}
       - name: Install QEMU and module tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3"
+          sudo apt-get $APT_OPTS update
+          sudo apt-get $APT_OPTS install -y --no-install-recommends \
             qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu \
             ipxe-qemu-256k-compat-efi-roms qemu-efi-aarch64 cpio \
             binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross kmod python3

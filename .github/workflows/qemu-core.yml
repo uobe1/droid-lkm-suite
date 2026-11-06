@@ -174,9 +174,10 @@ jobs:
       - name: Install QEMU
         run: |
           PKGS="qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio"
-          if ! sudo apt-get install -y --no-install-recommends $PKGS; then
-            sudo timeout 120 apt-get update
-            sudo apt-get install -y --no-install-recommends $PKGS
+          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3"
+          if ! sudo apt-get $APT_OPTS install -y --no-install-recommends $PKGS; then
+            sudo timeout 120 apt-get $APT_OPTS update
+            sudo apt-get $APT_OPTS install -y --no-install-recommends $PKGS
           fi
       - name: Build initramfs
         shell: bash
