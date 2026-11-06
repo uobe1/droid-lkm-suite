@@ -13,7 +13,7 @@
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | development | 6.12 构建/导出/QEMU hash 语义通过; 设备 no-compat ABI 修复后 insmod/xt_set 注册/rmmod 通过; iptables 规则与容器验收待完成 |
 | USER_NS + idmapped/child overlay/FUSE/selftests | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
 | TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
-| CGROUP_PIDS（虚拟控制器） | V/D → N | feasibility done | v2 虚拟控制器设计可行；v1 未修改 Docker 不可行，需标 unsupported；DDK `cgroup_subsys` 264 vs 设备 256（源码差异），实现前必须使用设备侧头文件 overlay；见 feasibility/cgpids.md |
+| CGROUP_PIDS（虚拟控制器） | V/D → N | development | 设备 Image QEMU 差分通过（run 42228719092）：controllers/subtree/max/current/peak/events/EAGAIN/migration 与 Native baseline 一致；Docker 29.x `--pids-limit` 与真机 ksud 加载待完成；v1 标 unsupported；见 evidence/cgpids-differential.md |
 | CFS_BANDWIDTH | N/N/A | native/待按 KMI 核对 | 不写 LKM |
 | FUSE / OverlayFS / NET_NS / UTS / TIME / CGROUP ns | N | native | USER_NS 场景单独验收 |
 

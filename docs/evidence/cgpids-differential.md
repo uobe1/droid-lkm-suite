@@ -51,3 +51,31 @@ sleep 后再 fork 被拒；peak=3；events 计 1；迁移一个 sleep 到 `t/b`
   根因是 cgroup kernfs root 使用 `KERNFS_ROOT_CREATE_DEACTIVATED`，mkdir 返回后
   新建的 cftype 文件默认未激活；修复为 add 后调用 `kernfs_activate(child->kn)`。
   待复测确认 pids.max/current 等文件可见并完成差分。
+
+## Device Image virtual 结果 (run 42228719092)
+
+同一 `tests/qemu/init-cgpids` 在 beryl 设备 Image 上加载
+`dnsk_core.ko` + `dnsk_cgpids.ko`（xt104 profile，CI artifact 42227938979），
+vermagic/`module_layout` 由 device-image 工作流 patch：
+
+```text
+DNSK_CGPIDS_LKM_OK
+DNSK_CGPIDS_CONTROLLERS=cpuset cpu io memory pids
+DNSK_CGPIDS_ROOT_SUBTREE=pids
+DNSK_CGPIDS_MAX_BEFORE=max
+DNSK_CGPIDS_MAX=3
+DNSK_CGPIDS_CURRENT_SHELL=1
+cgroup: fork rejected by dnsk pids controller
+DNSK_CGPIDS_SPAWNED=1
+DNSK_CGPIDS_CURRENT=2
+DNSK_CGPIDS_PEAK=3
+DNSK_CGPIDS_EVENTS=max 1
+DNSK_CGPIDS_A_AFTER_MIGRATE=2
+DNSK_CGPIDS_B_AFTER_MIGRATE=1
+DNSK_CGPIDS_OK
+DNSK_QEMU_OK
+```
+
+与 Native baseline（run 42216318718）逐项一致，包括 fork EAGAIN、peak、
+events 和迁移计数。该结果来自设备当前 6.12.30 内核 Image，而不是 DDK。
+Docker 29.x `--pids-limit` 与真机 `ksud insmod` 仍是后续门控。
