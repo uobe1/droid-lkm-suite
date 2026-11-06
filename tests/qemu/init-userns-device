@@ -1,0 +1,48 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# USER_NS spike on the beryl device Image: the merged dnsk_ns build owns the
+# user namespace live path; ksud resolves its unexported imports.
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	"$BB" mknod /dev/console c 5 1
+	"$BB" mknod /dev/null c 1 3
+	"$BB" mknod /dev/zero c 1 5
+fi
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg 2>/dev/null | grep -iE 'dnsk|userns|kernelsu|module|symbol' | tail -25
+	"$BB" poweroff -f
+}
+
+if [ -x /selinux_load ] && [ -f /policy.gz ]; then
+	"$BB" mkdir -p /sys/fs/selinux
+	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
+	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
+	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+fi
+
+"$BB" mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules
+export LD_LIBRARY_PATH=/system/lib64
+/insmod_force /modules/selpermissive.ko || fail selpermissive_insmod
+/ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
+"$BB" sleep 10
+echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+[ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
+echo "DNSK_SELINUX_AFTER_KSU=permissive"
+
+/ksud insmod /modules/dnsk_core.ko || fail core_insmod
+/ksud insmod /modules/dnsk_ns.ko gki=1 activate=1 || fail ns_insmod
+echo "DNSK_USERNS_LKM_OK"
+
+/userns_test || fail userns_test
+echo "DNSK_USERNS_OK"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f

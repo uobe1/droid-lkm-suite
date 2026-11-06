@@ -18,6 +18,7 @@ on:
           - docker
           - ksud-docker
           - tmpfsx
+          - userns
         default: baseline
       module_run_id:
         description: CI run id with core-android16-6.12 artifact (cgpids mode)
@@ -289,6 +290,21 @@ jobs:
             aarch64-linux-gnu-gcc -static -O2 -o xattr_test tests/qemu/xattr_test.c
             cp xattr_test rootfs/xattr_test
             cp tests/qemu/init-tmpfsx-device rootfs/init
+          elif [ "${{ inputs.mode }}" = "userns" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_ns.ko rootfs/modules/
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            aarch64-linux-gnu-gcc -static -O2 -o userns_test tests/qemu/userns_test.c
+            cp userns_test rootfs/userns_test
+            cp tests/qemu/init-userns-device rootfs/init
           elif [ "${{ inputs.mode }}" = "docker" ] || [ "${{ inputs.mode }}" = "ksud-docker" ]; then
             cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
             [ -e modules/dnsk_ns.ko ] && cp modules/dnsk_ns.ko rootfs/modules/
@@ -332,7 +348,7 @@ jobs:
           fi
           APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
           case "$MODE" in
-            ksud-cgpids|ksud-ns|ksud-docker|tmpfsx) APPEND="$APPEND enforcing=0" ;;
+            ksud-cgpids|ksud-ns|ksud-docker|tmpfsx|userns) APPEND="$APPEND enforcing=0" ;;
             *) APPEND="$APPEND selinux=0" ;;
           esac
           if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ] || [ "$MODE" = "ksud-ns" ] || [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
@@ -363,6 +379,9 @@ jobs:
           elif [ "$MODE" = "tmpfsx" ]; then
             grep -q 'DNSK_TMPFSX_LKM_OK' qemu.log
             grep -q 'DNSK_TMPFSX_OK' qemu.log
+          elif [ "$MODE" = "userns" ]; then
+            grep -q 'DNSK_USERNS_LKM_OK' qemu.log
+            grep -q 'DNSK_USERNS_OK' qemu.log
           else
             grep -q 'DNSK_DEVICE_KERNEL_OK' qemu.log
           fi
