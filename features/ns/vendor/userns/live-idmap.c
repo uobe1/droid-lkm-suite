@@ -128,6 +128,9 @@ long ds_userns_mount_setattr(const struct pt_regs *regs)
 	    (attr.attr_set & MOUNT_ATTR_IDMAP))
 		ns = ds_userns_from_fd(attr.userns_fd);
 
+	pr_info("mount_setattr: attr_set=%llx fd=%llu ns=%px\n",
+		(unsigned long long)attr.attr_set,
+		(unsigned long long)attr.userns_fd, ns);
 	if (ns && !ds_idmap_stash(ns)) {
 		put_user_ns(ns);
 		return -ENOMEM;
@@ -144,6 +147,8 @@ struct mnt_idmap *ds_userns_alloc_mnt_idmap(struct user_namespace *userns)
 {
 	struct user_namespace *pending = ds_idmap_peek();
 
+	pr_info("alloc_mnt_idmap: in=%px pending=%px init=%px\n", userns,
+		pending, &init_user_ns);
 	if (pending && userns == &init_user_ns)
 		userns = pending;
 	return ds_userns_alloc_mnt_idmap_original(userns);
