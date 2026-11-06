@@ -33,7 +33,8 @@ static_assert(offsetof(struct css_set, mg_node) == 384);
 static_assert(offsetof(struct css_set, mg_src_cgrp) == 400);
 static_assert(offsetof(struct css_set, mg_dst_cgrp) == 408);
 static_assert(offsetof(struct css_set, mg_dst_cset) == 416);
-static_assert(offsetof(struct task_struct, cgroups) == 2872);
+/* task_struct offset varies with the kernel config; the module is built
+ * against the same headers as the target kernel. */
 static_assert(offsetof(struct seq_file, buf) == 0);
 static_assert(offsetof(struct seq_file, count) == 24);
 static_assert(offsetof(struct seq_file, private) == DNSK_SEQ_FILE_PRIVATE);

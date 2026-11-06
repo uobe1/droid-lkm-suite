@@ -97,7 +97,7 @@ jobs:
             -e VETH -e BRIDGE -e VIRTIO_NET -e VIRTIO_PCI -e VIRTIO_BLK \
             -e SECCOMP -e SECCOMP_FILTER -d MODULE_SIG_FORCE
           if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
-            "$SRC/scripts/config" --file "$KDIR/.config" -d CGROUP_PIDS
+            "$SRC/scripts/config" --file "$KDIR/.config" -d CGROUP_PIDS -d CGROUP_DEVICE
           fi
           make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 olddefconfig
           grep -E '^CONFIG_(IPC_NS|PID_NS|USER_NS|POSIX_MQUEUE|CGROUP_PIDS|DEVTMPFS|NF_TABLES|IP_SET)=' "$KDIR/.config"
