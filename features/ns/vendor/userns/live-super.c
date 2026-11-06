@@ -157,6 +157,15 @@ struct super_block *sget_fc(struct fs_context *fc,
 	int err;
 
 	/*
+	 * alloc_fs_context() may have been inlined on this build, leaving the
+	 * !USER_NS get_user_ns() stub's init_user_ns in fc->user_ns.  Recover
+	 * the mounter's namespace so the superblock is owned by it; without
+	 * this, idmapped mounts fail the "same namespace" check.
+	 */
+	if (user_ns == &init_user_ns && current_user_ns() != &init_user_ns)
+		user_ns = current_user_ns();
+
+	/*
 	 * Never allow s_user_ns != &init_user_ns when FS_USERNS_MOUNT is
 	 * not set, as the filesystem is likely unprepared to handle it.
 	 * This can happen when fsconfig() is called from init_user_ns with
