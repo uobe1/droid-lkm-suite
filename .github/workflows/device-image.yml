@@ -14,6 +14,7 @@ on:
           - baseline
           - cgpids
           - ksud-cgpids
+          - ksud-ns
           - docker
         default: baseline
       module_run_id:
@@ -251,6 +252,13 @@ jobs:
             chmod 0755 rootfs/system/bin/linker64
             rm -f rootfs/system/etc/ld.config.txt
             cp tests/qemu/init-cgpids rootfs/init
+          elif [ "${{ inputs.mode }}" = "ksud-ns" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_ns.ko rootfs/modules/
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            cp tests/qemu/init-ns-device rootfs/init
           elif [ "${{ inputs.mode }}" = "docker" ]; then
             cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
             [ -e modules/dnsk_ns.ko ] && cp modules/dnsk_ns.ko rootfs/modules/
@@ -280,7 +288,7 @@ jobs:
             TIMEOUT=1200
           fi
           APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0 module.sig_enforce=0"
-          if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ] || [ "$MODE" = "docker" ]; then
+          if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ] || [ "$MODE" = "ksud-ns" ] || [ "$MODE" = "docker" ]; then
             APPEND="$APPEND dnsk_lkm=1"
           fi
           timeout "$TIMEOUT" qemu-system-aarch64 \
@@ -299,6 +307,9 @@ jobs:
           if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ]; then
             grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
             grep -q 'DNSK_CGPIDS_OK' qemu.log
+          elif [ "$MODE" = "ksud-ns" ]; then
+            grep -q 'DNSK_KSUD_LATE_LOAD_OK' qemu.log
+            grep -q 'DNSK_NS_DEVICE_OK' qemu.log
           elif [ "$MODE" = "docker" ]; then
             grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
             grep -q 'DNSK_DOCKER_DEVICE_OK' qemu.log

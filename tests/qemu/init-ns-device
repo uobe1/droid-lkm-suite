@@ -1,0 +1,43 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# dnsk_ns on the beryl device kernel Image, loaded via KernelSU late-load.
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin
+export ANDROID_ROOT=/system ANDROID_DATA=/data
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	for n in "console 5 1" "null 1 3" "zero 1 5" "random 1 8" "urandom 1 9" "tty 5 0" "kmsg 1 11"; do
+		set -- $n
+		"$BB" mknod "/dev/$1" c "$2" "$3"
+	done
+fi
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg 2>/dev/null | grep -iE 'dnsk|kernelsu|module|vermagic|CFI|panic' | tail -20
+	"$BB" poweroff -f
+}
+
+export LD_LIBRARY_PATH=/system/lib64
+"$BB" mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules
+/ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
+echo "DNSK_KSUD_LATE_LOAD_OK"
+/ksud insmod /modules/dnsk_core.ko || fail core_insmod
+/ksud insmod /modules/dnsk_ns.ko activate=1 || fail ns_insmod
+echo "DNSK_NS_LKM_OK"
+
+boot_before=$(cat /proc/sys/kernel/random/boot_id)
+unshare --mount --propagation unchanged --pid --fork --mount-proc /bin/sh -c \
+	'echo "DNSK_NS_CHILD_PID=$$"; readlink /proc/self/ns/pid; \
+	 echo "DNSK_NS_CHILD_OK"' || fail ns_unshare
+boot_after=$(cat /proc/sys/kernel/random/boot_id)
+echo "DNSK_NS_BOOT_ID_SAME=$([ "$boot_before" = "$boot_after" ] && echo yes || echo no)"
+[ "$boot_before" = "$boot_after" ] || fail host_rebooted
+
+echo "DNSK_NS_DEVICE_OK"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f
