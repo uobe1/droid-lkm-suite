@@ -12,7 +12,7 @@
 | xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | active load/unload + netns 内 addrtype/recent/REJECT 规则通过; 原生 REJECT 正确跳过; Docker/UFW/Fail2ban 验收待完成 |
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | development | 6.12 构建/导出/QEMU hash 语义通过; 设备 no-compat ABI 修复后 insmod/xt_set 注册/rmmod 通过; iptables 规则与容器验收待完成 |
 | USER_NS + idmapped/child overlay/FUSE/selftests | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
-| TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
+| TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | feasibility → xattr prototype | M0 可行：设备在 `TMPFS_XATTR/ACL=n` 下仍保留 `simple_xattrs`(@80)、helper 与 `shmem_*` 入口；`dnsk_tmpfsx` 原型覆盖全 tmpfs user/trusted/security xattr + evict 清理，preflight 在 beryl BTF 通过；ACL 与挂载选项未实现，见 [evidence/m0-tmpfs.md](evidence/m0-tmpfs.md) |
 | CGROUP_PIDS（虚拟控制器） | V/D → N | development | 设备 Image QEMU 差分通过（run 42228719092）：controllers/subtree/max/current/peak/events/EAGAIN/migration 与 Native baseline 一致；Docker 29.x `--pids-limit` 与真机 ksud 加载待完成；v1 标 unsupported；见 evidence/cgpids-differential.md |
 | CFS_BANDWIDTH | N/N/A | native/待按 KMI 核对 | 不写 LKM |
 | FUSE / OverlayFS / NET_NS / UTS / TIME / CGROUP ns | N | native | USER_NS 场景单独验收 |
