@@ -71,6 +71,7 @@ struct btf_layout {
 	int fs_ok;
 	int ns_ok;
 	int cgpids_ok;
+	int tmpfsx_ok;
 	int seq_private;
 };
 
@@ -532,6 +533,40 @@ static void btf_check_cgpids(const unsigned char *d, size_t len,
 					ARRAY_SIZE(task));
 }
 
+static void btf_check_tmpfsx(const unsigned char *d, size_t len,
+			     struct btf_layout *l)
+{
+	static const struct btf_field shmem_info[] = {
+		{ "lock", 0 }, { "seals", 4 }, { "xattrs", 80 },
+		{ "vfs_inode", 112 },
+	};
+	static const struct btf_field xattr_handler[] = {
+		{ "prefix", 8 }, { "list", 24 }, { "get", 32 }, { "set", 40 },
+	};
+	static const struct btf_field inode_ops[] = {
+		{ "get_inode_acl", 24 }, { "listxattr", 120 },
+		{ "get_acl", 160 }, { "set_acl", 168 },
+	};
+	static const struct btf_field super_block[] = {
+		{ "s_magic", 96 }, { "s_xattr", 192 },
+	};
+	static const struct btf_field simple_xattrs[] = {
+		{ "rb_root", 0 }, { "lock", 8 },
+	};
+
+	l->tmpfsx_ok =
+		btf_fields_match(d, len, "shmem_inode_info", 824, shmem_info,
+				 ARRAY_SIZE(shmem_info)) &&
+		btf_fields_match(d, len, "xattr_handler", 48, xattr_handler,
+				 ARRAY_SIZE(xattr_handler)) &&
+		btf_fields_match(d, len, "inode_operations", 256, inode_ops,
+				 ARRAY_SIZE(inode_ops)) &&
+		btf_fields_match(d, len, "super_block", 1536, super_block,
+				 ARRAY_SIZE(super_block)) &&
+		btf_fields_match(d, len, "simple_xattrs", 16, simple_xattrs,
+				 ARRAY_SIZE(simple_xattrs));
+}
+
 static void btf_check_common(const unsigned char *d, size_t len, int check_xt,
 			     int check_fs, int check_ns, int check_cgpids,
 			     struct btf_layout *l)
@@ -734,6 +769,7 @@ static int btf_read_layout(const char *path, struct btf_layout *layout,
 		btf_find_struct_info(data, used, "xt_target", &layout->target) == 0;
 	btf_check_common(data, used, check_xt, check_fs, check_ns,
 			 check_cgpids, layout);
+	btf_check_tmpfsx(data, used, layout);
 	if (check_nf)
 		btf_check_netfilter(data, used, &layout->nf);
 	free(data);
@@ -814,6 +850,19 @@ static struct sym_req cgpids_required[] = {
 	{ "kernfs_activate", 0 },
 };
 
+/* tmpfs xattr internals needed by dnsk_tmpfsx; resolved through kallsyms. */
+static struct sym_req tmpfsx_required[] = {
+	{ "shmem_inode_operations", 0 },
+	{ "shmem_dir_inode_operations", 0 },
+	{ "shmem_fill_super", 0 },
+	{ "shmem_evict_inode", 0 },
+	{ "simple_xattr_set", 0 },
+	{ "simple_xattr_get", 0 },
+	{ "simple_xattr_list", 0 },
+	{ "simple_xattrs_free", 0 },
+	{ "iterate_supers", 0 },
+};
+
 static int find_symbol_in(struct sym_req *tab, size_t n, const char *name)
 {
 	for (size_t i = 0; i < n; i++)
@@ -847,6 +896,10 @@ static int scan_kallsyms(void)
 				     name);
 		if (idx >= 0)
 			cgpids_required[idx].found = 1;
+		idx = find_symbol_in(tmpfsx_required, ARRAY_SIZE(tmpfsx_required),
+				     name);
+		if (idx >= 0)
+			tmpfsx_required[idx].found = 1;
 	}
 	fclose(fp);
 	return 0;
@@ -964,12 +1017,14 @@ int main(int argc, char **argv)
 	int check_fs;
 	int check_ns;
 	int check_cgpids;
+	int check_tmpfsx;
 	int btf;
 	int layout_ok;
 	int boundary_ok;
 	int nf_ok;
 	int nf_symbols;
 	int cgpids_symbols;
+	int tmpfsx_symbols;
 	int seq_ok;
 	int supported;
 	int dcache;
@@ -995,6 +1050,7 @@ int main(int argc, char **argv)
 	check_fs = !strcmp(feature, "devtmpfs");
 	check_ns = !strcmp(feature, "ns");
 	check_cgpids = !strcmp(feature, "cgpids");
+	check_tmpfsx = !strcmp(feature, "tmpfsx");
 
 	if (uname(&uts) != 0) {
 		perror("uname");
@@ -1032,11 +1088,14 @@ int main(int argc, char **argv)
 				     layout.net_ok)) &&
 		      (!check_fs || layout.fs_ok) &&
 		      (!check_ns || layout.ns_ok) &&
-		      (!check_cgpids || layout.cgpids_ok);
+		      (!check_cgpids || layout.cgpids_ok) &&
+		      (!check_tmpfsx || layout.tmpfsx_ok);
 	nf_ok = !check_nf || layout.nf.ok;
 	nf_symbols = all_found(nf_required, ARRAY_SIZE(nf_required));
 	cgpids_symbols = all_found(cgpids_required,
 				   ARRAY_SIZE(cgpids_required));
+	tmpfsx_symbols = all_found(tmpfsx_required,
+				   ARRAY_SIZE(tmpfsx_required));
 	seq_ok = !check_cgpids ||
 		 (seq_expected >= 0 && layout.seq_private == seq_expected);
 	ok = page_size == 4096 && btf && layout_ok && boundary_ok && ksud &&
@@ -1046,7 +1105,8 @@ int main(int argc, char **argv)
 	     required[SYM_STOP_MACHINE].found &&
 	     required[SYM_REGISTER_KPROBE].found && dcache && resolver &&
 	     nf_ok && (!check_nf || nf_symbols) && seq_ok &&
-	     (!check_cgpids || cgpids_symbols);
+	     (!check_cgpids || cgpids_symbols) &&
+	     (!check_tmpfsx || tmpfsx_symbols);
 
 	printf("{\"ok\":%s,\"feature\":\"%s\",\"release\":\"%s\","
 	       "\"kmi\":\"%s\",\"supported\":%s,\"page_size\":%lu,"
@@ -1057,7 +1117,8 @@ int main(int argc, char **argv)
 	       "\"checked_xt\":%s,\"xt_params\":%s,\"skb\":%s,\"net\":%s,"
 	       "\"checked_fs\":%s,\"fs\":%s,"
 	       "\"checked_ns\":%s,\"ns\":%s,"
-	       "\"checked_cgpids\":%s,\"cgpids\":%s,\"ok\":%s},\"nf\":{\"checked\":%s,"
+	       "\"checked_cgpids\":%s,\"cgpids\":%s,"
+	       "\"checked_tmpfsx\":%s,\"tmpfsx\":%s,\"ok\":%s},\"nf\":{\"checked\":%s,"
 	       "\"hook_ops\":%s,\"hook_state\":%s,\"conn\":%s,"
 	       "\"pernet_ops\":%s,\"nfnetlink\":%s,\"nfnl_callback\":%s,"
 	       "\"nat_hook\":%s,\"nat_range2\":%s,"
@@ -1078,6 +1139,8 @@ int main(int argc, char **argv)
 	       layout.ns_ok ? "true" : "false",
 	       check_cgpids ? "true" : "false",
 	       layout.cgpids_ok ? "true" : "false",
+	       check_tmpfsx ? "true" : "false",
+	       layout.tmpfsx_ok ? "true" : "false",
 	       boundary_ok ? "true" : "false",
 	       check_nf ? "true" : "false",
 	       layout.nf.hook_ops ? "true" : "false",
@@ -1104,11 +1167,18 @@ int main(int argc, char **argv)
 			       cgpids_required[i].found ? "true" : "false");
 		}
 	}
+	if (check_tmpfsx) {
+		for (size_t i = 0; i < ARRAY_SIZE(tmpfsx_required); i++) {
+			printf(",\"%s\":%s", tmpfsx_required[i].name,
+			       tmpfsx_required[i].found ? "true" : "false");
+		}
+	}
 	printf("},\"checks\":{\"page_size_4k\":%s,\"btf\":%s,"
 	       "\"kmi_supported\":%s,\"ksud\":%s,\"dcache\":%s,"
 	       "\"kallsyms_resolver\":%s,\"xt_layout\":%s,"
 	       "\"boundary\":%s,\"nf_abi\":%s,\"nf_symbols\":%s,"
-	       "\"cgpids_symbols\":%s,\"seq_private\":%s}}\n",
+	       "\"cgpids_symbols\":%s,\"tmpfsx_symbols\":%s,"
+	       "\"seq_private\":%s}}\n",
 	       page_size == 4096 ? "true" : "false", btf ? "true" : "false",
 	       supported ? "true" : "false", ksud ? "true" : "false",
 	       dcache ? "true" : "false", resolver ? "true" : "false",
@@ -1116,6 +1186,7 @@ int main(int argc, char **argv)
 	       nf_ok ? "true" : "false",
 	       (!check_nf || nf_symbols) ? "true" : "false",
 	       (!check_cgpids || cgpids_symbols) ? "true" : "false",
+	       (!check_tmpfsx || tmpfsx_symbols) ? "true" : "false",
 	       seq_ok ? "true" : "false");
 	return ok ? 0 : 1;
 }

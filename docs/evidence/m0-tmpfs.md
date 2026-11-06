@@ -38,6 +38,22 @@ prototype 已落代码；未达 Native，不打 tag。**
    其他 KMI 若 `sizeof(shared_policy)!=0` 必须在 preflight 拒绝。
 5. 模块安装后 pin 到重启（sb 持有模块内 handler 数组指针）。
 
+## ACL 设计缺口（未实现）
+
+原生 ACL xattr handler 依赖 `IS_POSIXACL(inode)`（即 `sb->s_flags &
+SB_POSIXACL`）并调用 `inode->i_op->get_inode_acl/set_acl`。设备
+`CONFIG_TMPFS_POSIX_ACL=n` 时：
+
+1. `shmem_parse_one()` 不接受 `acl` 挂载选项；
+2. tmpfs 挂载不会置 `SB_POSIXACL`；
+3. `shmem_inode_operations` 的 ACL 槽为空。
+
+因此完整 Native ACL 需要：挂载选项层面接受/记录 `acl`（按 sb），只为
+带 `acl` 的挂载置 `SB_POSIXACL`，再以 `simple_xattr` +
+`posix_acl_from_xattr/to_xattr` 实现三个 i_op 槽，并复用
+`posix_acl_access_xattr_handler`/`posix_acl_default_xattr_handler`。
+ACL 是 M4 硬阻塞，当前 prototype 只交付 xattr。
+
 ## 已落代码
 
 `features/tmpfsx/`：`main.c`（符号解析、`iterate_supers` 接线、
