@@ -94,14 +94,14 @@ docker run --rm alpine:local /bin/sh -c \
 echo "DNSK_DOCKER_BRIDGE_OK"
 
 docker run -d --name dnsk-nat -p 18080:80 alpine:local /bin/sh -c \
-	'echo DOCKER_NAT_OK > /tmp/index.html; exec httpd -f -p 80 -h /tmp' \
+	'while true; do printf "HTTP/1.0 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\nDOCKER_NAT_OK\n" | nc -l -p 80; done' \
 	|| fail docker_nat_start
 nat_ip=
 i=0
 while [ "$i" -lt 20 ]; do
 	state=$(docker inspect -f '{{.State.Running}}' dnsk-nat 2>/dev/null)
 	nat_ip=$(docker inspect -f '{{.NetworkSettings.Networks.bridge.IPAddress}}' dnsk-nat 2>/dev/null)
-	[ "$state" = true ] && [ -n "$nat_ip" ] && break
+	[ "$state" = true ] && echo "$nat_ip" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' && break
 	sleep 0.5
 	i=$((i + 1))
 done
