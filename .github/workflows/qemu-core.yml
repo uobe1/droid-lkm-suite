@@ -137,14 +137,14 @@ jobs:
               DNSK_CGROUP_SUBSYS_FORK DNSK_CGROUP_SUBSYS_EXIT \
               DNSK_CGROUP_SUBSYS_RELEASE DNSK_CGROUP_SUBSYS_ID \
               DNSK_SEQ_FILE_PRIVATE
-            # External-module modpost reads only $(objtree)/Module.symvers;
-            # an Image-only build may not have it.  Seed it from
-            # vmlinux.symvers instead of passing both through
-            # KBUILD_EXTRA_SYMBOLS (the files overlap and modpost then
-            # reports every export twice).
-            if [ ! -s "$KDIR/Module.symvers" ]; then
-              cp "$KDIR/vmlinux.symvers" "$KDIR/Module.symvers"
-            fi
+            # External-module modpost reads only $(objtree)/Module.symvers.
+            # The DDK tree may ship one that lacks the vmlinux CRCs; merge
+            # vmlinux.symvers in, keeping one entry per symbol so modpost
+            # does not report overlapping exports twice.
+            touch "$KDIR/Module.symvers"
+            cat "$KDIR/vmlinux.symvers" "$KDIR/Module.symvers" | \
+              awk '!seen[$2]++' > "$KDIR/Module.symvers.merged"
+            mv "$KDIR/Module.symvers.merged" "$KDIR/Module.symvers"
             make -C "$KDIR" M="$GITHUB_WORKSPACE" modules || {
               sed -n '1,60p' "$GITHUB_WORKSPACE/dnsk_core.mod.c" || true
               exit 1
