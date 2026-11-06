@@ -56,6 +56,7 @@ static s64 dnsk_pids_subtree_tasks(struct cgroup *cgrp)
 	struct task_struct *g, *t;
 	s64 nr = 0;
 
+	read_lock(&tasklist_lock);
 	rcu_read_lock();
 	for_each_process_thread(g, t) {
 		struct css_set *cset;
@@ -72,6 +73,7 @@ static s64 dnsk_pids_subtree_tasks(struct cgroup *cgrp)
 		}
 	}
 	rcu_read_unlock();
+	read_unlock(&tasklist_lock);
 	return nr;
 }
 
