@@ -359,6 +359,16 @@ jobs:
             aarch64-linux-gnu-gcc -static -O2 -pthread -o mount_setattr_test \
               tests/qemu/selftests/mount_setattr/mount_setattr_test.c
             cp mount_setattr_test rootfs/mount_setattr_test
+            # The vendored mount_setattr selftest builds an ext4 image and
+            # mounts it through a loop device.
+            curl -fsSL -o apk-tools.apk \
+              https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/apk-tools-static-2.14.13-r0.apk
+            rm -rf /tmp/apk-tools && mkdir -p /tmp/apk-tools
+            tar -xzf apk-tools.apk -C /tmp/apk-tools
+            /tmp/apk-tools/sbin/apk.static --root "$PWD/rootfs" \
+              --arch aarch64 --no-cache --allow-untrusted --no-scripts \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
+              add e2fsprogs
             cp tests/qemu/init-userns-device rootfs/init
           elif [ "${{ inputs.mode }}" = "docker" ] || [ "${{ inputs.mode }}" = "ksud-docker" ]; then
             cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
