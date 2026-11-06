@@ -11,6 +11,9 @@
 #include <linux/user_namespace.h>
 #include "live.h"
 
+int ds_userns_ovl_fill_super_original(struct super_block *,
+				      struct fs_context *);
+
 int ds_userns_ovl_fill_super(struct super_block *sb, struct fs_context *fc)
 {
 	struct user_namespace *saved = NULL;

@@ -31,6 +31,7 @@ struct task_struct;
 extern struct mm_struct *ds_userns_mm_alloc(void);
 extern void ds_userns_wake_up_new_task(struct task_struct *p);
 extern u32 ds_userns_mount_setattr_original[], ds_userns_alloc_mnt_idmap_original[];
+extern u32 ds_userns_ovl_fill_super_original[];
 extern long ds_userns_mount_setattr(const struct pt_regs *);
 struct user_namespace;
 struct mnt_idmap;
