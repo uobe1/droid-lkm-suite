@@ -441,6 +441,11 @@ static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name,
 	child = dnsk_find_child(parent, name);
 	pr_info("dnsk_cgpids: mkdir parent=%px child=%px dfl=%d\n",
 		parent, child, child ? dnsk_on_dfl(child) : -1);
+	if (child)
+		pr_info("dnsk_cgpids: child_kn=%s flags=%u kf=%px ss=%px sp=%px\n",
+			child->kn->name, dnsk_pids_files[0].flags,
+			dnsk_pids_files[0].kf_ops, dnsk_pids_files[0].ss,
+			child->self.parent);
 	if (!child || !dnsk_on_dfl(child)) {
 		mutex_unlock(dnsk_cgroup_mutex);
 		return 0;
