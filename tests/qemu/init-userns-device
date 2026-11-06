@@ -51,7 +51,15 @@ if [ -w "$TR/kprobe_events" ]; then
 		 'r:ovl_upper ovl_get_upper $retval' \
 		 'r:ovl_work ovl_get_workdir $retval' \
 		 'r:ovl_layers ovl_get_layers $retval' \
+		 'r:ovl_pm ovl_parse_monolithic $retval' \
+		 'r:ovl_pp ovl_parse_param $retval' \
+		 'r:ovl_init ovl_init_fs_context $retval' \
 		 'r:vfs_tree vfs_get_tree $retval' \
+		 'r:vfs_ps vfs_parse_fs_string $retval' \
+		 'r:parse_m parse_monolithic_mount_data $retval' \
+		 'r:cap mount_capable $retval' \
+		 'r:getfs get_fs_type $retval' \
+		 'r:fsc fs_context_for_mount $retval' \
 		 'r:sel_finish sb_finish_set_opts $retval' \
 		 'r:sel_mnt selinux_set_mnt_opts $retval'; do
 		echo "$p" >>"$TR/kprobe_events"
@@ -59,7 +67,8 @@ if [ -w "$TR/kprobe_events" ]; then
 	echo 1 >"$TR/events/kprobes/enable"
 fi
 if ! /userns_test; then
-	"$BB" cat "$TR/trace" 2>/dev/null | grep -E 'ovl_|vfs_tree|sel_' | tail -40
+	"$BB" cat "$TR/kprobe_events" 2>/dev/null | tail -20
+	"$BB" cat "$TR/trace" 2>/dev/null | grep -E 'ovl_|vfs_|parse_m|cap:|getfs|fsc:' | tail -60
 	fail userns_test
 fi
 /fuse_test || fail fuse_test
