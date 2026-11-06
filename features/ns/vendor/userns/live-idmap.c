@@ -146,10 +146,18 @@ long ds_userns_mount_setattr(const struct pt_regs *regs)
 struct mnt_idmap *ds_userns_alloc_mnt_idmap(struct user_namespace *userns)
 {
 	struct user_namespace *pending = ds_idmap_peek();
+	struct mnt_idmap *id;
 
 	pr_info("alloc_mnt_idmap: in=%px pending=%px init=%px\n", userns,
 		pending, &init_user_ns);
 	if (pending && userns == &init_user_ns)
 		userns = pending;
-	return ds_userns_alloc_mnt_idmap_original(userns);
+	id = ds_userns_alloc_mnt_idmap_original(userns);
+	if (!IS_ERR(id))
+		pr_info("alloc_mnt_idmap: ret=%px extents=%u first=%u lower=%u count=%u\n",
+			id, id->uid_map.nr_extents,
+			id->uid_map.extent[0].first,
+			id->uid_map.extent[0].lower_first,
+			id->uid_map.extent[0].count);
+	return id;
 }
