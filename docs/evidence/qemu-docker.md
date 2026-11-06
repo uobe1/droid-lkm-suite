@@ -73,6 +73,24 @@ Docker 29.x 在 oracle 上完成：containerd+dockerd、cgroup2、vfs storage、
 限制。当前仍是 `--network none`；bridge/NAT、iptables、UFW/Fail2ban 是
 下一阶段。
 
+## Oracle Docker bridge (run 42201793594)
+
+在 oracle image 上把 dockerd 的 `--bridge=none` 去掉（保留
+`--iptables=false --ip-forward=false --ip-masq=false`），追加默认 bridge
+容器：
+
+```text
+BRIDGE_DEV
+  eth0: 376 4 ...                 # veth 已创建并改名
+PING 172.17.0.1: 64 bytes ...     # 容器 -> docker0 网关可达
+DNSK_DOCKER_BRIDGE_OK
+pids_spawned=30                   # 同一 run 中 --pids-limit 32 仍生效
+DNSK_DOCKER_OK / DNSK_QEMU_OK
+```
+
+说明 VETH/BRIDGE/NET_NS 原生路径已通；此基线没有 iptables/NAT/端口映射，
+下一步安装 iptables（legacy/nft）并验证 NAT/UFW/Fail2ban。
+
 ## 备注
 
 - Docker static 包来自
