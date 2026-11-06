@@ -164,7 +164,7 @@ do_preflight() {
 			check_abi_stamps "$ko"
 			set -- "$@" --xt-layout "$xt_layout"
 			;;
-		devtmpfs|ns)
+		devtmpfs|ns|tmpfsx)
 			check_abi_stamps "$ko"
 			;;
 		cgpids)
