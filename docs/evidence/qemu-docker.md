@@ -132,6 +132,17 @@ DNSK_QEMU_OK
 - 规则：`-A DOCKER ! -i docker0 -p tcp --dport 18080 -j DNAT
   --to-destination 172.17.0.2:80`，由 iptables-nft 经 `nft_compat` 下发。
 
+## 设备 Image 门（2026-11-06，run `42245959539`）
+
+- beryl 原厂 Image + ksud late-load + 测试 helper 清 KSU 强制 enforce；
+  `dnsk_ns` 以 ksud 加载（kallrecon 已移除），`dnsk_cgpids` 为虚拟 pids。
+- 标记：`DNSK_DOCKER_NS_OK=1`；
+  `DNSK_DOCKER_DEVICE_CONTROLLERS=cpuset cpu io memory pids`；
+  `DNSK_DOCKER_MODE=isolated`；`pids_spawned=30`（limit 32）；
+  `DNSK_DOCKER_DEVICE_OK`；`DNSK_QEMU_OK`。
+- 范围：cgroup v2、非 host 命名空间、vfs storage、`--network none`；
+  bridge/NAT、cgroup v1、UFW/Fail2ban 尚未在设备 Image 上验收。
+
 ## 备注
 
 - Docker static 包来自
