@@ -7,26 +7,16 @@
 
 #include <linux/errno.h>
 #include <linux/fs.h>
-#include <linux/inode.h>
-#include <linux/kprobes.h>
 #include <linux/mnt_idmap.h>
-#include <linux/ptrace.h>
 #include <linux/shmem_fs.h>
 #include <linux/string.h>
 #include <linux/xattr.h>
 #include "xattr.h"
 
-static int (*dnsk_simple_xattr_set)(struct simple_xattrs *xattrs,
-				    const char *name, const void *value,
-				    size_t size, int flags);
-static int (*dnsk_simple_xattr_get)(struct simple_xattrs *xattrs,
-				    const char *name, void *buffer,
-				    size_t size);
-static ssize_t (*dnsk_simple_xattr_list)(struct inode *inode,
-					 struct simple_xattrs *xattrs,
-					 char *buffer, size_t size);
-static void (*dnsk_simple_xattrs_free)(struct simple_xattrs *xattrs,
-				       size_t *freed_space);
+static dnsk_xattr_set_fn dnsk_simple_xattr_set;
+static dnsk_xattr_get_fn dnsk_simple_xattr_get;
+static dnsk_xattr_list_fn dnsk_simple_xattr_list;
+static dnsk_xattrs_free_fn dnsk_simple_xattrs_free;
 
 static int dnsk_xattr_get(const struct xattr_handler *handler,
 			  struct dentry *dentry, struct inode *inode,
@@ -101,7 +91,9 @@ void dnsk_tmpfsx_evict_inode(struct inode *inode)
 	dnsk_simple_xattrs_free(&info->xattrs, &freed);
 }
 
-int dnsk_tmpfsx_xattr_init(void *set, void *get, void *list, void *free_fn)
+int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
+			   dnsk_xattr_list_fn list,
+			   dnsk_xattrs_free_fn free_fn)
 {
 	dnsk_simple_xattr_set = set;
 	dnsk_simple_xattr_get = get;

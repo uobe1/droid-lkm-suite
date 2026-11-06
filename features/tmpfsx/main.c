@@ -36,11 +36,12 @@ static bool dnsk_feature_ready;
 
 static void dnsk_wire_sb(struct super_block *sb, void *arg)
 {
-	bool wire = arg != NULL;
-
 	if (sb->s_magic != TMPFS_MAGIC)
 		return;
-	WRITE_ONCE(sb->s_xattr, wire ? dnsk_tmpfsx_handlers : NULL);
+	if (arg)
+		WRITE_ONCE(sb->s_xattr, dnsk_tmpfsx_handlers);
+	else
+		WRITE_ONCE(sb->s_xattr, NULL);
 }
 
 static int dnsk_fill_super_pre(struct kprobe *kp, struct pt_regs *regs)
@@ -105,8 +106,10 @@ static int dnsk_resolve_symbols(void)
 		pr_err("dnsk_tmpfsx: missing tmpfs or xattr symbols\n");
 		return -ENOENT;
 	}
-	return dnsk_tmpfsx_xattr_init(xattr_set, xattr_get, xattr_list,
-				      xattrs_free);
+	return dnsk_tmpfsx_xattr_init((dnsk_xattr_set_fn)xattr_set,
+				      (dnsk_xattr_get_fn)xattr_get,
+				      (dnsk_xattr_list_fn)xattr_list,
+				      (dnsk_xattrs_free_fn)xattrs_free);
 }
 
 static struct dnsk_feature_desc dnsk_tmpfsx_desc = {
