@@ -60,13 +60,13 @@ static s64 dnsk_pids_subtree_tasks(struct cgroup *cgrp)
 	rcu_read_lock();
 	for_each_process_thread(g, t) {
 		struct css_set *cset;
-		struct cgroup *pos;
+		struct cgroup_subsys_state *css;
 
 		cset = rcu_dereference(t->cgroups);
 		if (!cset)
 			continue;
-		for (pos = cset->dfl_cgrp; pos; pos = pos->parent) {
-			if (pos == cgrp) {
+		for (css = &cset->dfl_cgrp->self; css; css = css->parent) {
+			if (css->cgroup == cgrp) {
 				nr++;
 				break;
 			}
