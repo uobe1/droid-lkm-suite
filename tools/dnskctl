@@ -22,7 +22,7 @@ usage() {
 usage: dnskctl <command> [args]
 
 commands:
-  probe                     show device/KMI/ksud/cgroup facts
+  probe [--json]            show device/KMI/ksud/cgroup facts
   cap [--json]              show core capability/status
   status [--json]           show loaded modules and /proc/dnsk/status
   preflight [feature]       run device-side preflight (default: core)
@@ -34,11 +34,37 @@ commands:
   boot-begin|boot-ok|boot-check
   doctor [--last-panic]     collect dmesg/pstore/panic evidence
   cgroup-prep [--plan]      detect cgroup v1/v2 paths; does not modify them
-  storage-loop              not implemented in M0
+  cgroup-prep --bind <root> bind existing /dev/{memcg,cpuctl,cpuset,blkio}
+                            directories into <root> at the same names
+  cgroup-prep --delegate <dir>
+                            enable cpuset/cpu/io/memory/pids in <dir>'s
+                            cgroup.subtree_control (cgroup v2 only)
+  storage-loop create <img> <size> [ext4|f2fs]
+                            create a sparse loop image (512M/2G); no mount
+  storage-loop remove <img> umount (best effort) and delete the image
+
+--json prints a single-line JSON object; exit status still reflects errors.
 EOF
 }
 
 die() { echo "dnskctl: $*" >&2; exit 1; }
+
+# json_str prints one JSON string literal without jq/python.  Backslashes and
+# double quotes are escaped; newlines, carriage returns and tabs become spaces
+# so a value can never break the single-line object it lives in.
+json_str() {
+	_json_flat=$(printf '%s' "$1" | LC_ALL=C tr '\n\r\t' '   ')
+	_json_esc=$(printf '%s' "$_json_flat" | LC_ALL=C sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+	printf '"%s"' "$_json_esc"
+}
+
+json_bool() {
+	if [ "$1" = yes ] || [ "$1" = true ] || [ "$1" = 1 ]; then
+		printf 'true'
+	else
+		printf 'false'
+	fi
+}
 
 need_root() {
 	[ "$(id -u)" -eq 0 ] || die "run through: su -c '<command>' (or sudo in Termux for non-ksud tools)"
@@ -113,21 +139,74 @@ is_loaded() {
 }
 
 do_probe() {
-	printf 'release: %s\n' "$(uname -r)"
-	printf 'kmi: %s\n' "$(resolve_kmi 2>/dev/null || echo unsupported)"
-	printf 'uid: %s\n' "$(id -u)"
-	printf 'page_size: %s\n' "$(getconf PAGE_SIZE 2>/dev/null || echo unknown)"
-	printf 'btf: %s\n' "$([ -r /sys/kernel/btf/vmlinux ] && echo yes || echo no)"
-	printf 'ksud: %s\n' "$(find_ksud 2>/dev/null || echo missing)"
+	json=0
+	for arg in "$@"; do
+		case "$arg" in
+		--json) json=1 ;;
+		*) die "probe [--json]" ;;
+		esac
+	done
+	release=$(uname -r)
+	kmi=$(resolve_kmi 2>/dev/null || echo unsupported)
+	uid=$(id -u)
+	page_size=$(getconf PAGE_SIZE 2>/dev/null || echo unknown)
+	if [ -r /sys/kernel/btf/vmlinux ]; then btf=yes; else btf=no; fi
+	ksud=$(find_ksud 2>/dev/null || echo missing)
+	if is_loaded dnsk_core; then core_loaded=yes; else core_loaded=no; fi
+	if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
+		controllers=$(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null)
+	else
+		controllers=unreadable
+	fi
+	if [ "$json" = 1 ]; then
+		printf '{"release":%s,"kmi":%s,"uid":%s,"page_size":%s,"btf":%s,' \
+			"$(json_str "$release")" "$(json_str "$kmi")" "$uid" \
+			"$(json_str "$page_size")" "$(json_bool "$btf")"
+		printf '"ksud":%s,"module_dir":%s,"core_loaded":%s,"cgroup2_controllers":%s,' \
+			"$(json_str "$ksud")" "$(json_str "$MODDIR")" \
+			"$(json_bool "$core_loaded")" "$(json_str "$controllers")"
+		printf '"cgroup_v1":{'
+		first=1
+		for p in /dev/memcg /dev/cpuctl /dev/cpuset /dev/blkio; do
+			[ "$first" = 1 ] || printf ','
+			first=0
+			if [ -d "$p" ]; then present=yes; else present=no; fi
+			printf '%s:%s' "$(json_str "$p")" "$(json_bool "$present")"
+		done
+		printf '}}\n'
+		return 0
+	fi
+	printf 'release: %s\n' "$release"
+	printf 'kmi: %s\n' "$kmi"
+	printf 'uid: %s\n' "$uid"
+	printf 'page_size: %s\n' "$page_size"
+	printf 'btf: %s\n' "$btf"
+	printf 'ksud: %s\n' "$ksud"
 	printf 'module_dir: %s\n' "$MODDIR"
-	printf 'core_loaded: %s\n' "$(is_loaded dnsk_core && echo yes || echo no)"
-	printf 'cgroup2_controllers: %s\n' "$(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null || echo unreadable)"
+	printf 'core_loaded: %s\n' "$core_loaded"
+	printf 'cgroup2_controllers: %s\n' "$controllers"
 	for p in /dev/memcg /dev/cpuctl /dev/cpuset /dev/blkio; do
 		printf '%s: %s\n' "$p" "$([ -d "$p" ] && echo present || echo absent)"
 	done
 }
 
 do_cap() {
+	json=0
+	for arg in "$@"; do
+		case "$arg" in
+		--json) json=1 ;;
+		*) die "cap [--json]" ;;
+		esac
+	done
+	if [ "$json" = 1 ]; then
+		if [ -r /proc/dnsk/status ]; then
+			raw=$(cat /proc/dnsk/status 2>/dev/null || true)
+			printf '{"available":true,"raw":%s}\n' "$(json_str "$raw")"
+		else
+			printf '{"available":false}\n'
+		fi
+		return 0
+	fi
 	if [ -r /proc/dnsk/status ]; then
 		cat /proc/dnsk/status
 	else
@@ -136,11 +215,41 @@ do_cap() {
 	fi
 }
 
-do_status() {
-	echo "== modules =="
+dnsk_module_names() {
 	bb=$(find_busybox)
-	if [ -n "$bb" ]; then "$bb" lsmod 2>/dev/null | grep -E '^dnsk_' || true
-	else lsmod 2>/dev/null | grep -E '^dnsk_' || true; fi
+	if [ -n "$bb" ]; then
+		"$bb" lsmod 2>/dev/null || true
+	else
+		lsmod 2>/dev/null || true
+	fi | grep -E '^dnsk_' | awk '{print $1}'
+}
+
+do_status() {
+	json=0
+	for arg in "$@"; do
+		case "$arg" in
+		--json) json=1 ;;
+		*) die "status [--json]" ;;
+		esac
+	done
+	if [ "$json" = 1 ]; then
+		printf '{"modules":['
+		first=1
+		for m in $(dnsk_module_names); do
+			[ "$first" = 1 ] || printf ','
+			first=0
+			printf '%s' "$(json_str "$m")"
+		done
+		if [ -r /proc/dnsk/status ]; then
+			core_status=$(cat /proc/dnsk/status 2>/dev/null || true)
+			printf '],"core_status":%s}\n' "$(json_str "$core_status")"
+		else
+			printf '],"core_status":null}\n'
+		fi
+		return 0
+	fi
+	echo "== modules =="
+	dnsk_module_names || true
 	echo "== core status =="
 	if [ -r /proc/dnsk/status ]; then cat /proc/dnsk/status
 	else echo "not loaded"; fi
@@ -334,11 +443,148 @@ do_doctor() {
 }
 
 do_cgroup_prep() {
-	echo "cgroup2.controllers: $(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null || echo unreadable)"
-	for p in /dev/memcg /dev/cpuctl /dev/cpuset /dev/blkio; do
-		printf '%s: %s\n' "$p" "$([ -d "$p" ] && echo present || echo absent)"
-	done
-	echo "plan: bind v1 controllers into the container mount namespace or enable cgroup2 delegation; no writes performed"
+	if [ $# -eq 0 ] || [ "$1" = "--plan" ]; then
+		[ $# -le 1 ] || die "cgroup-prep [--plan]"
+		echo "cgroup2.controllers: $(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null || echo unreadable)"
+		for p in /dev/memcg /dev/cpuctl /dev/cpuset /dev/blkio; do
+			printf '%s: %s\n' "$p" "$([ -d "$p" ] && echo present || echo absent)"
+		done
+		echo "plan: bind v1 controllers into the container mount namespace or enable cgroup2 delegation; no writes performed"
+		return 0
+	fi
+	case "$1" in
+	--bind)
+		[ $# -eq 2 ] || die "cgroup-prep --bind <target-root>"
+		need_root
+		target=$2
+		[ -d "$target" ] || die "not a directory: $target"
+		found=0
+		for name in memcg cpuctl cpuset blkio; do
+			src=/dev/$name
+			[ -d "$src" ] || continue
+			found=1
+			mkdir -p "$target/$name" || die "mkdir failed: $target/$name"
+			mount --bind "$src" "$target/$name" || \
+				die "bind mount failed: $src -> $target/$name"
+			echo "bound: $src -> $target/$name"
+		done
+		[ "$found" = 1 ] || die "no cgroup v1 controller directory under /dev; nothing to bind"
+		;;
+	--delegate)
+		[ $# -eq 2 ] || die "cgroup-prep --delegate <cgroup2-dir>"
+		need_root
+		dir=$2
+		[ -d "$dir" ] || die "not a directory: $dir"
+		[ -r "$dir/cgroup.controllers" ] || \
+			die "not a cgroup2 directory (no cgroup.controllers): $dir"
+		[ -e "$dir/cgroup.subtree_control" ] || \
+			die "not a cgroup2 directory (no cgroup.subtree_control): $dir"
+		available=$(cat "$dir/cgroup.controllers" 2>/dev/null || true)
+		want=
+		for c in cpuset cpu io memory pids; do
+			case " $available " in
+			*" $c "*) want="$want $c" ;;
+			esac
+		done
+		[ -n "$want" ] || die "no delegatable controllers in $dir/cgroup.controllers: ${available:-<empty>}"
+		ok=0
+		for c in $want; do
+			if printf '+%s\n' "$c" > "$dir/cgroup.subtree_control" 2>/dev/null; then
+				echo "delegated: $c"
+				ok=$((ok + 1))
+			else
+				echo "dnskctl: could not delegate $c (parent may not have enabled it)" >&2
+			fi
+		done
+		[ "$ok" -gt 0 ] || die "no controller could be enabled in $dir/cgroup.subtree_control"
+		echo "subtree_control: $(cat "$dir/cgroup.subtree_control" 2>/dev/null || true)"
+		;;
+	*)
+		die "cgroup-prep [--plan] | --bind <target-root> | --delegate <cgroup2-dir>"
+		;;
+	esac
+}
+
+do_storage_loop() {
+	[ $# -ge 1 ] || die "storage-loop create <img> <size> [ext4|f2fs] | storage-loop remove <img>"
+	action=$1
+	shift
+	case "$action" in
+	create)
+		[ $# -ge 2 ] && [ $# -le 3 ] || die "storage-loop create <img> <size> [ext4|f2fs]"
+		img=$1
+		size=$2
+		fs=${3:-ext4}
+		need_root
+		case "$fs" in
+		ext4|f2fs) ;;
+		*) die "unsupported filesystem: $fs (ext4|f2fs)" ;;
+		esac
+		case "$img" in
+		/*) ;;
+		*) die "image path must be absolute: $img" ;;
+		esac
+		num=${size%[KkMmGg]}
+		suffix=${size#"$num"}
+		case "$num" in
+		''|*[!0-9]*) die "size must look like 512M or 2G: $size" ;;
+		esac
+		[ -n "$suffix" ] || die "size needs a K/M/G suffix: $size"
+		[ "$num" -gt 0 ] || die "size must be positive: $size"
+		if [ -e "$img" ] || [ -L "$img" ]; then
+			die "refusing to overwrite existing path: $img"
+		fi
+		mkfs=$(command -v "mkfs.$fs" 2>/dev/null || true)
+		[ -n "$mkfs" ] || die "mkfs.$fs not found; install ${fs}progs (nothing created)"
+		if command -v truncate >/dev/null 2>&1; then
+			truncate -s "$size" "$img" || die "truncate failed: $img"
+		else
+			case "$suffix" in
+			K|k) mult=1024 ;;
+			M|m) mult=1048576 ;;
+			G|g) mult=1073741824 ;;
+			esac
+			blocks=$((num * mult / 4096))
+			dd if=/dev/zero of="$img" bs=4096 count=0 seek="$blocks" 2>/dev/null || \
+				die "could not create sparse image: $img"
+		fi
+		set +e
+		case "$fs" in
+		ext4) "$mkfs" -q -F "$img" ;;
+		f2fs) "$mkfs" -f "$img" ;;
+		esac
+		rc=$?
+		set -e
+		if [ "$rc" -ne 0 ]; then
+			rm -f "$img"
+			die "mkfs.$fs failed (rc=$rc); removed $img"
+		fi
+		printf 'created: %s (%s, %s)\n' "$img" "$size" "$fs"
+		echo "not mounted by dnskctl; mount it explicitly when needed"
+		;;
+	remove)
+		[ $# -eq 1 ] || die "storage-loop remove <img>"
+		img=$1
+		need_root
+		if [ -L "$img" ]; then
+			die "refusing to remove symlink: $img"
+		fi
+		if [ ! -e "$img" ]; then
+			die "no such path: $img"
+		fi
+		if [ ! -f "$img" ]; then
+			die "refusing to remove non-regular file: $img"
+		fi
+		if umount "$img" 2>/dev/null; then
+			echo "unmounted: $img"
+		fi
+		rm -f "$img" || die "failed to remove: $img"
+		echo "removed: $img"
+		;;
+	*)
+		die "storage-loop create <img> <size> [ext4|f2fs] | storage-loop remove <img>"
+		;;
+	esac
 }
 
 cmd=${1:-help}
@@ -359,7 +605,7 @@ case "$cmd" in
 	boot-check) do_boot_check "$@" ;;
 	doctor) do_doctor "$@" ;;
 	cgroup-prep) do_cgroup_prep "$@" ;;
-	storage-loop) echo "storage-loop: not implemented in M0; refusing to pretend" >&2; exit 1 ;;
+	storage-loop) do_storage_loop "$@" ;;
 	help|-h|--help) usage ;;
 	*) usage; exit 2 ;;
 esac

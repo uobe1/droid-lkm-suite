@@ -2,46 +2,85 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Droid LKM Suite</title>
-<style>
-:root { color-scheme: light dark; }
-body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; }
-h1 { font-size: 20px; margin: 0 0 8px; }
-p.muted { opacity: .7; }
-button { font: inherit; padding: 8px 12px; margin: 4px 4px 4px 0; border-radius: 8px; border: 1px solid #888; background: transparent; color: inherit; }
-pre { white-space: pre-wrap; word-break: break-word; background: rgba(127,127,127,.12); padding: 12px; border-radius: 8px; min-height: 120px; }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<h1>Droid LKM Suite</h1>
-<p class="muted">M0 core scaffold. Feature modules are not shipped until their acceptance gates pass.</p>
-<div>
-  <button data-cmd="status">Status</button>
-  <button data-cmd="cap">Capabilities</button>
-  <button data-cmd="probe">Probe</button>
-  <button data-cmd="doctor --last-panic">Doctor / last panic</button>
-</div>
-<pre id="out">ready</pre>
-<script>
-const base = "/data/adb/modules/droid_lkm_suite/bin/dnskctl";
-const out = document.getElementById("out");
-async function run(cmd) {
-  out.textContent = "$ " + cmd + "\n";
-  try {
-    if (!window.ksu || !window.ksu.exec) {
-      out.textContent += "KSU WebUI bridge unavailable\n";
-      return;
-    }
-    const r = await window.ksu.exec(base + " " + cmd, { cwd: "/data/adb/modules/droid_lkm_suite" });
-    out.textContent += (r && (r.stdout || r)) + (r && r.stderr ? "\n[stderr]\n" + r.stderr : "");
-  } catch (e) {
-    out.textContent += String(e);
-  }
-}
-document.querySelectorAll("button[data-cmd]").forEach(b => {
-  b.addEventListener("click", () => run(b.dataset.cmd));
-});
-</script>
+<header>
+	<h1 data-i18n="title">Droid LKM Suite</h1>
+	<div class="row" role="group" aria-label="Language / 语言">
+		<button type="button" class="lang" id="lang-zh" data-lang="zh" aria-pressed="true">中文</button>
+		<button type="button" class="lang" id="lang-en" data-lang="en" aria-pressed="false">EN</button>
+	</div>
+</header>
+
+<p class="sub" data-i18n="subtitle">android16-6.12 dev build. Every result below comes from dnskctl.</p>
+
+<div id="bridge" class="banner warn" role="status" data-i18n="bridgeChecking">Checking the KSU WebUI bridge…</div>
+
+<section class="card">
+	<h2 data-i18n="cmdTitle">Commands</h2>
+	<div class="row">
+		<button type="button" data-cmd="status" data-i18n="btnStatus">Status</button>
+		<button type="button" data-cmd="cap" data-i18n="btnCap">Capabilities</button>
+		<button type="button" data-cmd="probe" data-i18n="btnProbe">Probe</button>
+	</div>
+	<div class="row">
+		<button type="button" data-cmd="doctor --last-panic" data-i18n="btnDoctor">Doctor / last panic</button>
+		<button type="button" data-cmd="logs 100" data-i18n="btnLogs">Logs (100)</button>
+		<button type="button" data-cmd="boot-check" data-i18n="btnBoot">Boot check</button>
+	</div>
+	<div class="row">
+		<select id="feature" aria-label="feature module" data-i18n-label="featureLabel">
+			<option value="core">core</option>
+			<option value="ns">ns</option>
+			<option value="devtmpfs">devtmpfs</option>
+			<option value="netfilter">netfilter</option>
+			<option value="ipset">ipset</option>
+			<option value="cgpids">cgpids</option>
+			<option value="tmpfsx">tmpfsx</option>
+			<option value="userns">userns</option>
+		</select>
+		<button type="button" data-cmd="load" class="primary" data-i18n="btnLoad">Load</button>
+		<button type="button" data-cmd="unload" data-i18n="btnUnload">Unload</button>
+	</div>
+	<div class="row">
+		<select id="profile" aria-label="profile" data-i18n-label="profileLabel">
+			<option value="docker-v2">docker-v2</option>
+			<option value="userns-full">userns-full</option>
+			<option value="ufw-fail2ban">ufw-fail2ban</option>
+			<option value="tmpfs-native">tmpfs-native</option>
+		</select>
+		<button type="button" data-cmd="profile" class="primary" data-i18n="btnProfile">Run profile</button>
+	</div>
+</section>
+
+<section class="card">
+	<h2 data-i18n="capTitle">Declared capability levels</h2>
+	<div class="table-wrap">
+		<table>
+			<thead>
+				<tr>
+					<th data-i18n="thFeature">Feature</th>
+					<th data-i18n="thLevel">Declared level</th>
+					<th data-i18n="thNotes">Notes</th>
+				</tr>
+			</thead>
+			<tbody id="cap-body"></tbody>
+		</table>
+	</div>
+	<p class="note" data-i18n="capNote">Declared levels only.</p>
+</section>
+
+<section class="card">
+	<div class="row between">
+		<h2 data-i18n="outTitle">Output</h2>
+		<button type="button" id="clear" data-i18n="clear">Clear</button>
+	</div>
+	<pre id="out" tabindex="0" aria-live="polite">Pick a command above.</pre>
+</section>
+
+<script src="app.js"></script>
 </body>
 </html>
