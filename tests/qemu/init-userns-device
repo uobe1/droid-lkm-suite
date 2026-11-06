@@ -70,6 +70,7 @@ if [ -w "$TR/kprobe_events" ]; then
 fi
 echo 0 >/proc/sys/kernel/kptr_restrict 2>/dev/null
 grep -E ' (ovl_init_fs_context|fs_context_for_mount|legacy_init_fs_context)$' /proc/kallsyms
+grep -E ' (build_mount_idmapped|do_mount_setattr|mount_setattr_prepare|can_idmap_mount|build_mount_kattr|mount_setattr_commit)$' /proc/kallsyms
 grep -i overlay /proc/filesystems
 mkdir -p /tmp/ovlctl/lower /tmp/ovlctl/upper /tmp/ovlctl/work /tmp/ovlctl/merged
 "$BB" mount -t tmpfs tmpfs /tmp/ovlctl
