@@ -172,6 +172,22 @@ struct mnt_idmap *ds_userns_alloc_mnt_idmap(struct user_namespace *userns)
 			id, userns, __vfsuid_val(v), m->uid_map.nr_extents,
 			m->uid_map.extent[0].first,
 			m->uid_map.extent[0].lower_first);
+		{
+			struct user_namespace fake = { };
+			struct mnt_idmap *id2;
+
+			fake.uid_map = userns->uid_map;
+			fake.gid_map = userns->gid_map;
+			fake.parent = userns->parent;
+			id2 = ds_userns_alloc_mnt_idmap_original(&fake);
+			if (!IS_ERR(id2)) {
+				vfsuid_t v2 = make_vfsuid(id2, userns->parent,
+							  KUIDT_INIT(0));
+
+				pr_info("alloc_mnt_idmap: fake=%px vfsuid0=%u\n",
+					id2, __vfsuid_val(v2));
+			}
+		}
 	} else {
 		pr_info("alloc_mnt_idmap: ret=%ld userns=%px\n", PTR_ERR(id),
 			userns);
