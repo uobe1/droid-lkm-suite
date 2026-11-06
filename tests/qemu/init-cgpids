@@ -32,6 +32,15 @@ fail() {
 
 "$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup || fail cgroup2_mount
 
+if [ -x /selinux_load ] && [ -f /policy.gz ]; then
+	"$BB" mkdir -p /sys/fs/selinux
+	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
+	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
+	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+	echo "DNSK_SELINUX_POLICY_OK enforce=$(cat /sys/fs/selinux/enforce)"
+fi
+
 if grep -q 'dnsk_lkm=1' /proc/cmdline; then
 	if [ -x /ksud ]; then
 		export LD_LIBRARY_PATH=/system/lib64

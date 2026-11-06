@@ -22,6 +22,15 @@ fail() {
 	"$BB" poweroff -f
 }
 
+if [ -x /selinux_load ] && [ -f /policy.gz ]; then
+	"$BB" mkdir -p /sys/fs/selinux
+	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
+	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
+	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+	echo "DNSK_SELINUX_POLICY_OK enforce=$(cat /sys/fs/selinux/enforce)"
+fi
+
 export LD_LIBRARY_PATH=/system/lib64
 "$BB" mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules
 /ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
