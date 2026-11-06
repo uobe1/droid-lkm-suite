@@ -107,9 +107,12 @@ static int dnsk_acl_xattr_get(const struct xattr_handler *handler,
 	struct shmem_inode_info *info = container_of(inode,
 						     struct shmem_inode_info,
 						     vfs_inode);
+	int ret;
 
-	return dnsk_simple_xattr_get(&info->xattrs, handler->name, buffer,
-				     size);
+	ret = dnsk_simple_xattr_get(&info->xattrs, handler->name, buffer,
+				    size);
+	pr_info("dnsk_tmpfsx: acl get %s -> %d\n", handler->name, ret);
+	return ret;
 }
 
 static int dnsk_acl_xattr_set(const struct xattr_handler *handler,
@@ -127,7 +130,10 @@ static int dnsk_acl_xattr_set(const struct xattr_handler *handler,
 		if (IS_ERR(acl))
 			return PTR_ERR(acl);
 	}
+	pr_info("dnsk_tmpfsx: acl xattr set %s size=%zu\n", handler->name,
+		size);
 	ret = dnsk_set_posix_acl(idmap, dentry, handler->flags, acl);
+	pr_info("dnsk_tmpfsx: acl xattr set -> %d\n", ret);
 	if (acl)
 		dnsk_acl_release(acl);
 	return ret;
@@ -198,6 +204,7 @@ static int dnsk_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 	void *value;
 	int size, ret;
 
+	pr_info("dnsk_tmpfsx: iop set_acl type=%d acl=%px\n", type, acl);
 	if (!IS_POSIXACL(inode))
 		return -EOPNOTSUPP;
 	if (!acl) {
