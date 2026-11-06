@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-fast-${{ github.ref }}
+  group: ci-fast-${{ github.ref }}-${{ inputs.userns }}
   cancel-in-progress: true
 
 jobs:
