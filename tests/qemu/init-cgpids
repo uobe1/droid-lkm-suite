@@ -46,10 +46,8 @@ if grep -q 'dnsk_lkm=1' /proc/cmdline; then
 		export LD_LIBRARY_PATH=/system/lib64
 		"$BB" mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules
 		/ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
-		cat >/tmp/dnsk_bootstrap.sh <<'EOS'
-echo 0 > /sys/fs/selinux/enforce
-EOS
-		/runas /ksud debug su < /tmp/dnsk_bootstrap.sh || fail ksud_debug_su
+		/ksud sepolicy patch 'permissive kernel' || fail sepolicy_permissive
+		echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
 		[ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
 		echo "DNSK_SELINUX_AFTER_KSU=permissive"
 		/ksud insmod /modules/dnsk_core.ko || fail dnsk_core_ksud_insmod

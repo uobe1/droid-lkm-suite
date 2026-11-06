@@ -255,8 +255,6 @@ jobs:
             rm -f rootfs/system/etc/ld.config.txt
             aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
             cp selinux_load rootfs/selinux_load
-            aarch64-linux-gnu-gcc -static -O2 -o runas tests/qemu/runas.c
-            cp runas rootfs/runas
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
             cp tests/qemu/init-cgpids rootfs/init
           elif [ "${{ inputs.mode }}" = "ksud-ns" ]; then
@@ -267,8 +265,6 @@ jobs:
             chmod 0755 rootfs/system/bin/linker64
             aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
             cp selinux_load rootfs/selinux_load
-            aarch64-linux-gnu-gcc -static -O2 -o runas tests/qemu/runas.c
-            cp runas rootfs/runas
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
             cp tests/qemu/init-ns-device rootfs/init
           elif [ "${{ inputs.mode }}" = "tmpfsx" ]; then
@@ -288,8 +284,6 @@ jobs:
               chmod 0755 rootfs/system/bin/linker64
               aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
               cp selinux_load rootfs/selinux_load
-              aarch64-linux-gnu-gcc -static -O2 -o runas tests/qemu/runas.c
-              cp runas rootfs/runas
               cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
             else
               aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
