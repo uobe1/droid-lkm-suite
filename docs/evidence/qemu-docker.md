@@ -91,6 +91,23 @@ DNSK_DOCKER_OK / DNSK_QEMU_OK
 说明 VETH/BRIDGE/NET_NS 原生路径已通；此基线没有 iptables/NAT/端口映射，
 下一步安装 iptables（legacy/nft）并验证 NAT/UFW/Fail2ban。
 
+## NAT 失败与修复 (run 42202340714)
+
+安装 Alpine `iptables`（nft 后端）后，dockerd 启动 bridge 时失败：
+
+```text
+Failed to find nft tool
+Warning: Extension addrtype revision 0 not supported, missing kernel module?
+iptables v1.8.10 (nf_tables): CHAIN_ADD failed (No such file or directory):
+  chain PREROUTING
+```
+
+oracle 配置检查：已有 `IP_NF_IPTABLES/NAT/MASQUERADE`、`IP_SET`、
+`NETFILTER_XTABLES`、`XT_MATCH_ADDRTYPE/RECENT`、`XT_SET`、`NF_NAT`、
+`NF_TABLES`；缺少 `NFT_NAT`、`NFT_CHAIN_NAT`、`NFT_COMPAT`。
+修复：oracle fragment 增加这三个选项，并在 initramfs 加入 `nftables`
+及其依赖（gmp/jansson/readline/ncurses）与 `iptables-legacy`，重跑 NAT。
+
 ## 备注
 
 - Docker static 包来自
