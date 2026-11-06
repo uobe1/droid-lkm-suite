@@ -221,7 +221,9 @@ int dnsk_hook_add_internal(const struct dnsk_hook_req *req)
 		}
 		hook->u.data.target = req->target;
 		original = READ_ONCE(*(unsigned long *)req->target);
-		if (!original || !dnsk_patch_ready()) {
+		/* Data slots such as missing inode operations are legitimately
+		 * NULL; removal writes the recorded NULL back. */
+		if (!dnsk_patch_ready()) {
 			ret = -EOPNOTSUPP;
 			break;
 		}

@@ -160,6 +160,7 @@ static int dnsk_migrate_return(struct kretprobe_instance *ri,
 
 static int dnsk_resolve_symbols(void)
 {
+	dnsk_tasklist_lock = dnsk_api->resolve("tasklist_lock");
 	dnsk_of_css = dnsk_api->resolve("of_css");
 	dnsk_cgroup_mutex = dnsk_api->resolve("cgroup_mutex");
 	dnsk_cgroup_base_files = dnsk_api->resolve("cgroup_base_files");
@@ -174,7 +175,8 @@ static int dnsk_resolve_symbols(void)
 	dnsk_cgroup_addrm_files = dnsk_api->resolve("cgroup_addrm_files");
 	dnsk_kernfs_activate = dnsk_api->resolve("kernfs_activate");
 
-	if (!dnsk_of_css || !dnsk_cgroup_mutex || !dnsk_cgroup_base_files ||
+	if (!dnsk_tasklist_lock || !dnsk_of_css || !dnsk_cgroup_mutex ||
+	    !dnsk_cgroup_base_files ||
 	    !dnsk_cgrp_dfl_root || !dnsk_cgroup_kf_syscall_ops ||
 	    !dnsk_memory_ss || !dnsk_have_canfork || !dnsk_have_release ||
 	    !dnsk_cgroup_mkdir || !dnsk_cgroup_rmdir ||
@@ -275,6 +277,12 @@ static int __init dnsk_cgpids_init(void)
 		ret = PTR_ERR(dnsk_api);
 		dnsk_api = NULL;
 		return ret;
+	}
+
+	if (dnsk_api->resolve("pids_cgrp_subsys")) {
+		pr_err("dnsk_cgpids: native pids subsystem present; refusing\n");
+		ret = -EOPNOTSUPP;
+		goto out_api;
 	}
 
 	ret = dnsk_resolve_symbols();

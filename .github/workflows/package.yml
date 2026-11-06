@@ -1,0 +1,69 @@
+name: package
+on:
+  workflow_dispatch:
+    inputs:
+      module_run_id:
+        description: ci-fast run id holding the core-android16-6.12 artifact
+        required: true
+        type: string
+      kmi:
+        description: KMI to package
+        default: android16-6.12
+        type: string
+  push:
+    branches: [feat/device-ns-ksud]
+    paths: ['.github/workflows/package.yml']
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MODULE_RUN_ID: ${{ inputs.module_run_id }}
+      KMI: ${{ inputs.kmi || 'android16-6.12' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross toolchain
+        run: |
+          set -euxo pipefail
+          sudo timeout 900 apt-get -o Acquire::Retries=5 update || true
+          sudo timeout 900 apt-get -o Acquire::Retries=5 install -y \
+            --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+      - name: Fetch module artifact
+        run: |
+          set -euxo pipefail
+          run_id=$MODULE_RUN_ID
+          if [ -z "$run_id" ]; then
+            run_id=$(gh run list --workflow=ci-fast.yml --status success \
+              --limit 1 --json databaseId -q '.[0].databaseId')
+          fi
+          test -n "$run_id"
+          gh run download "$run_id" -n core-android16-6.12 -D modules
+          ls -l modules
+      - name: Build preflight and package
+        run: |
+          set -euxo pipefail
+          mkdir -p "build/kmi/$KMI" build/bin out
+          cp modules/*.ko "build/kmi/$KMI/"
+          aarch64-linux-gnu-gcc -static -O2 -o build/bin/dnsk-preflight \
+            tools/dnsk_preflight.c
+          python3 tools/package.py --dev --kmi "$KMI" \
+            --out out/droid_lkm_suite-dev.zip
+          rm -rf /tmp/pkgcheck && mkdir /tmp/pkgcheck
+          unzip -q out/droid_lkm_suite-dev.zip -d /tmp/pkgcheck
+          ls -l /tmp/pkgcheck/kmi/"$KMI"
+          python3 - <<'PY'
+          import json
+          m = json.load(open('/tmp/pkgcheck/manifest.json'))
+          assert m['dev'] and not m['tagged'], m
+          assert m['status'], m
+          print('manifest kmis', m['kmis'])
+          print('features', m['features'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: droid-lkm-suite-dev
+          path: out/droid_lkm_suite-dev.zip
+          if-no-files-found: error

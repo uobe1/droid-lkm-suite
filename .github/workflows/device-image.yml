@@ -14,7 +14,13 @@ on:
           - baseline
           - cgpids
           - ksud-cgpids
+          - ksud-ns
           - docker
+          - ksud-docker
+          - tmpfsx
+          - userns
+          - netfilter
+          - apps
         default: baseline
       module_run_id:
         description: CI run id with core-android16-6.12 artifact (cgpids mode)
@@ -122,12 +128,21 @@ jobs:
           github-token: ${{ github.token }}
       - name: Install QEMU and module tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu \
-            ipxe-qemu-256k-compat-efi-roms qemu-efi-aarch64 cpio \
-            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross kmod python3
-          python3 -m pip install --break-system-packages pyelftools
+          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
+          PKGS="qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu
+            ipxe-qemu-256k-compat-efi-roms qemu-efi-aarch64 cpio
+            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross kmod python3"
+          # apt mirrors are intermittently slow; retry each phase instead of
+          # losing the whole gate to a 124 timeout.
+          sudo timeout 900 apt-get $APT_OPTS update || true
+          sudo timeout 900 apt-get $APT_OPTS install -y --no-install-recommends \
+            $PKGS || {
+            sleep 10
+            sudo timeout 900 apt-get $APT_OPTS update || true
+            sudo timeout 900 apt-get $APT_OPTS install -y --no-install-recommends $PKGS
+          }
+          timeout 300 python3 -m pip install --break-system-packages pyelftools || \
+            timeout 300 python3 -m pip install --break-system-packages pyelftools
       - name: Patch module vermagic
         if: ${{ inputs.mode != 'baseline' }}
         env:
@@ -142,7 +157,7 @@ jobs:
           test -n "$RELEASE"
           VERMAGIC="$RELEASE SMP preempt mod_unload modversions aarch64"
           echo "target vermagic: $VERMAGIC"
-          for ko in modules/dnsk_*.ko; do
+          for ko in modules/*.ko; do
             aarch64-linux-gnu-objcopy --dump-section .modinfo=modinfo.bin "$ko"
             python3 - "$VERMAGIC" <<'PY'
           import sys
@@ -250,12 +265,151 @@ jobs:
             cp -a tests/qemu/assets/android/. rootfs/
             chmod 0755 rootfs/system/bin/linker64
             rm -f rootfs/system/etc/ld.config.txt
-            cp tests/qemu/init-cgpids rootfs/init
-          elif [ "${{ inputs.mode }}" = "docker" ]; then
-            cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
-            [ -e modules/dnsk_ns.ko ] && cp modules/dnsk_ns.ko rootfs/modules/
             aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
             cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            cp tests/qemu/init-cgpids rootfs/init
+          elif [ "${{ inputs.mode }}" = "ksud-ns" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_ns.ko rootfs/modules/
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            cp tests/qemu/init-ns-device rootfs/init
+          elif [ "${{ inputs.mode }}" = "tmpfsx" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_tmpfsx.ko rootfs/modules/
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            aarch64-linux-gnu-gcc -static -O2 -o xattr_test tests/qemu/xattr_test.c
+            cp xattr_test rootfs/xattr_test
+            aarch64-linux-gnu-gcc -static -O2 -o acl_test tests/qemu/acl_test.c
+            cp acl_test rootfs/acl_test
+            cp tests/qemu/init-tmpfsx-device rootfs/init
+          elif [ "${{ inputs.mode }}" = "netfilter" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_netfilter.ko modules/dnsk_ipset.ko rootfs/modules/
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            APK_BASE=https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64
+            for pkg in libmnl-1.0.5-r2 ipset-7.21-r2 iptables-1.8.10-r3 \
+                       iptables-legacy-1.8.10-r3 libip4tc-1.8.10-r3 \
+                       libip6tc-1.8.10-r3 libxtables-1.8.10-r3 \
+                       libnftnl-1.2.6-r0 nftables-1.0.9-r2 gmp-6.3.0-r1 \
+                       jansson-2.14-r4 readline-8.2.10-r0 \
+                       libncursesw-6.4_p20240420-r2; do
+              curl -fsSL -o "$pkg.apk" "$APK_BASE/$pkg.apk"
+              tar -xzf "$pkg.apk" -C rootfs 2>/dev/null
+            done
+            cp tests/qemu/init-netfilter-device rootfs/init
+          elif [ "${{ inputs.mode }}" = "apps" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_netfilter.ko modules/dnsk_ipset.ko rootfs/modules/
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            # Cross-install aarch64 packages with the host apk.static.
+            curl -fsSL -o apk-tools.apk \
+              https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/apk-tools-static-2.14.13-r0.apk
+            rm -rf /tmp/apk-tools && mkdir -p /tmp/apk-tools
+            tar -xzf apk-tools.apk -C /tmp/apk-tools
+            /tmp/apk-tools/sbin/apk.static --root "$PWD/rootfs" \
+              --arch aarch64 --no-cache --allow-untrusted --no-scripts \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/community \
+              add ufw fail2ban iptables-legacy
+            cp tests/qemu/init-apps-device rootfs/init
+          elif [ "${{ inputs.mode }}" = "userns" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_ns.ko modules/dnsk_tmpfsx.ko rootfs/modules/
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            aarch64-linux-gnu-gcc -static -O2 -o userns_test tests/qemu/userns_test.c
+            cp userns_test rootfs/userns_test
+            aarch64-linux-gnu-gcc -static -O2 -o fuse_test tests/qemu/fuse_test.c
+            cp fuse_test rootfs/fuse_test
+            aarch64-linux-gnu-gcc -static -O2 -pthread -o mount_setattr_test \
+              tests/qemu/selftests/mount_setattr/mount_setattr_test.c
+            cp mount_setattr_test rootfs/mount_setattr_test
+            # The vendored mount_setattr selftest builds an ext4 image and
+            # mounts it through a loop device.
+            curl -fsSL -o apk-tools.apk \
+              https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/apk-tools-static-2.14.13-r0.apk
+            rm -rf /tmp/apk-tools && mkdir -p /tmp/apk-tools
+            tar -xzf apk-tools.apk -C /tmp/apk-tools
+            /tmp/apk-tools/sbin/apk.static --root "$PWD/rootfs" \
+              --arch aarch64 --no-cache --allow-untrusted --no-scripts \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
+              add e2fsprogs
+            cp tests/qemu/init-userns-device rootfs/init
+          elif [ "${{ inputs.mode }}" = "docker" ] || [ "${{ inputs.mode }}" = "ksud-docker" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
+            [ -e modules/dnsk_ns.ko ] && cp modules/dnsk_ns.ko rootfs/modules/
+            [ -e modules/dnsk_netfilter.ko ] && cp modules/dnsk_netfilter.ko rootfs/modules/
+            [ -e modules/dnsk_ipset.ko ] && cp modules/dnsk_ipset.ko rootfs/modules/
+            if [ "${{ inputs.mode }}" = "ksud-docker" ]; then
+              cp tests/qemu/assets/ksud rootfs/ksud
+              chmod 0755 rootfs/ksud
+              cp -a tests/qemu/assets/android/. rootfs/
+              chmod 0755 rootfs/system/bin/linker64
+              aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+              cp insmod_force rootfs/insmod_force
+              cp modules/selpermissive.ko rootfs/modules/
+              aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+              cp selinux_load rootfs/selinux_load
+              cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            else
+              aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+              cp insmod_force rootfs/insmod_force
+            fi
+            # Docker bridge networking drives iptables; install the legacy
+            # backend (native xtables) for the NAT/addrtype checks.
+            curl -fsSL -o apk-tools.apk \
+              https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/apk-tools-static-2.14.13-r0.apk
+            rm -rf /tmp/apk-tools && mkdir -p /tmp/apk-tools
+            tar -xzf apk-tools.apk -C /tmp/apk-tools
+            /tmp/apk-tools/sbin/apk.static --root "$PWD/rootfs" \
+              --arch aarch64 --no-cache --allow-untrusted --no-scripts \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
+              add iptables-legacy iptables
+            aarch64-linux-gnu-gcc -static -O2 -o httpd_min tests/qemu/httpd_min.c
+            cp httpd_min rootfs/httpd_min
             cp tests/qemu/init-docker-device rootfs/init
             curl -fsSL -o docker.tgz \
               https://download.docker.com/linux/static/stable/aarch64/docker-29.7.2.tgz
@@ -266,8 +420,13 @@ jobs:
           else
             cp tests/qemu/init-device rootfs/init
           fi
+          # The runner extracts the rootfs as an unprivileged uid; the guest
+          # runs as root and userns tests need a root-owned world-writable /tmp.
           chmod 0755 rootfs/init
-          (cd rootfs && find . | cpio -o -H newc | gzip -9) > initramfs.cpio.gz
+          sudo chown -R 0:0 rootfs
+          sudo mkdir -p rootfs/tmp
+          sudo chmod 1777 rootfs/tmp
+          sudo sh -c 'cd rootfs && find . | cpio -o -H newc' | gzip -9 > initramfs.cpio.gz
       - name: Boot and check
         shell: bash
         env:
@@ -276,11 +435,15 @@ jobs:
           set +e
           MEM=4096
           TIMEOUT=600
-          if [ "$MODE" = "docker" ]; then
+          if [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
             TIMEOUT=1200
           fi
-          APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0 module.sig_enforce=0"
-          if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ] || [ "$MODE" = "docker" ]; then
+          APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
+          case "$MODE" in
+            ksud-cgpids|ksud-ns|ksud-docker|tmpfsx|userns|netfilter|apps) APPEND="$APPEND enforcing=0" ;;
+            *) APPEND="$APPEND selinux=0" ;;
+          esac
+          if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ] || [ "$MODE" = "ksud-ns" ] || [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
             APPEND="$APPEND dnsk_lkm=1"
           fi
           timeout "$TIMEOUT" qemu-system-aarch64 \
@@ -299,9 +462,36 @@ jobs:
           if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ]; then
             grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
             grep -q 'DNSK_CGPIDS_OK' qemu.log
-          elif [ "$MODE" = "docker" ]; then
+          elif [ "$MODE" = "ksud-ns" ]; then
+            grep -q 'DNSK_KSUD_LATE_LOAD_OK' qemu.log
+            grep -q 'DNSK_NS_DEVICE_OK' qemu.log
+          elif [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
             grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
+            if [ "$MODE" = "ksud-docker" ]; then
+              grep -q 'DNSK_DOCKER_NETFILTER_OK' qemu.log
+              grep -q 'DNSK_DOCKER_NET_OK' qemu.log
+              grep -q 'DNSK_DOCKER_NFT_OK' qemu.log
+            fi
             grep -q 'DNSK_DOCKER_DEVICE_OK' qemu.log
+          elif [ "$MODE" = "tmpfsx" ]; then
+            grep -q 'DNSK_TMPFSX_LKM_OK' qemu.log
+            grep -q 'DNSK_TMPFSX_OK' qemu.log
+          elif [ "$MODE" = "userns" ]; then
+            grep -q 'DNSK_USERNS_LKM_OK' qemu.log
+            grep -q 'DNSK_OVL_INIT_NS=0' qemu.log
+            grep -q 'USERNS_IDMAP_OK' qemu.log
+            grep -q 'USERNS_OVERLAY_OK' qemu.log
+            grep -q 'USERNS_FUSE_OK' qemu.log
+            grep -q 'DNSK_MOUNT_SETATTR_SELFTEST_OK' qemu.log
+            grep -q 'DNSK_USERNS_OK' qemu.log
+          elif [ "$MODE" = "netfilter" ]; then
+            grep -q 'DNSK_NETFILTER_LKM_OK' qemu.log
+            grep -q 'DNSK_NETFILTER_OK' qemu.log
+          elif [ "$MODE" = "apps" ]; then
+            grep -q 'DNSK_NETFILTER_LKM_OK' qemu.log
+            grep -q 'DNSK_UFW_OK' qemu.log
+            grep -q 'DNSK_FAIL2BAN_OK' qemu.log
+            grep -q 'DNSK_APPS_OK' qemu.log
           else
             grep -q 'DNSK_DEVICE_KERNEL_OK' qemu.log
           fi

@@ -13,6 +13,8 @@
 #include <linux/sched/task.h>
 #include <linux/bpf.h>
 #include <linux/perf_event.h>
+#include <linux/mnt_idmapping.h>
+#include <linux/uidgid.h>
 #include "fs/fuse/fuse_i.h"
 #include "core.h"
 #include "port.h"
@@ -22,7 +24,27 @@
 #include "../userns/live-fuse.h"
 extern u32 ds_userns_fuse_simple_request_original[];
 extern u32 ds_userns_fuse_do_set_acl_original[], ds_userns_fuse_do_get_acl_original[];
-extern u32 ds_userns_mm_init_original[], ds_userns_ns_ioctl_original[], ds_userns_sk_getsockopt_original[], ds_userns_fuse_get_tree_original[];
+extern u32 ds_userns_mm_alloc_original[], ds_userns_wake_up_new_task_original[];
+extern u32 ds_userns_ns_ioctl_original[], ds_userns_sk_getsockopt_original[], ds_userns_fuse_get_tree_original[];
+struct mm_struct;
+struct task_struct;
+extern struct mm_struct *ds_userns_mm_alloc(void);
+extern void ds_userns_wake_up_new_task(struct task_struct *p);
+extern u32 ds_userns_mount_setattr_original[], ds_userns_alloc_mnt_idmap_original[];
+extern u32 ds_userns_ovl_fill_super_original[];
+extern u32 ds_userns_do_mount_setattr_original[];
+extern long ds_userns_mount_setattr(const struct pt_regs *);
+struct user_namespace;
+struct mnt_idmap;
+extern struct mnt_idmap *ds_userns_alloc_mnt_idmap(struct user_namespace *);
+extern vfsuid_t ds_userns_make_vfsuid(struct mnt_idmap *,
+				      struct user_namespace *, kuid_t);
+extern vfsgid_t ds_userns_make_vfsgid(struct mnt_idmap *,
+				      struct user_namespace *, kgid_t);
+extern kuid_t ds_userns_from_vfsuid(struct mnt_idmap *,
+				    struct user_namespace *, vfsuid_t);
+extern kgid_t ds_userns_from_vfsgid(struct mnt_idmap *,
+				    struct user_namespace *, vfsgid_t);
 #include <linux/user_namespace.h>
 #include <linux/utsname.h>
 #endif
@@ -156,6 +178,8 @@ DECLARE_IPC_SYSCALL(setfsuid);
 DECLARE_IPC_SYSCALL(setfsgid);
 DECLARE_IPC_SYSCALL(getgroups);
 DECLARE_IPC_SYSCALL(setgroups);
+/* ThinLTO may inline ksys_unshare() into the syscall entry. */
+DECLARE_IPC_SYSCALL(unshare);
 DECLARE_IPC_SYSCALL(statmount);
 DECLARE_IPC_SYSCALL(listmount);
 DECLARE_IPC_SYSCALL(getuid);
@@ -256,7 +280,10 @@ static struct ds_hook hooks[] = {
 	HOOK("sysfs_init_fs_context", ds_userns_sysfs_init_fs_context),
 	HOOK_ORIGINAL("ns_ioctl", ds_userns_ns_ioctl, ds_userns_ns_ioctl_original),
 	HOOK("net_ns_get_ownership", ds_userns_net_ns_get_ownership),
-	HOOK_ORIGINAL("mm_init", ds_userns_mm_init, ds_userns_mm_init_original),
+	HOOK_ORIGINAL("mm_alloc", ds_userns_mm_alloc,
+		      ds_userns_mm_alloc_original),
+	HOOK_ORIGINAL("wake_up_new_task", ds_userns_wake_up_new_task,
+		      ds_userns_wake_up_new_task_original),
 	HOOK("__mmdrop", ds_userns_mmdrop),
 	HOOK("begin_new_exec", ds_userns_begin_new_exec),
 	HOOK("would_dump", ds_userns_would_dump),
@@ -268,6 +295,7 @@ static struct ds_hook hooks[] = {
 	HOOK("mnt_may_suid", ds_userns_mnt_may_suid),
 	HOOK("__arm64_sys_newfstat", __arm64_sys_ds_newfstat),
 	HOOK("__arm64_sys_newfstatat", __arm64_sys_ds_newfstatat),
+	HOOK("__arm64_sys_unshare", __arm64_sys_ds_unshare),
 	HOOK("do_faccessat", ds_userns_do_faccessat),
 	HOOK("chown_common", ds_userns_chown_common),
 	HOOK("privileged_wrt_inode_uidgid", ds_userns_privileged_wrt_inode_uidgid),
@@ -308,6 +336,18 @@ static struct ds_hook hooks[] = {
 	HOOK("proc_tid_base_lookup", ds_userns_tid_lookup),
 	HOOK("proc_tgid_base_readdir", ds_userns_tgid_readdir),
 	HOOK("proc_tid_base_readdir", ds_userns_tid_readdir),
+	HOOK_ORIGINAL("__arm64_sys_mount_setattr", ds_userns_mount_setattr,
+		      ds_userns_mount_setattr_original),
+	HOOK_ORIGINAL("alloc_mnt_idmap", ds_userns_alloc_mnt_idmap,
+		      ds_userns_alloc_mnt_idmap_original),
+	HOOK_ORIGINAL("ovl_fill_super", ds_userns_ovl_fill_super,
+		      ds_userns_ovl_fill_super_original),
+	HOOK_ORIGINAL("do_mount_setattr", ds_userns_do_mount_setattr,
+		      ds_userns_do_mount_setattr_original),
+	HOOK("make_vfsuid", ds_userns_make_vfsuid),
+	HOOK("make_vfsgid", ds_userns_make_vfsgid),
+	HOOK("from_vfsuid", ds_userns_from_vfsuid),
+	HOOK("from_vfsgid", ds_userns_from_vfsgid),
 #endif
 	HOOK_ORIGINAL("perf_event_alloc", ds_perf_event_alloc, ds_perf_alloc_original),
 	HOOK_ORIGINAL("free_event_rcu", ds_perf_free_event_rcu, ds_perf_free_original),

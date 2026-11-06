@@ -1,6 +1,6 @@
 # 状态矩阵
 
-当前阶段：**M0 完成, M1 开发中**。core ABI 2 已在真机验证；feature 状态与证据以本表为准，不得对外宣称未验证的能力。
+当前阶段：**android16-6.12 开发收尾（仅 dev 工件）**。其他 7 个 KMI、Droidspaces、NixOS 已由项目所有者搁置；不建 tag。core ABI 2 已在真机验证；feature 状态与证据以本表为准，不得对外宣称未验证的能力。
 
 状态等级见 [README](../README.md)。
 
@@ -9,11 +9,11 @@
 | core ABI / symbol / patch / hook / panic | N/A | M0 完成 | ABI 2；状态桥/生命周期真机验证；stock GKI QEMU core smoke 通过 |
 | PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV/mqueue + nested PID + 100 cycles + 嵌套 Debian 容器 smoke 通过；pidfd setns 的 `ipc_ns=NULL` panic 已修复并复测（EINVAL + ns smoke）；full R 待 setns/Docker/容器 reboot |
 | DEVTMPFS | R | development | active 真机通过：ready=Y、节点挂载、宿主 /dev 不变、嵌套容器 /dev smoke；模块按设计 pin；Docker/droidspaces 工作负载待完成 |
-| xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | active load/unload + netns 内 addrtype/recent/REJECT 规则通过; 原生 REJECT 正确跳过; Docker/UFW/Fail2ban 验收待完成 |
+| xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | active load/unload + netns 内 addrtype/recent/REJECT/ipset/xt_set 规则通过; 原生 REJECT 正确跳过; 内核缺 `IP6_NF_NAT` 时由模块补齐 legacy `nat` 表（DNAT/MASQUERADE，run 42254952259，符号由 ksud 解析）; UFW/Fail2ban（run 42278237353）与 Docker 29.7.2 legacy+nft bridge/NAT（run 42293517445）通过 |
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | development | 6.12 构建/导出/QEMU hash 语义通过; 设备 no-compat ABI 修复后 insmod/xt_set 注册/rmmod 通过; iptables 规则与容器验收待完成 |
-| USER_NS + idmapped/child overlay/FUSE/selftests | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
-| TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | feasibility gate | M0 必须证明可行；否则项目阻塞 |
-| CGROUP_PIDS（虚拟控制器） | V/D → N | development | 设备 Image QEMU 差分通过（run 42228719092）：controllers/subtree/max/current/peak/events/EAGAIN/migration 与 Native baseline 一致；Docker 29.x `--pids-limit` 与真机 ksud 加载待完成；v1 标 unsupported；见 evidence/cgpids-differential.md |
+| USER_NS + idmapped/child overlay/FUSE/selftests | D → N | verified（设备 Image, dev） | userns live 在 `dnsk_ns`（`DNSK_USERNS=1`）；idmap 使用真实 map 转换（`live-mnt-idmapping`）；`mount_setattr`/`do_mount_setattr` 与 `ovl_fill_super` trampoline 修复 `CONFIG_USER_NS=n` 桩；门 42276937204（`IDMAP_CLONE_UID=1`）与 42286395532（overlay、嵌套 userns、FUSE、mount_setattr selftest 21/21、host overlay 对照）；见 [evidence/m0-userns.md](evidence/m0-userns.md) |
+| TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | development | beryl Image 上 ksud 加载成功，early/late tmpfs 的 user.* get/set/list/remove 均通过；ACL 由模块自实现 i_op（内核 `posix_acl_*`/`set_posix_acl`），`acl/noacl` 支持新 mount API 与 legacy `mount(2)`，set 后更新 inode ACL 缓存；ACL 门 run 42254936230 通过；有原生 tmpfs xattr/ACL 时保持原生；LSM 差分未做；见 [evidence/m0-tmpfs.md](evidence/m0-tmpfs.md) |
+| CGROUP_PIDS（虚拟控制器） | V/D → N | development | 设备 Image 差分通过（run 42247140068，ksud 加载；controllers/subtree/max/current/peak/events/EAGAIN/migration 与 Native baseline 一致，无 negative counter）；Docker 29.7.2 门通过（run 42293517445：cgroup v2、隔离命名空间、`--pids-limit 32`、pids_spawned=30、pids.max=32）；v1 标 unsupported；见 evidence/cgpids-differential.md |
 | CFS_BANDWIDTH | N/N/A | native/待按 KMI 核对 | 不写 LKM |
 | FUSE / OverlayFS / NET_NS / UTS / TIME / CGROUP ns | N | native | USER_NS 场景单独验收 |
 
@@ -32,9 +32,20 @@
   `--pids-limit 32` 与 DNAT 端口映射通过（run 41276935359 / 42201793594 /
   42208592119）。stock DDK 缺少这些 config，不能直接跑 Docker。见
   [evidence/qemu-docker.md](evidence/qemu-docker.md)。
+- tmpfs ACL：设备 Image 上 fsopen 与 legacy `-o acl` 的 set/get/remove
+  通过（run 42254936230）；`set_acl` 必须同步更新 `inode->i_acl` 缓存，
+  否则 open 阶段缓存的 NULL 会让 getxattr 返回 ENODATA。
+- legacy ip6 NAT：设备缺 `CONFIG_IP6_NF_NAT` 时 `dnsk_netfilter` 注册
+  上游 `ip6table_nat`，9 个未导出符号由 ksud 解析；netns 内 DNAT/
+  MASQUERADE 通过（run 42254952259）；原生模板存在时 `-EEXIST` 跳过。
 - netfilter ABI：设备 BTF 复核 nf_hook_ops(40)/nf_conn(272)/
   pernet_operations(72)/nfnetlink_subsystem(64)/nfnl_callback(32)/
   net(4160)/rhashtable(160)；`--feature netfilter` 同时校验符号；见
   [evidence/netfilter-active.md](evidence/netfilter-active.md)。
+- USER_NS 全链路：设备 Image 门 42286395532 通过 uid/gid map、idmapped tmpfs、child-userns overlay、FUSE、嵌套 userns 与 mount_setattr selftest 21/21；host 命名空间 overlay 对照 `DNSK_OVL_INIT_NS=0`。修复点：`CONFIG_USER_NS=n` 使 `uidgid.h` 内联恒等转换（hook `make_vfsuid` 等）、`alloc_fs_context`/`build_mount_idmapped` 的 `get_user_ns()` 桩、`ovl_fill_super` 的所有权检查。
+- Docker 29.7.2（本套 LKM，beryl Image）：run 42292969145（iptables-legacy）与 42293517445（iptables-nft）通过 cgroup v2 `--pids-limit 32`、bridge、发布端口 DNAT 规则与容器间 HTTP；该 Image 无 `CONFIG_BRIDGE_NETFILTER`，保留 userland proxy；容器内服务使用静态 `tests/qemu/httpd_min.c`（Alpine busybox 无 httpd/nc）。
+- UFW/Fail2ban：run 42278237353 通过 `ufw --force enable`、fail2ban `sshd` 封禁与 iptables 规则。
+- Oracle modpost：Android `EXTENDED_MODVERSIONS` 在空扩展名表时写入 `= ;`；DDK 预编译二进制已修复，但 oracle 内核构建会从源码重建。`qemu-core.yml` 在 Image 构建前修补 `add_extended_versions()` 并强制重建 modpost；oracle-nopids run 42281213899 构建并启动通过。
+- 打包：`package.yml` 拉取 ci-fast 产物、交叉编译 `dnsk-preflight`、运行 `tools/package.py --dev` 生成 `droid_lkm_suite-dev.zip` 并校验 manifest/ABI stamp；只产 dev 工件，不建 tag。
 - 状态更新必须先有 CI/QEMU/真机证据；没有证据时保持 not-shipped。
 - 首 tag 前不创建 tag；dev 版本仅构建产物。

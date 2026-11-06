@@ -1,0 +1,70 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# tmpfs xattr on the beryl device Image.  dnsk_tmpfsx imports unexported
+# tmpfs helpers, so it is loaded through ksud, not the raw module loader.
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	"$BB" mknod /dev/console c 5 1
+	"$BB" mknod /dev/null c 1 3
+	"$BB" mknod /dev/zero c 1 5
+fi
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg 2>/dev/null | grep -iE 'dnsk_tmpfsx|dnsk_core|kernelsu|module|symbol|vermagic' | tail -20
+	"$BB" poweroff -f
+}
+
+if [ -x /selinux_load ] && [ -f /policy.gz ]; then
+	"$BB" mkdir -p /sys/fs/selinux
+	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
+	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
+	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+	echo "DNSK_SELINUX_POLICY_OK enforce=$(cat /sys/fs/selinux/enforce)"
+fi
+
+"$BB" mkdir -p /early /late /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules
+mount -t tmpfs tmpfs /early || fail early_mount
+
+export LD_LIBRARY_PATH=/system/lib64
+/insmod_force /modules/selpermissive.ko || fail selpermissive_insmod
+/ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
+"$BB" sleep 10
+echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+[ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
+echo "DNSK_SELINUX_AFTER_KSU=permissive"
+
+/ksud insmod /modules/dnsk_core.ko || fail core_insmod
+/ksud insmod /modules/dnsk_tmpfsx.ko || fail tmpfsx_insmod
+echo "DNSK_TMPFSX_LKM_OK"
+
+mount -t tmpfs tmpfs /late || fail late_mount
+
+echo data >/early/f || fail early_file
+/xattr_test /early/f || fail early_xattr
+echo data >/late/f || fail late_file
+/xattr_test /late/f || fail late_xattr
+
+echo data >/early/g || fail evict_file
+/xattr_test /early/g keep || fail evict_set
+"$BB" rm -f /early/g
+"$BB" sync
+
+"$BB" mkdir -p /acl /aclled
+/acl_test /acl || fail acl_test
+echo "DNSK_TMPFSX_ACL_OK"
+
+mount -t tmpfs -o acl tmpfs /aclled || fail acl_legacy_mount
+/acl_test /aclled existing || fail acl_legacy
+echo "DNSK_TMPFSX_ACL_LEGACY_OK"
+
+echo "DNSK_TMPFSX_OK"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f

@@ -112,11 +112,23 @@ ns pidfd NULL 修复后，以修复版 `dnsk_ns` 复跑嵌套容器 smoke 仍为
   当前 runtime 加载的是逻辑修复版（未含断言），断言/stamp 版将在下次重启后
   加载；两者源差异仅为断言与 stamp。
 
+## 2026-11-06 设备 Image QEMU 门（run `42245733246`）
+
+- 加载链：预编译 sepolicy → 测试专用 `selpermissive.ko`（KSU 提交策略后清
+  enforce）→ `ksud late-load` → `ksud insmod dnsk_core.ko` →
+  `ksud insmod dnsk_ns.ko gki=1 activate=1`。
+- `kallrecon` 已从 ns 移除；`kallsyms_lookup_name` 等未导出 import 由 ksud
+  在加载时解析，preflight/selftest 全部通过。
+- 标记：`DNSK_NS_LKM_OK`、`DNSK_NS_CHILD_PID=1`、`DNSK_NS_CHILD_OK`、
+  `DNSK_NS_BOOT_ID_SAME=yes`、`DNSK_NS_DEVICE_OK`、`DNSK_QEMU_OK`。
+- unshare 测试不挂载/remount rootfs（ramfs 根不支持），只验证 pid/ipc/uts
+  新 namespace 与宿主 boot_id 不变。
+
 ## 已知边界
 
 - 2026-11-01 pidfd setns 到旧任务触发 `ipc_ns=NULL` panic；已修复并复测
   （EINVAL + ns smoke），见 [ns-setns-pidfd-panic.md](ns-setns-pidfd-panic.md)。
 - 模块激活后 pinned；替换需重启。
-- 未测试：setns 到已有 ns、container reboot、100 容器、Docker、QEMU ns。
+- 未测试：setns 到已有 ns、container reboot、100 容器、Docker。
 - nested PID 已由 `run-ns-smoke.sh` 覆盖。
 - 不得据此创建 tag 或宣称完整 PID/IPC 支持。

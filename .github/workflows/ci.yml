@@ -3,7 +3,6 @@ name: ci
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
     inputs:
       build_profile:
@@ -141,6 +140,14 @@ jobs:
               DNSK_CGROUP_SUBSYS_ID="${DNSK_CGROUP_SUBSYS_ID:-}" \
               DNSK_SEQ_FILE_PRIVATE="${DNSK_SEQ_FILE_PRIVATE:-}" modules
             cp "$GITHUB_WORKSPACE/features/cgpids/dnsk_cgpids.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
+            make -C "$GITHUB_WORKSPACE/features/tmpfsx" KDIR="$KDIR" \
+              DNSK_ABI_PROFILE="${DNSK_ABI_PROFILE:-}" DNSK_PAGE_SIZE="${DNSK_PAGE_SIZE:-}" \
+              DNSK_MAX_SKB_FRAGS="${DNSK_MAX_SKB_FRAGS:-}" \
+              DNSK_CGROUP_SUBSYS_COUNT="${DNSK_CGROUP_SUBSYS_COUNT:-}" modules
+            cp "$GITHUB_WORKSPACE/features/tmpfsx/dnsk_tmpfsx.ko" "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
+            make -C "$GITHUB_WORKSPACE/tests/qemu/selpermissive" KDIR="$KDIR" modules
+            cp "$GITHUB_WORKSPACE/tests/qemu/selpermissive/selpermissive.ko" \
+              "$GITHUB_WORKSPACE/build/kmi/${{ matrix.kmi }}/"
             # dnskctl compares these stamps with policy.conf before insmod.
             for ko in "$GITHUB_WORKSPACE/features/netfilter/dnsk_netfilter.ko" \
                       "$GITHUB_WORKSPACE/features/ipset/dnsk_ipset.ko" \

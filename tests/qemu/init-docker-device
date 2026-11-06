@@ -30,14 +30,49 @@ ln -sf /proc/self/fd /dev/fd
 fail() {
 	echo "DNSK_QEMU_FAIL $*"
 	"$BB" dmesg 2>/dev/null | grep -iE 'module|vermagic|signature|dnsk|CFI|panic' | tail -20
-	"$BB" tail -40 /var/log/dockerd.log 2>/dev/null
+	"$BB" docker ps -a 2>/dev/null | tail -5
+	"$BB" docker logs web 2>&1 | tail -10
+	"$BB" docker logs webnft 2>&1 | tail -10
+	"$BB" tail -20 /var/log/dockerd.log 2>/dev/null
+	"$BB" tail -20 /var/log/dockerd-nft.log 2>/dev/null
 	"$BB" poweroff -f
 }
 
-if [ -x /insmod_force ]; then
+if [ -x /selinux_load ] && [ -f /policy.gz ]; then
+	"$BB" mkdir -p /sys/fs/selinux
+	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
+	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
+	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+	echo "DNSK_SELINUX_POLICY_OK enforce=$(cat /sys/fs/selinux/enforce)"
+fi
+
+NS_OK=0
+if [ -x /ksud ]; then
+	export LD_LIBRARY_PATH=/system/lib64
+	"$BB" mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules
+	/insmod_force /modules/selpermissive.ko || fail selpermissive_insmod
+	/ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
+	"$BB" sleep 10
+	echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+	[ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
+	echo "DNSK_SELINUX_AFTER_KSU=permissive"
+	/ksud insmod /modules/dnsk_core.ko || fail dnsk_core_insmod
+	if [ -e /modules/dnsk_ns.ko ]; then
+		/ksud insmod /modules/dnsk_ns.ko gki=1 activate=1 || fail dnsk_ns_insmod
+		NS_OK=1
+	fi
+	/ksud insmod /modules/dnsk_cgpids.ko || fail dnsk_cgpids_insmod
+	if [ -e /modules/dnsk_netfilter.ko ]; then
+		/ksud insmod /modules/dnsk_netfilter.ko gki=1 activate=1 || \
+			fail dnsk_netfilter_insmod
+		echo "DNSK_DOCKER_NETFILTER_OK"
+	fi
+elif [ -x /insmod_force ]; then
 	/insmod_force /modules/dnsk_core.ko || fail dnsk_core_insmod
 	if [ -e /modules/dnsk_ns.ko ]; then
 		/insmod_force /modules/dnsk_ns.ko activate=1 || fail dnsk_ns_insmod
+		NS_OK=1
 	fi
 	/insmod_force /modules/dnsk_cgpids.ko || fail dnsk_cgpids_insmod
 else
@@ -45,9 +80,22 @@ else
 	"$BB" insmod /modules/dnsk_cgpids.ko || fail dnsk_cgpids_insmod
 fi
 echo "DNSK_CGPIDS_LKM_OK"
+echo "DNSK_DOCKER_NS_OK=$NS_OK"
 
 "$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup || fail cgroup2_mount
 echo "DNSK_DOCKER_DEVICE_CONTROLLERS=$(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null)"
+
+NET_OK=0
+if [ -x /sbin/iptables-legacy ] && [ -e /modules/dnsk_netfilter.ko ] &&
+   [ -x /ksud ]; then
+	ln -sf /sbin/iptables-legacy /sbin/iptables
+	ln -sf /sbin/ip6tables-legacy /sbin/ip6tables
+	ln -sf /sbin/iptables-legacy-restore /sbin/iptables-restore
+	ln -sf /sbin/ip6tables-legacy-restore /sbin/ip6tables-restore
+	ln -sf /sbin/iptables-legacy-save /sbin/iptables-save
+	ln -sf /sbin/ip6tables-legacy-save /sbin/ip6tables-save
+	NET_OK=1
+fi
 
 containerd >/var/log/containerd.log 2>&1 &
 i=0
@@ -58,10 +106,17 @@ done
 [ -S /run/containerd/containerd.sock ] || fail containerd_socket
 
 export DOCKER_RAMDISK=true
+if [ "$NET_OK" = 1 ]; then
+	# No CONFIG_BRIDGE_NETFILTER on this Image: the default userland proxy
+	# keeps ICC enabled, while the bridge still programs the nat DNAT rules.
+	DOCKER_NET_FLAGS="--iptables=true --ip6tables=false"
+else
+	DOCKER_NET_FLAGS="--iptables=false --ip6tables=false --bridge=none"
+fi
 dockerd --containerd /run/containerd/containerd.sock \
 	--data-root /var/lib/docker --exec-root /run/docker \
 	--pidfile /run/docker.pid --storage-driver vfs \
-	--iptables=false --ip6tables=false --bridge=none \
+	$DOCKER_NET_FLAGS \
 	--exec-opt native.cgroupdriver=cgroupfs \
 	>/var/log/dockerd.log 2>&1 &
 i=0
@@ -74,12 +129,116 @@ docker info >/dev/null 2>&1 || fail docker_info
 echo "docker_server=$(docker info --format '{{.ServerVersion}}' 2>/dev/null)"
 docker import /alpine.tar.gz alpine:local || fail docker_import
 
-docker run --rm --network none --pid host --ipc host --uts host \
-	--cgroupns host --pids-limit 32 alpine:local /bin/sh -c \
-	'n=0; while [ $n -lt 40 ]; do if (sleep 30 &) 2>/dev/null; then n=$((n+1)); else break; fi; done; \
-	 echo pids_spawned=$n; cat /sys/fs/cgroup/pids.max; cat /sys/fs/cgroup/pids.current; \
-	 cat /sys/fs/cgroup/pids.peak; cat /sys/fs/cgroup/pids.events' \
-	|| fail docker_pids_limit
+if [ "$NS_OK" = 1 ]; then
+	echo "DNSK_DOCKER_MODE=isolated"
+	docker run --rm --network none --pids-limit 32 alpine:local /bin/sh -c \
+		'n=0; while [ $n -lt 40 ]; do if (sleep 30 &) 2>/dev/null; then n=$((n+1)); else break; fi; done; \
+		 echo pids_spawned=$n; cat /sys/fs/cgroup/pids.max; cat /sys/fs/cgroup/pids.current; \
+		 cat /sys/fs/cgroup/pids.peak; cat /sys/fs/cgroup/pids.events' \
+		|| fail docker_pids_limit
+else
+	echo "DNSK_DOCKER_MODE=hostns"
+	docker run --rm --network none --pid host --ipc host --uts host \
+		--cgroupns host --pids-limit 32 alpine:local /bin/sh -c \
+		'n=0; while [ $n -lt 40 ]; do if (sleep 30 &) 2>/dev/null; then n=$((n+1)); else break; fi; done; \
+		 echo pids_spawned=$n; cat /sys/fs/cgroup/pids.max; cat /sys/fs/cgroup/pids.current; \
+		 cat /sys/fs/cgroup/pids.peak; cat /sys/fs/cgroup/pids.events' \
+		|| fail docker_pids_limit
+fi
+
+if [ "$NET_OK" = 1 ]; then
+	timeout 60 docker network create dnsktest || fail docker_net_create
+	timeout 60 docker run -d --name web --network dnsktest -p 8080:80 \
+		-v /httpd_min:/httpd_min:ro alpine:local /httpd_min 80 dns-ok || \
+		fail docker_web_run
+	i=0
+	while [ "$(docker inspect -f '{{.State.Running}}' web 2>/dev/null)" != true ]; do
+		sleep 1
+		i=$((i + 1))
+		[ "$i" -lt 15 ] || fail docker_web_state
+	done
+	gw=$(docker network inspect dnsktest \
+		-f '{{(index .IPAM.Config 0).Gateway}}') || fail docker_gw
+	[ -n "$gw" ] || fail docker_gw_empty
+	i=0
+	while ! "$BB" wget -q -O - -T 5 "http://$gw:8080/" 2>/dev/null | \
+		grep -q dns-ok; do
+		sleep 1
+		i=$((i + 1))
+		[ "$i" -lt 20 ] || fail docker_net_host
+	done
+	ip=$(docker inspect -f \
+		'{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' web) || \
+		fail docker_ip
+	[ -n "$ip" ] || fail docker_ip_empty
+	timeout 30 docker run --rm --network dnsktest alpine:local \
+		wget -q -O - -T 5 "http://$ip/" | grep -q dns-ok || \
+		fail docker_net_c2c
+	iptables -S | grep -q DOCKER || fail docker_iptables
+	iptables -t nat -S DOCKER | grep -q 'DNAT' || fail docker_nat
+	echo "DNSK_DOCKER_NET_OK"
+fi
+
+if [ "$NET_OK" = 1 ] && [ -x /sbin/iptables-nft ]; then
+	timeout 30 docker rm -f web >/dev/null 2>&1 || true
+	timeout 30 docker network rm dnsktest >/dev/null 2>&1 || true
+	pid=$(cat /run/docker.pid 2>/dev/null)
+	[ -n "$pid" ] && kill "$pid" 2>/dev/null
+	i=0
+	while [ -S /run/docker.sock ] && [ "$i" -lt 30 ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+	ln -sf /sbin/iptables-nft /sbin/iptables
+	ln -sf /sbin/ip6tables-nft /sbin/ip6tables
+	ln -sf /sbin/iptables-nft-restore /sbin/iptables-restore
+	ln -sf /sbin/ip6tables-nft-restore /sbin/ip6tables-restore
+	ln -sf /sbin/iptables-nft-save /sbin/iptables-save
+	ln -sf /sbin/ip6tables-nft-save /sbin/ip6tables-save
+	dockerd --containerd /run/containerd/containerd.sock \
+		--data-root /var/lib/docker --exec-root /run/docker \
+		--pidfile /run/docker.pid --storage-driver vfs \
+		$DOCKER_NET_FLAGS \
+		--exec-opt native.cgroupdriver=cgroupfs \
+		>/var/log/dockerd-nft.log 2>&1 &
+	i=0
+	while ! docker info >/dev/null 2>&1 && [ "$i" -lt 120 ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+	docker info >/dev/null 2>&1 || fail docker_nft_info
+	echo "DOCKER_NFT_SERVER=$(docker info --format '{{.ServerVersion}}' 2>/dev/null)"
+	timeout 60 docker network create dnsktestnft || fail docker_nft_net
+	timeout 60 docker run -d --name webnft --network dnsktestnft -p 8081:80 \
+		-v /httpd_min:/httpd_min:ro alpine:local /httpd_min 80 dns-ok || \
+		fail docker_nft_web
+	i=0
+	while [ "$(docker inspect -f '{{.State.Running}}' webnft 2>/dev/null)" != true ]; do
+		sleep 1
+		i=$((i + 1))
+		[ "$i" -lt 15 ] || fail docker_nft_web_state
+	done
+	gw=$(docker network inspect dnsktestnft \
+		-f '{{(index .IPAM.Config 0).Gateway}}') || fail docker_nft_gw
+	[ -n "$gw" ] || fail docker_nft_gw_empty
+	i=0
+	while ! "$BB" wget -q -O - -T 5 "http://$gw:8081/" 2>/dev/null | \
+		grep -q dns-ok; do
+		sleep 1
+		i=$((i + 1))
+		[ "$i" -lt 20 ] || fail docker_nft_host
+	done
+	ip=$(docker inspect -f \
+		'{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' webnft) || \
+		fail docker_nft_ip
+	[ -n "$ip" ] || fail docker_nft_ip_empty
+	timeout 30 docker run --rm --network dnsktestnft alpine:local \
+		wget -q -O - -T 5 "http://$ip/" | grep -q dns-ok || \
+		fail docker_nft_c2c
+	iptables -S | grep -q DOCKER || fail docker_nft_iptables
+	iptables -t nat -S DOCKER | grep -q 'DNAT' || fail docker_nft_nat
+	echo "DNSK_DOCKER_NFT_OK"
+fi
 
 echo "DNSK_DOCKER_DEVICE_OK"
 echo "DNSK_QEMU_OK"

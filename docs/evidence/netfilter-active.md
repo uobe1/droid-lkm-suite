@@ -151,3 +151,19 @@ feature 都校验锁原语布局. 设备 BTF 实测 `boundary.*`, `nf.*` 与
 - 设备没有 nft/ipset 用户态工具; nftables 规则、Docker/UFW/Fail2ban
   工作负载尚未验收.
 - 这次只验证 active 注册、addrtype match 与卸载; 不代表完整 M2 门控通过.
+
+## Legacy ip6table NAT（2026-11-06 设备门通过）
+
+beryl 内核没有 `CONFIG_IP6_NF_NAT`，`ip6tables-legacy -t nat` 报
+`Table does not exist`。`dnsk_netfilter` 增加 `ip6nat` unit：搬入上游
+`ip6table_nat.c` 的表、四个 hook 与 pernet 查表逻辑，9 个
+`ip6t_*`/`xt_*`/`nf_nat_ipv6_*` 未导出符号作为普通 import 由
+`ksud insmod` 从内核 kallsyms 解析，不在模块内重建符号表。
+
+Native-first：`xt_register_template()` 返回 `-EEXIST` 时说明原生（或
+其他提供者）已注册 `nat` 模板，模块注销自己的 pernet 后直接跳过；
+pernet 的 `pre_exit/exit` 只在模块确实持有模板时清理，避免误删原生表。
+
+设备门 run 42254952259：netns 内 `ip6tables-legacy -t nat` 的 DNAT 与
+MASQUERADE 规则通过（`DNSK_IP6NAT_OK`），ipset/REJECT/addrtype/recent/
+xt_set 同门通过（`DNSK_NETFILTER_OK`）。

@@ -29,6 +29,8 @@ commands:
   load <feature>            ksud insmod a feature module
   unload <feature>          rmmod a feature module (core checks refs)
   profile <name>            load a named profile
+  enable|disable            allow/skip core auto-load on the next boot
+  logs [lines]              tail the module state logs
   boot-begin|boot-ok|boot-check
   doctor [--last-panic]     collect dmesg/pstore/panic evidence
   cgroup-prep [--plan]      detect cgroup v1/v2 paths; does not modify them
@@ -164,7 +166,7 @@ do_preflight() {
 			check_abi_stamps "$ko"
 			set -- "$@" --xt-layout "$xt_layout"
 			;;
-		devtmpfs|ns)
+		devtmpfs|ns|tmpfsx)
 			check_abi_stamps "$ko"
 			;;
 		cgpids)
@@ -261,6 +263,35 @@ do_profile() {
 
 state_file() { printf '%s/%s\n' "$STATE_DIR" "$1"; }
 
+do_enable() {
+	need_root
+	rm -f "$MODDIR/disable" "$(state_file disable)"
+	echo "enabled: post-fs-data loads core on the next boot"
+}
+
+do_disable() {
+	need_root
+	mkdir -p "$STATE_DIR"
+	: >"$(state_file disable)"
+	: >"$MODDIR/disable" 2>/dev/null || true
+	echo "disabled: post-fs-data skips loading until enabled"
+}
+
+do_logs() {
+	lines=${1:-40}
+	case "$lines" in
+	''|*[!0-9]*) die "logs [lines]" ;;
+	esac
+	found=0
+	for f in "$STATE_DIR"/logs/*; do
+		[ -f "$f" ] || continue
+		found=1
+		echo "== $f =="
+		tail -n "$lines" "$f"
+	done
+	[ "$found" = 1 ] || echo "no logs in $STATE_DIR/logs"
+}
+
 do_boot_begin() {
 	mkdir -p "$STATE_DIR"
 	boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)
@@ -320,6 +351,9 @@ case "$cmd" in
 	load) do_load "$@" ;;
 	unload) do_unload "$@" ;;
 	profile) do_profile "$@" ;;
+	enable) do_enable "$@" ;;
+	disable) do_disable "$@" ;;
+	logs) do_logs "$@" ;;
 	boot-begin) do_boot_begin "$@" ;;
 	boot-ok) do_boot_ok "$@" ;;
 	boot-check) do_boot_check "$@" ;;

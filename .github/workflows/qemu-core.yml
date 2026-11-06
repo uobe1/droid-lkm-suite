@@ -109,7 +109,9 @@ jobs:
             -e NETFILTER_XT_MATCH_RECENT \
             -e TMPFS_XATTR -e TMPFS_POSIX_ACL -e FUSE_FS -e OVERLAY_FS \
             -e VETH -e BRIDGE -e VIRTIO_NET -e VIRTIO_PCI -e VIRTIO_BLK \
-            -e SECCOMP -e SECCOMP_FILTER -d MODULE_SIG_FORCE
+            -e SECCOMP -e SECCOMP_FILTER -d MODULE_SIG_FORCE -d MODULE_SIG \
+            -d TRIM_UNUSED_KSYMS -d MODULE_SIG_ALL -d MODULE_SIG_PROTECT \
+            --set-str MODULE_SIG_PROTECT_LIST ""
           if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
             "$SRC/scripts/config" --file "$KDIR/.config" -d CGROUP_PIDS
           fi
@@ -122,6 +124,30 @@ jobs:
           else
             CC_WRAP=""
           fi
+          # Building Image rebuilds modpost from this source tree.  The shipped
+          # DDK binary emits a valid empty string literal for an empty
+          # __version_ext_names table, but this source writes "= ;", which
+          # clang rejects in every external module.  Patch the generator and
+          # rebuild it before Image so the external build picks up the fix.
+          python3 - <<'PY'
+          p = "/opt/ddk/src/android16-6.12/scripts/mod/modpost.c"
+          s = open(p).read()
+          old = ('\tbuf_printf(b, "__used __section(\\"__version_ext_names\\") =\\n");\n'
+                 '\tlist_for_each_entry(s, &mod->unresolved_symbols, list) {')
+          new = ('\tbuf_printf(b, "__used __section(\\"__version_ext_names\\") =");\n'
+                 '\t{\n'
+                 '\t\tstruct symbol *t;\n'
+                 '\t\tbool any = false;\n'
+                 '\n'
+                 '\t\tlist_for_each_entry(t, &mod->unresolved_symbols, list)\n'
+                 '\t\t\tif (t->module && t->crc_valid) { any = true; break; }\n'
+                 '\t\tbuf_printf(b, any ? "\\n" : " \\"\\"\\n");\n'
+                 '\t}\n'
+                 '\tlist_for_each_entry(s, &mod->unresolved_symbols, list) {')
+          assert old in s, "add_extended_versions pattern not found"
+          open(p, "w").write(s.replace(old, new, 1))
+          PY
+          make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 scripts/mod/modpost
           make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 CC="${CC_WRAP}clang" \
             -j"$(nproc)" Image
           mkdir -p out
@@ -135,8 +161,21 @@ jobs:
               DNSK_CGROUP_SUBSYS_FORK DNSK_CGROUP_SUBSYS_EXIT \
               DNSK_CGROUP_SUBSYS_RELEASE DNSK_CGROUP_SUBSYS_ID \
               DNSK_SEQ_FILE_PRIVATE
-            make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
-            make -C "$GITHUB_WORKSPACE/features/cgpids" KDIR="$KDIR" modules
+            # External-module modpost reads only $(objtree)/Module.symvers.
+            # The DDK tree may ship one that lacks the vmlinux CRCs; merge
+            # vmlinux.symvers in, keeping one entry per symbol so modpost
+            # does not report overlapping exports twice.
+            touch "$KDIR/Module.symvers"
+            cat "$KDIR/vmlinux.symvers" "$KDIR/Module.symvers" | \
+              awk '!seen[$2]++' > "$KDIR/Module.symvers.merged"
+            mv "$KDIR/Module.symvers.merged" "$KDIR/Module.symvers"
+            make -C "$KDIR" M="$GITHUB_WORKSPACE" modules || {
+              sed -n '1,60p' "$GITHUB_WORKSPACE/dnsk_core.mod.c" || true
+              exit 1
+            }
+            make -C "$GITHUB_WORKSPACE/features/cgpids" KDIR="$KDIR" \
+              KBUILD_EXTRA_SYMBOLS="$GITHUB_WORKSPACE/Module.symvers" \
+              modules
             cp "$GITHUB_WORKSPACE/dnsk_core.ko" "$GITHUB_WORKSPACE/features/cgpids/dnsk_cgpids.ko" out/
           fi
           mkdir -p out
@@ -172,9 +211,10 @@ jobs:
       - name: Install QEMU
         run: |
           PKGS="qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio"
-          if ! sudo apt-get install -y --no-install-recommends $PKGS; then
-            sudo timeout 120 apt-get update
-            sudo apt-get install -y --no-install-recommends $PKGS
+          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3"
+          if ! sudo timeout 300 apt-get $APT_OPTS install -y --no-install-recommends $PKGS; then
+            sudo timeout 180 apt-get $APT_OPTS update
+            sudo timeout 300 apt-get $APT_OPTS install -y --no-install-recommends $PKGS
           fi
       - name: Build initramfs
         shell: bash

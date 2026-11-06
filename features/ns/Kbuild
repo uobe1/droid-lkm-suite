@@ -12,18 +12,43 @@ dnsk_ns-y := \
 	vendor/port/fork.o vendor/port/pidfd.o vendor/port/reboot.o \
 	vendor/port/fuse.o vendor/port/cgroup-pidlist.o vendor/port/bpf-pidns.o \
 	vendor/port/perf.o vendor/port/perf-original.o vendor/port/memfd.o \
-	vendor/kallrecon/lib/core.o vendor/kallrecon/lib/access.o \
-	vendor/kallrecon/lib/discover.o vendor/kallrecon/lib/symbol.o \
-	vendor/kallrecon/lib/slide.o vendor/kallrecon/lib/fastboot.o \
-	vendor/kallrecon/lib/hint.o vendor/kallrecon/lib/variant.o \
-	vendor/kallrecon/lib/anchor.o core_bridge.o
+	vendor/ksud/symbols.o core_bridge.o
+
+ifeq ($(DNSK_USERNS),1)
+dnsk_ns-y += \
+	vendor/userns/user_namespace.o vendor/userns/credentials.o \
+	vendor/userns/utsname.o vendor/userns/live-credentials.o \
+	vendor/userns/live-ucounts.o vendor/userns/live-proc.o \
+	vendor/userns/live-syscalls.o vendor/userns/live-mount.o \
+	vendor/userns/live-fs-context.o vendor/userns/live-super.o \
+	vendor/userns/live-identity.o vendor/userns/live-groups.o \
+	vendor/userns/live-stat.o vendor/userns/live-capabilities.o \
+	vendor/userns/live-fuse.o vendor/userns/live-fuse-request.o \
+	vendor/userns/live-fuse-inode.o vendor/userns/live-fuse-dir.o \
+	vendor/userns/live-fuse-acl.o vendor/userns/fuse-original.o \
+	vendor/userns/live-netlink.o vendor/userns/live-sock.o \
+	vendor/userns/sock-original.o vendor/userns/live-scm.o \
+	vendor/userns/live-unix.o vendor/userns/live-cgroup.o \
+	vendor/userns/live-time.o vendor/userns/live-sysfs.o \
+	vendor/userns/live-proc-status.o vendor/userns/live-nsfs.o \
+	vendor/userns/nsfs-original.o vendor/userns/live-vfs.o \
+	vendor/userns/live-exec.o vendor/userns/live-mm.o \
+	vendor/userns/mm-original.o vendor/userns/live-idmap.o \
+	vendor/userns/live-idmap-original.o vendor/userns/live-mnt-idmapping.o \
+	vendor/userns/live-overlay.o vendor/userns/live-overlay-original.o \
+	vendor/userns/live-mount-setattr.o \
+	vendor/userns/live-mount-setattr-original.o
+ccflags-y += -DCONFIG_USER_NS=1 -DDS_USERNS_LIVE=1
+ccflags-y += -include $(src)/vendor/userns/live-names.h
+ccflags-y += -I$(src)/vendor/userns/compat
+endif
 
 ccflags-y += -I$(src) -I$(src)/../../core/include
 ccflags-y += -DDS_GKI_ANDROID='"android16"' -DDS_GKI_VERSION='"6.12"'
 ccflags-y += -DCONFIG_PID_NS=1 -DCONFIG_IPC_NS=1 -DCONFIG_POSIX_MQUEUE=1
 ccflags-y += -DCONFIG_POSIX_MQUEUE_SYSCTL=1 -DCONFIG_SYSVIPC_SYSCTL=1
 ccflags-y += -include $(src)/vendor/port/names.h
-ccflags-y += -I$(src)/vendor/kallrecon/lib -I$(src)/vendor
+ccflags-y += -I$(src)/vendor/ksud -I$(src)/vendor
 ccflags-y += -I$(srctree)/fs/proc -I$(srctree)/fs -I$(srctree)
 ifneq ($(DNSK_ABI_PROFILE),)
 ccflags-y += -DDNSK_ABI_PROFILE=\"$(DNSK_ABI_PROFILE)\"
