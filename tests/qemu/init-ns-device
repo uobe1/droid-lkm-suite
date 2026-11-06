@@ -35,6 +35,17 @@ export LD_LIBRARY_PATH=/system/lib64
 "$BB" mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules
 /ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
 echo "DNSK_KSUD_LATE_LOAD_OK"
+
+# This ReSukiSU build forces enforcing when it sees permissive; enter its
+# permissive ksu domain through --allow-shell and clear enforce globally.
+"$BB" mkdir -p /system/bin
+cp /ksud /system/bin/su
+chmod 0755 /system/bin/su
+ln -sf /bin/sh /system/bin/sh
+/runas /system/bin/su -c 'echo 0 > /sys/fs/selinux/enforce' || fail selinux_permissive
+[ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
+echo "DNSK_SELINUX_AFTER_KSU=permissive"
+
 /ksud insmod /modules/dnsk_core.ko || fail core_insmod
 /ksud insmod /modules/dnsk_ns.ko activate=1 || fail ns_insmod
 echo "DNSK_NS_LKM_OK"
