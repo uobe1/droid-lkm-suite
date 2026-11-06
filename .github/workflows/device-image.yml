@@ -22,6 +22,10 @@ on:
         description: override kernel release (empty = derive from Image)
         required: false
         default: ""
+      image_run_id:
+        description: reuse device-boot artifact from this run id (empty = extract)
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -29,6 +33,7 @@ permissions:
 
 jobs:
   extract:
+    if: ${{ inputs.image_run_id == '' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -90,9 +95,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
+        if: ${{ inputs.image_run_id == '' }}
         with:
           name: device-boot
           path: device
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.image_run_id != '' }}
+        with:
+          name: device-boot
+          path: device
+          run-id: ${{ inputs.image_run_id }}
+          github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
         if: ${{ inputs.mode == 'cgpids' && inputs.module_run_id != '' }}
         with:
@@ -104,7 +117,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            qemu-system-arm qemu-system-common qemu-system-data cpio \
+            qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu \
+            ipxe-qemu-256k-compat-efi-roms qemu-efi-aarch64 cpio \
             binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu kmod python3
       - name: Patch module vermagic
         if: ${{ inputs.mode == 'cgpids' }}
