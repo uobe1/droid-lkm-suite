@@ -63,10 +63,15 @@ iptables -S | grep -q "ufw-before-input" || fail ufw_rules
 echo "DNSK_UFW_OK"
 
 mkdir -p /etc/fail2ban /var/log /run/fail2ban /var/lib/fail2ban
+cat >/etc/fail2ban/fail2ban.local <<'EOF'
+[Definition]
+loglevel = DEBUG
+logtarget = /var/log/fail2ban.log
+EOF
 cat >/etc/fail2ban/jail.local <<'EOF'
 [DEFAULT]
 backend = polling
-bantime = 60
+bantime = 120
 findtime = 60
 maxretry = 1
 
@@ -83,10 +88,25 @@ EOF
 fail2ban-client -x start || fail f2b_start
 "$BB" sleep 3
 TS=$("$BB" date "+%b %e %H:%M:%S")
-echo "$TS localhost sshd[1234]: Failed password for root from 10.9.8.7 port 2222 ssh2" >>/var/log/auth.log
+LINE="$TS localhost sshd[1234]: Failed password for root from 10.9.8.7 port 2222 ssh2"
+echo "$LINE" >>/var/log/auth.log
 echo "DNSK_F2B_LINE=$TS"
-"$BB" sleep 12
-fail2ban-client status sshd | grep -q "10.9.8.7" || fail f2b_ban
+echo "$LINE" >/tmp/f2b_sample
+fail2ban-regex /tmp/f2b_sample /etc/fail2ban/filter.d/sshd.conf 2>&1 | tail -15
+i=0
+while [ "$i" -lt 40 ]; do
+	fail2ban-client status sshd 2>&1 | grep -q "10.9.8.7" && break
+	"$BB" sleep 1
+	i=$((i + 1))
+done
+fail2ban-client status sshd >/tmp/f2b_status 2>&1
+if ! grep -q "10.9.8.7" /tmp/f2b_status; then
+	echo "DNSK_F2B_STATUS"
+	cat /tmp/f2b_status
+	echo "DNSK_F2B_LOG"
+	grep -E 'Found|Ban |ERROR|WARNING|Processing|modified|mismatch|reject|fail' /var/log/fail2ban.log | tail -40
+	fail f2b_ban
+fi
 iptables -S | grep -q "10.9.8.7" || fail f2b_rule
 echo "DNSK_FAIL2BAN_OK"
 

@@ -43,7 +43,25 @@ echo "DNSK_SELINUX_AFTER_KSU=permissive"
 /ksud insmod /modules/dnsk_ns.ko gki=1 activate=1 || fail ns_insmod
 echo "DNSK_USERNS_LKM_OK"
 
-/userns_test || fail userns_test
+TR=/sys/kernel/tracing
+"$BB" mkdir -p "$TR"
+"$BB" mount -t tracefs tracefs "$TR" 2>/dev/null
+if [ -w "$TR/kprobe_events" ]; then
+	for p in 'r:ovl_fill ovl_fill_super $retval' \
+		 'r:ovl_upper ovl_get_upper $retval' \
+		 'r:ovl_work ovl_get_workdir $retval' \
+		 'r:ovl_layers ovl_get_layers $retval' \
+		 'r:vfs_tree vfs_get_tree $retval' \
+		 'r:sel_finish sb_finish_set_opts $retval' \
+		 'r:sel_mnt selinux_set_mnt_opts $retval'; do
+		echo "$p" >>"$TR/kprobe_events"
+	done
+	echo 1 >"$TR/events/kprobes/enable"
+fi
+if ! /userns_test; then
+	"$BB" cat "$TR/trace" 2>/dev/null | grep -E 'ovl_|vfs_tree|sel_' | tail -40
+	fail userns_test
+fi
 /fuse_test || fail fuse_test
 /mount_setattr_test || fail mount_setattr_selftest
 echo "DNSK_MOUNT_SETATTR_SELFTEST_OK"
