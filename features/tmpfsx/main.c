@@ -200,7 +200,7 @@ static struct dnsk_feature_desc dnsk_tmpfsx_desc = {
 	.name = "tmpfsx",
 	.version = "0.1",
 	.status = DNSK_STATUS_DEVELOPMENT,
-	.caps = "tmpfs xattr on all mounts; ACL i_op wired via native acl option",
+	.caps = "tmpfs xattr + ACL handlers; acl/noacl via fs_context and legacy mount",
 	.owner = THIS_MODULE,
 };
 

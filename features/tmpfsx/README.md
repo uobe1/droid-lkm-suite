@@ -16,12 +16,14 @@ Current prototype:
 - Pinned until reboot once handlers are installed (superblocks keep a
   pointer into this module).
 
-POSIX ACL inode operations (`get_inode_acl`/`get_acl`/`set_acl`) and the
-native ACL xattr handlers are wired, but they stay inert until a superblock
-has `SB_POSIXACL`.  A `parse_param` hook records the `acl`/`noacl` option per
-fs_context and `shmem_fill_super` applies `SB_POSIXACL`; the legacy
-`mount(2)` monolithic parser path is not intercepted yet.  LSM-specific
-differential checks are still missing.  Status is `DEVELOPMENT`; do not
-claim Native semantics.
+POSIX ACL inode operations (`get_inode_acl`/`get_acl`/`set_acl`) are wired.
+When the kernel lacks native tmpfs ACL xattr handlers, the module installs
+its own `system.posix_acl_access`/`default` handlers that use the kernel's
+`posix_acl_from_xattr`/`posix_acl_to_xattr`, `posix_acl_release` and
+`set_posix_acl` via core resolution.  `acl`/`noacl` are recorded per
+fs_context from both the new mount API (`parse_param`) and legacy `mount(2)`
+(`parse_monolithic`, options filtered before the original parser);
+`shmem_fill_super` applies `SB_POSIXACL`.  LSM-specific differential checks
+are still missing.  Status is `DEVELOPMENT`; do not claim Native semantics.
 
 Build: `make -C features/tmpfsx KDIR=... modules`.

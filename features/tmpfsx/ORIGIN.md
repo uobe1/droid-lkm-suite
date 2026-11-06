@@ -19,4 +19,10 @@ Facts taken from the beryl `6.12.30-android16-5` vmlinux BTF (2026-11-06):
   `simple_xattr_list(inode, xattrs, buffer, size)`,
   `simple_xattrs_free(xattrs, freed_space)`.
 
+ACL note: beryl has `CONFIG_FS_POSIX_ACL` helpers but no native tmpfs ACL
+xattr handlers (`nop_posix_acl_*` only).  The module therefore implements
+the two handlers itself and calls the kernel's `posix_acl_from_xattr` /
+`posix_acl_to_xattr` / `posix_acl_release` / `set_posix_acl` (resolved by
+core/ksud); it does not copy kernel function bodies.
+
 License: GPL-2.0-only (kernel module).
