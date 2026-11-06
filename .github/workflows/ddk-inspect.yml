@@ -1,6 +1,9 @@
 name: ddk-inspect
 on:
   workflow_dispatch:
+  push:
+    branches: [feat/device-ns-ksud]
+    paths: ['.github/workflows/ddk-inspect.yml']
 permissions:
   contents: read
 jobs:
