@@ -71,13 +71,24 @@ jobs:
           grep -E '^CONFIG_(DEVTMPFS|SERIAL_AMBA_PL011|MODULE_SIG|MODULE_SIG_FORCE|MODULE_SIG_ALL|VIRTIO|9P_FS|KALLSYMS|CFI_CLANG|PID_NS|IPC_NS|SYSVIPC|NF_TABLES|IP_SET)=' \
             "$KDIR/.config" || true
           ls -l out
+      # Only the oracle-nopids image is ccache-optimized: GitHub's free cache
+      # budget is 10 GiB.  Forks can change the condition/key for their own
+      # target; stock/native oracle deliberately stay uncached.
+      - name: Restore ccache (oracle-nopids only)
+        if: ${{ inputs.kernel == 'oracle-nopids' }}
+        uses: actions/cache@v4
+        with:
+          path: /tmp/ccache
+          key: ccache-${{ runner.os }}-android16-6.12-oracle-nopids-${{ hashFiles('.github/workflows/qemu-core.yml') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-android16-6.12-oracle-nopids-
       - name: Build Native oracle Image
         if: ${{ inputs.kernel == 'oracle' || inputs.kernel == 'oracle-nopids' }}
         shell: bash
         run: |
           set -euxo pipefail
           apt-get update
-          apt-get install -y --no-install-recommends bc bison flex libssl-dev libelf-dev dwarves
+          apt-get install -y --no-install-recommends bc bison flex libssl-dev libelf-dev dwarves ccache
           KDIR="/opt/ddk/kdir/android16-6.12"
           SRC="/opt/ddk/src/android16-6.12"
           test -x "$SRC/scripts/config"
@@ -101,7 +112,15 @@ jobs:
           fi
           make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 olddefconfig
           grep -E '^CONFIG_(IPC_NS|PID_NS|USER_NS|POSIX_MQUEUE|CGROUP_PIDS|DEVTMPFS|NF_TABLES|IP_SET)=' "$KDIR/.config"
-          make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 -j"$(nproc)" Image
+          if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
+            export CCACHE_DIR=/tmp/ccache CCACHE_MAXSIZE=4G CCACHE_BASEDIR="$SRC"
+            ccache -M 4G || true
+            CC_WRAP="ccache "
+          else
+            CC_WRAP=""
+          fi
+          make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 CC="${CC_WRAP}clang" \
+            HOSTCC="${CC_WRAP}clang" -j"$(nproc)" Image
           mkdir -p out
           if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
             eval "$(python3 "$GITHUB_WORKSPACE/tools/build_flags.py" \
