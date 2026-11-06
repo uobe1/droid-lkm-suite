@@ -20,26 +20,41 @@ jobs:
           set -uxo pipefail
           KDIR=/opt/ddk/kdir/android16-6.12
           SRC=/opt/ddk/src/android16-6.12
-          ls -l "$KDIR/Module.symvers" "$KDIR/vmlinux.symvers" 2>&1 || true
-          wc -l "$KDIR/Module.symvers" 2>/dev/null || true
-          head -3 "$KDIR/Module.symvers" 2>/dev/null || true
-          grep -c 'module_layout' "$KDIR/Module.symvers" 2>/dev/null || true
-          echo '=== add_extended_versions ==='
-          grep -n -A45 'static void add_extended_versions' "$SRC/scripts/mod/modpost.c"
-          echo '=== add_versions ==='
-          grep -n -A40 'static void add_versions' "$SRC/scripts/mod/modpost.c"
-          echo '=== config ==='
-          grep -E 'CONFIG_(MODVERSIONS|BASIC_MODVERSIONS|EXTENDED_MODVERSIONS)=' "$KDIR/.config" || true
+          ls -l "$KDIR/Module.symvers" "$KDIR/vmlinux.symvers"
+          echo '=== Module.symvers format ==='
+          head -2 "$KDIR/Module.symvers" | cat -A
+          echo '=== vmlinux.symvers format ==='
+          head -2 "$KDIR/vmlinux.symvers" | cat -A
+          echo '=== module_layout entries ==='
+          grep -m2 'module_layout' "$KDIR/Module.symvers" || true
+          grep -m2 'module_layout' "$KDIR/vmlinux.symvers" || true
+          echo '=== modpost writer loops ==='
+          sed -n "1860,1935p" "$SRC/scripts/mod/modpost.c"
           mkdir -p /tmp/modtest
           printf 'obj-m := modtest.o\n' >/tmp/modtest/Makefile
           cat >/tmp/modtest/modtest.c <<'EOF'
           #include <linux/module.h>
           #include <linux/kernel.h>
-          static int __init mt_init(void) { pr_info("modtest\n"); return 0; }
-          static void __exit mt_exit(void) {}
-          module_init(mt_init); module_exit(mt_exit);
+          static int __init tmod_init(void) { pr_info("modtest\n"); return 0; }
+          static void __exit tmod_exit(void) {}
+          module_init(tmod_init); module_exit(tmod_exit);
           MODULE_LICENSE("GPL");
           EOF
-          make -C "$KDIR" M=/tmp/modtest modules V=1 || true
-          echo '=== generated ==='
-          sed -n '1,60p' /tmp/modtest/modtest.mod.c 2>/dev/null || true
+          make -C "$KDIR" M=/tmp/modtest modules
+          echo '=== shipped-symvers mod.c ==='
+          sed -n '20,45p' /tmp/modtest/modtest.mod.c
+          cp "$KDIR/Module.symvers" /tmp/Module.symvers.orig
+          cat "$KDIR/vmlinux.symvers" "$KDIR/Module.symvers" | \
+            awk '!seen[$2]++' > "$KDIR/Module.symvers"
+          wc -l "$KDIR/Module.symvers"
+          rm -f /tmp/modtest/modtest.mod.c /tmp/modtest/modtest.mod.o /tmp/modtest/modtest.ko
+          make -C "$KDIR" M=/tmp/modtest modules
+          echo '=== merged-symvers mod.c ==='
+          sed -n '20,45p' /tmp/modtest/modtest.mod.c
+          cp /tmp/Module.symvers.orig "$KDIR/Module.symvers"
+          : > "$KDIR/Module.symvers"
+          rm -f /tmp/modtest/modtest.mod.c /tmp/modtest/modtest.mod.o /tmp/modtest/modtest.ko
+          make -C "$KDIR" M=/tmp/modtest modules || true
+          echo '=== empty-symvers result ==='
+          ls -l /tmp/modtest/modtest.mod.c 2>&1 || true
+          sed -n '20,45p' /tmp/modtest/modtest.mod.c 2>/dev/null || true
