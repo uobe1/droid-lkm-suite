@@ -123,7 +123,7 @@ jobs:
             CC_WRAP=""
           fi
           make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 CC="${CC_WRAP}clang" \
-            HOSTCC="${CC_WRAP}clang" -j"$(nproc)" Image
+            -j"$(nproc)" Image
           mkdir -p out
           if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
             eval "$(python3 "$GITHUB_WORKSPACE/tools/build_flags.py" \
