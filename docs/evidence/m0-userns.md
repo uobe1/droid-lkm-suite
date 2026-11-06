@@ -53,6 +53,20 @@ Native 证据，不对外宣称。**
    - 完整 FUSE 模式（FUSE-BPF backing、no_daemon、fuseblk、passthrough）；
    - kernel selftests/namespaces 全矩阵与 Native oracle 差分。
 
+## 2026-11-06 实现进展
+
+- 已把上游 `src/userns/*`（43 文件）vendor 到
+  `features/ns/vendor/userns/`，新增 `DNSK_USERNS=1` 构建开关，把
+  `user_namespace.c`、`credentials.c`、`utsname.c` 与全部 `live-*.c`、
+  `*-original.S` 编入同一个 `dnsk_ns.ko`；`port/main.c` 的
+  `DS_USERNS_LIVE` 初始化路径随之启用。
+- 未导出符号继续由 `ksud insmod` 解析；`kallrecon` 不参与。
+- `ci-fast` 增加 `userns=true` 输入构建该 spike；设备镜像门
+  `tests/qemu/init-userns-device` + `userns_test.c` 已就绪，验证
+  uid/gid 映射、嵌套 userns 与 boot_id 不变。
+- 仍未验证：编译通过、idmapped mount、child-userns OverlayFS、完整
+  FUSE 模式、kernel selftests 全矩阵。不得据此宣称 D/N。
+
 ## 结论
 
 - 源码层可行，但“独立 dnsk_userns.ko”不是一个可直接落地的形态；先做
