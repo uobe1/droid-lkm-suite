@@ -67,6 +67,20 @@ Native 证据，不对外宣称。**
 - 仍未验证：编译通过、idmapped mount、child-userns OverlayFS、完整
   FUSE 模式、kernel selftests 全矩阵。不得据此宣称 D/N。
 
+## 2026-11-06 首批设备门结果
+
+- 合并构建（ci-fast `userns=true`，run `42247295351`）成功；但设备 Image
+  门 run `42248410082` 在 `ksud insmod dnsk_ns.ko` 时失败：
+  `Unknown symbol security_path_chroot`、`security_path_chown`、
+  `__tracepoint_android_vh_mmap_lock_free`、
+  `__traceiter_android_vh_mmap_lock_free`。
+- 这些符号在 beryl 内核中不存在（`CONFIG_SECURITY_PATH` 相关 LSM 钩子未编
+  入、厂商 tracepoint 未定义），ksud 无法解析不存在的符号。
+- 适配：`vendor/ksud/symbols.c` 增加运行时可选解析；
+  `security_path_chroot/chown` 缺失时按原生未启用路径钩子返回 0，
+  vendor traceiter 缺失时跳过。此类“内核没有的符号”不得写死 import，
+  也不能在模块里伪造实现。
+
 ## 结论
 
 - 源码层可行，但“独立 dnsk_userns.ko”不是一个可直接落地的形态；先做
