@@ -23,6 +23,8 @@ struct fs_context *ds_userns_alloc_fs_context(struct file_system_type *,
 struct super_block *ds_userns_alloc_super(struct file_system_type *, int,
     struct user_namespace *);
 void ds_userns_destroy_super_work(struct work_struct *);
+int ds_userns_ovl_fill_super(struct super_block *, struct fs_context *);
+int ds_userns_ovl_fill_super_original(struct super_block *, struct fs_context *);
 struct stat;
 struct statx;
 int ds_userns_cp_statx(const struct kstat *, struct statx __user *);

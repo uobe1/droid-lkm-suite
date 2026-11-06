@@ -338,6 +338,8 @@ static struct ds_hook hooks[] = {
 		      ds_userns_mount_setattr_original),
 	HOOK_ORIGINAL("alloc_mnt_idmap", ds_userns_alloc_mnt_idmap,
 		      ds_userns_alloc_mnt_idmap_original),
+	HOOK_ORIGINAL("ovl_fill_super", ds_userns_ovl_fill_super,
+		      ds_userns_ovl_fill_super_original),
 	HOOK("make_vfsuid", ds_userns_make_vfsuid),
 	HOOK("make_vfsgid", ds_userns_make_vfsgid),
 	HOOK("from_vfsuid", ds_userns_from_vfsuid),
