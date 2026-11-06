@@ -58,5 +58,8 @@ ACL 是 M4 硬阻塞，当前 prototype 只交付 xattr。
 
 `features/tmpfsx/`：`main.c`（符号解析、`iterate_supers` 接线、
 `shmem_fill_super`/`shmem_evict_inode` kprobe、feature 描述）、
-`xattr.c`（user/trusted/security handler、listxattr、evict 清理）。
-状态 `DEVELOPMENT`，ACL 与差分契约未完成。
+`xattr.c`（user/trusted/security handler、listxattr、evict 清理）+
+ACL i_op（`get_inode_acl`/`get_acl`/`set_acl`，复用 native
+`posix_acl_*_xattr_handler`，按 `SB_POSIXACL` 门控）。状态
+`DEVELOPMENT`；`acl/noacl` 挂载选项（含 legacy `parse_monolithic`）、
+LSM 差分与发布级 preflight stamp 未完成。

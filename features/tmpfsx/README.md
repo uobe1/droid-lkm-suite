@@ -16,8 +16,10 @@ Current prototype:
 - Pinned until reboot once handlers are installed (superblocks keep a
   pointer into this module).
 
-Not implemented yet: POSIX ACL (`get_inode_acl`/`set_acl` and the `acl`
-mount option), LSM-specific differential checks, and the KMI preflight
-stamps.  Status is `DEVELOPMENT`; do not claim Native semantics.
+POSIX ACL inode operations (`get_inode_acl`/`get_acl`/`set_acl`) and the
+native ACL xattr handlers are wired, but they stay inert until a superblock
+has `SB_POSIXACL`.  The per-mount `acl`/`noacl` option (including the legacy
+`parse_monolithic` path) is still missing, as are LSM-specific differential
+checks.  Status is `DEVELOPMENT`; do not claim Native semantics.
 
 Build: `make -C features/tmpfsx KDIR=... modules`.
