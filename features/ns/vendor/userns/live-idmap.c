@@ -37,6 +37,8 @@ static struct ds_idmap_pending ds_idmap_slots[DS_IDMAP_SLOTS];
 extern long ds_userns_mount_setattr_original(const struct pt_regs *regs);
 extern struct mnt_idmap *
 ds_userns_alloc_mnt_idmap_original(struct user_namespace *userns);
+extern vfsuid_t make_vfsuid(struct mnt_idmap *idmap,
+			    struct user_namespace *fs_userns, kuid_t kuid);
 extern bool proc_ns_file(const struct file *file);
 
 static struct user_namespace *ds_userns_from_fd(unsigned int fd)
@@ -153,8 +155,14 @@ struct mnt_idmap *ds_userns_alloc_mnt_idmap(struct user_namespace *userns)
 	if (pending && userns == &init_user_ns)
 		userns = pending;
 	id = ds_userns_alloc_mnt_idmap_original(userns);
-	pr_info("alloc_mnt_idmap: ret=%px userns=%px uid0=%u uid1=%u\n",
-		id, userns, from_kuid(userns, KUIDT_INIT(0)),
-		from_kuid(userns, KUIDT_INIT(1)));
+	if (!IS_ERR(id)) {
+		vfsuid_t v = make_vfsuid(id, userns->parent, KUIDT_INIT(0));
+
+		pr_info("alloc_mnt_idmap: ret=%px userns=%px vfsuid0=%u\n",
+			id, userns, __vfsuid_val(v));
+	} else {
+		pr_info("alloc_mnt_idmap: ret=%ld userns=%px\n", PTR_ERR(id),
+			userns);
+	}
 	return id;
 }
