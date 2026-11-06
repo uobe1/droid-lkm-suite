@@ -7,7 +7,7 @@
 
 #include <linux/errno.h>
 #include <linux/fs.h>
-#include <linux/mnt_idmap.h>
+#include <linux/mnt_idmapping.h>
 #include <linux/shmem_fs.h>
 #include <linux/string.h>
 #include <linux/xattr.h>
