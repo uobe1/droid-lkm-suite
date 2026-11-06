@@ -156,6 +156,8 @@ DECLARE_IPC_SYSCALL(setfsuid);
 DECLARE_IPC_SYSCALL(setfsgid);
 DECLARE_IPC_SYSCALL(getgroups);
 DECLARE_IPC_SYSCALL(setgroups);
+/* ThinLTO may inline ksys_unshare() into the syscall entry. */
+DECLARE_IPC_SYSCALL(unshare);
 DECLARE_IPC_SYSCALL(statmount);
 DECLARE_IPC_SYSCALL(listmount);
 DECLARE_IPC_SYSCALL(getuid);
@@ -268,6 +270,7 @@ static struct ds_hook hooks[] = {
 	HOOK("mnt_may_suid", ds_userns_mnt_may_suid),
 	HOOK("__arm64_sys_newfstat", __arm64_sys_ds_newfstat),
 	HOOK("__arm64_sys_newfstatat", __arm64_sys_ds_newfstatat),
+	HOOK("__arm64_sys_unshare", __arm64_sys_ds_unshare),
 	HOOK("do_faccessat", ds_userns_do_faccessat),
 	HOOK("chown_common", ds_userns_chown_common),
 	HOOK("privileged_wrt_inode_uidgid", ds_userns_privileged_wrt_inode_uidgid),
