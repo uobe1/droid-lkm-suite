@@ -12,6 +12,7 @@
 #include <asm/mmu_context.h>
 #include <asm/pgalloc.h>
 #include <trace/hooks/sched.h>
+#include "core.h"
 #include "live.h"
 extern struct kmem_cache *mm_cachep;
 extern struct mm_struct *ds_userns_mm_init_original(struct mm_struct *,
@@ -148,7 +149,7 @@ void ds_userns_mmdrop(struct mm_struct *mm)
 	mm_pasid_drop(mm);
 	mm_destroy_cid(mm);
 	percpu_counter_destroy_many(mm->rss_stat, NR_MM_COUNTERS);
-	trace_android_vh_mmap_lock_free(&mm->mmap_lock);
+	ds_opt_android_vh_mmap_lock_free(&mm->mmap_lock);
 
 	free_mm(mm);
 }

@@ -18,6 +18,7 @@
 #include <linux/securebits.h>
 #include <linux/security.h>
 #include <linux/mount.h>
+#include "core.h"
 #include <linux/fcntl.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
@@ -210,7 +211,7 @@ retry:
 	error = -EPERM;
 	if (!ns_capable(current_user_ns(), CAP_SYS_CHROOT))
 		goto dput_and_out;
-	error = security_path_chroot(&path);
+	error = ds_opt_security_path_chroot(&path);
 	if (error)
 		goto dput_and_out;
 
@@ -280,7 +281,7 @@ retry_deleg:
 		newattrs.ia_valid |= ATTR_KILL_SUID | ATTR_KILL_PRIV |
 				     setattr_should_drop_sgid(idmap, inode);
 	/* Continue to send actual fs values, not the mount values. */
-	error = security_path_chown(
+	error = ds_opt_security_path_chown(
 		path,
 		from_vfsuid(idmap, fs_userns, newattrs.ia_vfsuid),
 		from_vfsgid(idmap, fs_userns, newattrs.ia_vfsgid));
