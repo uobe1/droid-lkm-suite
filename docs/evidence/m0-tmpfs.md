@@ -61,5 +61,17 @@ ACL 是 M4 硬阻塞，当前 prototype 只交付 xattr。
 `xattr.c`（user/trusted/security handler、listxattr、evict 清理）+
 ACL i_op（`get_inode_acl`/`get_acl`/`set_acl`，复用 native
 `posix_acl_*_xattr_handler`，按 `SB_POSIXACL` 门控）。状态
-`DEVELOPMENT`；`acl/noacl` 挂载选项（含 legacy `parse_monolithic`）、
-LSM 差分与发布级 preflight stamp 未完成。
+`DEVELOPMENT`。
+
+ACL 落地细节（2026-11-06）：
+
+- beryl 只有 `nop_posix_acl_*`，没有 native tmpfs ACL xattr handler。
+  模块自实现 `system.posix_acl_access/default` handler，内部只用内核
+  `posix_acl_from_xattr/to_xattr`、`posix_acl_release`、`set_posix_acl`
+  （由 core 解析；不复制内核函数体）。
+- `acl/noacl` 同时由新 mount API 的 `parse_param` 和 legacy `mount(2)` 的
+  `parse_monolithic` 记录；legacy 选项串在交给原解析器前过滤。
+- KCFI 教训：`simple_xattr_set` 在 beryl 返回 `struct simple_xattr *`（不是
+  int），`simple_xattr_list` 返回 `ssize_t`；函数指针原型必须与设备 BTF
+  的 FUNC_PROTO 完全一致，否则首次调用触发 CFI failure。
+- LSM 差分、发布级 preflight stamp 与真机验证仍未完成。
