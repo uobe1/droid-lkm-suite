@@ -81,8 +81,8 @@ EOF
 : >/var/log/auth.log
 fail2ban-client -x start || fail f2b_start
 "$BB" sleep 3
-echo "Failed password for root from 10.9.8.7 port 2222 ssh2" >>/var/log/auth.log
-"$BB" sleep 8
+echo "Nov  6 17:47:13 localhost sshd[1234]: Failed password for root from 10.9.8.7 port 2222 ssh2" >>/var/log/auth.log
+"$BB" sleep 12
 fail2ban-client status sshd | grep -q "10.9.8.7" || fail f2b_ban
 iptables -S | grep -q "10.9.8.7" || fail f2b_rule
 echo "DNSK_FAIL2BAN_OK"
