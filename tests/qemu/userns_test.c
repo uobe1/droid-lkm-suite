@@ -58,9 +58,10 @@ static int map_id(const char *file, const char *setgroups, unsigned int id)
 static int idmap_test(void)
 {
 	char byte, path[64];
+	const char *step = "start";
 	struct dnsk_mount_attr attr = { .attr_set = MOUNT_ATTR_IDMAP };
 	struct stat st;
-	int pipefd[2], ufd, fd, ret;
+	int pipefd[2], ufd, fd, ret, saved;
 	pid_t pid;
 
 	if (pipe(pipefd) < 0)
@@ -90,52 +91,62 @@ static int idmap_test(void)
 	}
 	close(pipefd[0]);
 
+	step = "setgroups";
 	snprintf(path, sizeof(path), "/proc/%d/setgroups", pid);
 	if (write_str(path, "deny") < 0 && errno != ENOENT)
 		goto fail;
+	step = "uid_map";
 	snprintf(path, sizeof(path), "/proc/%d/uid_map", pid);
 	if (write_str(path, "0 1 1\n") < 0)
 		goto fail;
+	step = "gid_map";
 	snprintf(path, sizeof(path), "/proc/%d/gid_map", pid);
 	if (write_str(path, "0 1 1\n") < 0)
 		goto fail;
+	step = "ns_open";
 	snprintf(path, sizeof(path), "/proc/%d/ns/user", pid);
 	ufd = open(path, O_RDONLY);
 	if (ufd < 0)
 		goto fail;
 	attr.userns_fd = ufd;
 
+	step = "mkdir";
 	if (mkdir("/tmp/idmap", 0755) < 0 && errno != EEXIST)
 		goto fail;
+	step = "mount";
 	if (mount("tmpfs", "/tmp/idmap", "tmpfs", 0, "size=1M") < 0)
 		goto fail;
+	step = "create";
 	fd = open("/tmp/idmap/f", O_CREAT | O_WRONLY, 0644);
 	if (fd < 0)
 		goto fail_umount;
 	close(fd);
+	step = "chown";
 	if (chown("/tmp/idmap/f", 1, 1) < 0)
 		goto fail_umount;
-	if (stat("/tmp/idmap/f", &st) < 0 || st.st_uid != 1) {
+	step = "pre_stat";
+	if (stat("/tmp/idmap/f", &st) < 0)
+		goto fail_umount;
+	if (st.st_uid != 1) {
 		fprintf(stderr, "USERNS_TEST_FAIL idmap pre uid=%u\n",
 			(unsigned)st.st_uid);
 		goto fail_umount;
 	}
 
+	step = "mount_setattr";
 	ret = syscall(SYS_mount_setattr, AT_FDCWD, "/tmp/idmap", 0,
 		      &attr, sizeof(attr));
-	if (ret < 0) {
-		perror("mount_setattr idmap");
+	if (ret < 0)
 		goto fail_umount;
-	}
-	if (stat("/tmp/idmap/f", &st) < 0) {
-		perror("idmap stat");
+	step = "post_stat";
+	if (stat("/tmp/idmap/f", &st) < 0)
 		goto fail_umount;
-	}
 	if (st.st_uid != 0) {
 		fprintf(stderr, "USERNS_TEST_FAIL idmap uid=%u\n",
 			(unsigned)st.st_uid);
 		goto fail_umount;
 	}
+	step = "done";
 	umount("/tmp/idmap");
 	close(ufd);
 	kill(pid, SIGKILL);
@@ -144,9 +155,12 @@ static int idmap_test(void)
 	return 0;
 
 fail_umount:
+	saved = errno;
 	umount("/tmp/idmap");
+	errno = saved;
 fail:
-	fprintf(stderr, "USERNS_TEST_FAIL idmap_setup: %s\n", strerror(errno));
+	fprintf(stderr, "USERNS_TEST_FAIL idmap_%s: %s\n", step,
+		strerror(errno));
 	kill(pid, SIGKILL);
 	waitpid(pid, NULL, 0);
 	return 1;
