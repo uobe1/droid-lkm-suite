@@ -1,0 +1,85 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# M2 device-image gate: xt_addrtype/REJECT/RECENT, ipset hash types and
+# ip6table NAT on the beryl kernel Image, loaded through ksud.
+
+BB=/bin/busybox
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+IPT=iptables-legacy
+IP6T=ip6tables-legacy
+IPSET=/usr/sbin/ipset
+
+command -v $IPT >/dev/null 2>&1 || IPT=iptables
+command -v $IP6T >/dev/null 2>&1 || IP6T=ip6tables
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	"$BB" mknod /dev/console c 5 1
+	"$BB" mknod /dev/null c 1 3
+fi
+"$BB" mkdir -p /dev/pts /run /tmp
+"$BB" mount -t devpts devpts /dev/pts 2>/dev/null
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg 2>/dev/null | grep -iE 'dnsk|netfilter|ipset|xt_|module' | tail -20
+	"$BB" poweroff -f
+}
+
+if [ -x /selinux_load ] && [ -f /policy.gz ]; then
+	"$BB" mkdir -p /sys/fs/selinux
+	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
+	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
+	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+fi
+
+"$BB" mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules
+export LD_LIBRARY_PATH=/system/lib64
+/insmod_force /modules/selpermissive.ko || fail selpermissive_insmod
+/ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
+"$BB" sleep 10
+echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+[ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
+echo "DNSK_SELINUX_AFTER_KSU=permissive"
+
+/ksud insmod /modules/dnsk_core.ko || fail core_insmod
+/ksud insmod /modules/dnsk_netfilter.ko gki=1 activate=1 || fail netfilter_insmod
+/ksud insmod /modules/dnsk_ipset.ko || fail ipset_insmod
+echo "DNSK_NETFILTER_LKM_OK"
+
+cat >/tmp/netns-test.sh <<'EOS'
+set -e
+BB=/bin/busybox
+IPT=$1
+IP6T=$2
+IPSET=$3
+$BB ip link set lo up 2>/dev/null || ifconfig lo up 2>/dev/null || true
+$IPSET create h hash:ip || exit 1
+$IPSET add h 127.0.0.1 || exit 1
+$IPSET test h 127.0.0.1 || exit 1
+$IPSET create n hash:net || exit 1
+$IPSET add n 10.0.0.0/8 || exit 1
+$IPSET test n 10.1.2.3 || exit 1
+echo DNSK_IPSET_OK
+$IPT -t filter -F
+$IPT -t filter -A INPUT -p tcp --dport 22 -j REJECT || exit 1
+echo DNSK_REJECT_OK
+$IPT -t filter -A INPUT -m addrtype --src-type LOCAL -j ACCEPT || exit 1
+echo DNSK_ADDRTYPE_OK
+$IPT -t filter -A INPUT -m recent --name dnsk --set || exit 1
+echo DNSK_RECENT_OK
+$IPT -t filter -A INPUT -m set --match-set h src -j ACCEPT || exit 1
+echo DNSK_XT_SET_OK
+$IP6T -t nat -F 2>/dev/null || true
+$IP6T -t nat -A PREROUTING -d fd00::1 -j DNAT --to-destination fd00::2 || exit 1
+$IP6T -t nat -A POSTROUTING -s fd00::/64 -j MASQUERADE || exit 1
+echo DNSK_IP6NAT_OK
+EOS
+
+unshare -n /bin/sh /tmp/netns-test.sh "$IPT" "$IP6T" "$IPSET" || fail netns_rules
+echo "DNSK_NETFILTER_OK"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f

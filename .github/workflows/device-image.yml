@@ -19,6 +19,7 @@ on:
           - ksud-docker
           - tmpfsx
           - userns
+          - netfilter
         default: baseline
       module_run_id:
         description: CI run id with core-android16-6.12 artifact (cgpids mode)
@@ -292,6 +293,29 @@ jobs:
             aarch64-linux-gnu-gcc -static -O2 -o acl_test tests/qemu/acl_test.c
             cp acl_test rootfs/acl_test
             cp tests/qemu/init-tmpfsx-device rootfs/init
+          elif [ "${{ inputs.mode }}" = "netfilter" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_netfilter.ko modules/dnsk_ipset.ko rootfs/modules/
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            APK_BASE=https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64
+            for pkg in libmnl-1.0.5-r2 ipset-7.21-r2 iptables-1.8.10-r3 \
+                       iptables-legacy-1.8.10-r3 libip4tc-1.8.10-r3 \
+                       libip6tc-1.8.10-r3 libxtables-1.8.10-r3 \
+                       libnftnl-1.2.6-r0 nftables-1.0.9-r2 gmp-6.3.0-r1 \
+                       jansson-2.14-r4 readline-8.2.10-r0 \
+                       libncursesw-6.4_p20240420-r2; do
+              curl -fsSL -o "$pkg.apk" "$APK_BASE/$pkg.apk"
+              tar -xzf "$pkg.apk" -C rootfs 2>/dev/null
+            done
+            cp tests/qemu/init-netfilter-device rootfs/init
           elif [ "${{ inputs.mode }}" = "userns" ]; then
             cp modules/dnsk_core.ko modules/dnsk_ns.ko rootfs/modules/
             cp tests/qemu/assets/ksud rootfs/ksud
@@ -350,7 +374,7 @@ jobs:
           fi
           APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
           case "$MODE" in
-            ksud-cgpids|ksud-ns|ksud-docker|tmpfsx|userns) APPEND="$APPEND enforcing=0" ;;
+            ksud-cgpids|ksud-ns|ksud-docker|tmpfsx|userns|netfilter) APPEND="$APPEND enforcing=0" ;;
             *) APPEND="$APPEND selinux=0" ;;
           esac
           if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ] || [ "$MODE" = "ksud-ns" ] || [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
@@ -384,6 +408,9 @@ jobs:
           elif [ "$MODE" = "userns" ]; then
             grep -q 'DNSK_USERNS_LKM_OK' qemu.log
             grep -q 'DNSK_USERNS_OK' qemu.log
+          elif [ "$MODE" = "netfilter" ]; then
+            grep -q 'DNSK_NETFILTER_LKM_OK' qemu.log
+            grep -q 'DNSK_NETFILTER_OK' qemu.log
           else
             grep -q 'DNSK_DEVICE_KERNEL_OK' qemu.log
           fi
