@@ -15,17 +15,19 @@
 int main(int argc, char **argv)
 {
 	int fd, ret;
+	const char *args;
 
-	if (argc != 2) {
-		fprintf(stderr, "usage: %s <module.ko>\n", argv[0]);
+	if (argc < 2 || argc > 3) {
+		fprintf(stderr, "usage: %s <module.ko> [module-args]\n", argv[0]);
 		return 2;
 	}
+	args = argc == 3 ? argv[2] : "";
 	fd = open(argv[1], O_RDONLY | O_CLOEXEC);
 	if (fd < 0) {
 		perror("open");
 		return 1;
 	}
-	ret = syscall(SYS_finit_module, fd, "", 0);
+	ret = syscall(SYS_finit_module, fd, args, 0);
 	if (ret) {
 		fprintf(stderr, "finit_module %s: %s\n", argv[1], strerror(errno));
 		close(fd);
