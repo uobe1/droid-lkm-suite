@@ -1,0 +1,71 @@
+name: ci-fast
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_profile:
+        description: ABI build profile id
+        type: choice
+        options:
+          - android16-6.12-xt104
+          - android16-6.12-xt128
+        default: android16-6.12-xt104
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-fast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:android16-6.12-20260828
+      options: --user root
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build android16 modules
+        shell: bash
+        env:
+          PROFILE: ${{ inputs.build_profile }}
+        run: |
+          set -euxo pipefail
+          KDIR="/opt/ddk/kdir/android16-6.12"
+          eval "$(python3 tools/build_flags.py \
+            --profile "profiles/abi/${PROFILE}.json" \
+            --kmi android16-6.12)"
+          make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
+          mkdir -p out
+          cp dnsk_core.ko out/
+          for feat in ns diag devtmpfs netfilter ipset cgpids tmpfsx; do
+            make -C "$GITHUB_WORKSPACE/features/$feat" KDIR="$KDIR" \
+              DNSK_ABI_PROFILE="${DNSK_ABI_PROFILE:-}" \
+              DNSK_PAGE_SIZE="${DNSK_PAGE_SIZE:-}" \
+              DNSK_MAX_SKB_FRAGS="${DNSK_MAX_SKB_FRAGS:-}" \
+              DNSK_CGROUP_SUBSYS_COUNT="${DNSK_CGROUP_SUBSYS_COUNT:-}" \
+              DNSK_CGROUP_SUBSYS_LAYOUT="${DNSK_CGROUP_SUBSYS_LAYOUT:-}" \
+              DNSK_CGROUP_SUBSYS_CAN_FORK="${DNSK_CGROUP_SUBSYS_CAN_FORK:-}" \
+              DNSK_CGROUP_SUBSYS_CANCEL_FORK="${DNSK_CGROUP_SUBSYS_CANCEL_FORK:-}" \
+              DNSK_CGROUP_SUBSYS_FORK="${DNSK_CGROUP_SUBSYS_FORK:-}" \
+              DNSK_CGROUP_SUBSYS_EXIT="${DNSK_CGROUP_SUBSYS_EXIT:-}" \
+              DNSK_CGROUP_SUBSYS_RELEASE="${DNSK_CGROUP_SUBSYS_RELEASE:-}" \
+              DNSK_CGROUP_SUBSYS_ID="${DNSK_CGROUP_SUBSYS_ID:-}" \
+              DNSK_SEQ_FILE_PRIVATE="${DNSK_SEQ_FILE_PRIVATE:-}" \
+              DNSK_XT_NOCOMPAT="${DNSK_XT_NOCOMPAT:-}" \
+              DNSK_XT_LAYOUT="${DNSK_XT_LAYOUT:-}" modules
+            cp features/"$feat"/dnsk_*.ko out/
+          done
+          make -C "$GITHUB_WORKSPACE/tests/qemu/selpermissive" KDIR="$KDIR" modules
+          cp tests/qemu/selpermissive/selpermissive.ko out/
+          SYMVERS="$KDIR/Module.symvers"
+          [ -f "$SYMVERS" ] || SYMVERS="$KDIR/vmlinux.symvers"
+          cp "$SYMVERS" out/symvers.txt
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-android16-6.12
+          path: out/
+          if-no-files-found: error
