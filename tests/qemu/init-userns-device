@@ -71,6 +71,11 @@ fi
 echo 0 >/proc/sys/kernel/kptr_restrict 2>/dev/null
 grep -E ' (ovl_init_fs_context|fs_context_for_mount|legacy_init_fs_context)$' /proc/kallsyms
 grep -i overlay /proc/filesystems
+mkdir -p /tmp/ovlctl/lower /tmp/ovlctl/upper /tmp/ovlctl/work /tmp/ovlctl/merged
+"$BB" mount -t tmpfs tmpfs /tmp/ovlctl
+mkdir -p /tmp/ovlctl/lower /tmp/ovlctl/upper /tmp/ovlctl/work /tmp/ovlctl/merged
+mount -t overlay overlay -o lowerdir=/tmp/ovlctl/lower,upperdir=/tmp/ovlctl/upper,workdir=/tmp/ovlctl/work /tmp/ovlctl/merged
+echo "DNSK_OVL_INIT_NS=$?"
 if ! /userns_test; then
 	"$BB" cat "$TR/kprobe_events" 2>/dev/null | tail -20
 	"$BB" cat "$TR/trace" 2>/dev/null | grep -E 'ovl_|vfs_|parse_m|cap:|getfs|fsc:|fsm:' | tail -60
