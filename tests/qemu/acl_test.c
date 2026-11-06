@@ -24,7 +24,9 @@
 #endif
 
 #define ACL_USER_OBJ 0x01
+#define ACL_USER 0x02
 #define ACL_GROUP_OBJ 0x04
+#define ACL_MASK 0x10
 #define ACL_OTHER 0x20
 
 struct acl_entry {
@@ -35,7 +37,7 @@ struct acl_entry {
 
 struct acl_blob {
 	uint32_t version;
-	struct acl_entry entries[3];
+	struct acl_entry entries[5];
 } __attribute__((packed));
 
 static int fail(const char *what)
@@ -52,7 +54,9 @@ int main(int argc, char **argv)
 		.version = 2,
 		.entries = {
 			{ ACL_USER_OBJ, 6, 0 },
+			{ ACL_USER, 4, 1000 },
 			{ ACL_GROUP_OBJ, 4, 0 },
+			{ ACL_MASK, 6, 0 },
 			{ ACL_OTHER, 4, 0 },
 		},
 	};
@@ -96,7 +100,7 @@ int main(int argc, char **argv)
 	if (setxattr(path, "system.posix_acl_access", &acl, sizeof(acl), 0) < 0)
 		return fail("setxattr acl");
 	n = getxattr(path, "system.posix_acl_access", buf, sizeof(buf));
-	if (n < (ssize_t)(sizeof(uint32_t) + 3 * sizeof(struct acl_entry)))
+	if (n < (ssize_t)sizeof(acl))
 		return fail("getxattr acl short");
 	if (memcmp(buf, &acl, sizeof(acl)))
 		fprintf(stderr, "note: ACL blob was normalized\n");
