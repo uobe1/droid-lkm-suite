@@ -20,6 +20,7 @@ on:
           - tmpfsx
           - userns
           - netfilter
+          - apps
         default: baseline
       module_run_id:
         description: CI run id with core-android16-6.12 artifact (cgpids mode)
@@ -316,6 +317,29 @@ jobs:
               tar -xzf "$pkg.apk" -C rootfs 2>/dev/null
             done
             cp tests/qemu/init-netfilter-device rootfs/init
+          elif [ "${{ inputs.mode }}" = "apps" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_netfilter.ko modules/dnsk_ipset.ko rootfs/modules/
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            # Cross-install aarch64 packages with the host apk.static.
+            curl -fsSL -o apk-tools.apk \
+              https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/apk-tools-static-2.14.13-r0.apk
+            rm -rf /tmp/apk-tools && mkdir -p /tmp/apk-tools
+            tar -xzf apk-tools.apk -C /tmp/apk-tools
+            /tmp/apk-tools/sbin/apk.static --root "$PWD/rootfs" \
+              --arch aarch64 --no-cache --allow-untrusted --no-scripts \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/community \
+              add ufw fail2ban iptables-legacy
+            cp tests/qemu/init-apps-device rootfs/init
           elif [ "${{ inputs.mode }}" = "userns" ]; then
             cp modules/dnsk_core.ko modules/dnsk_ns.ko modules/dnsk_tmpfsx.ko rootfs/modules/
             cp tests/qemu/assets/ksud rootfs/ksud
@@ -376,7 +400,7 @@ jobs:
           fi
           APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
           case "$MODE" in
-            ksud-cgpids|ksud-ns|ksud-docker|tmpfsx|userns|netfilter) APPEND="$APPEND enforcing=0" ;;
+            ksud-cgpids|ksud-ns|ksud-docker|tmpfsx|userns|netfilter|apps) APPEND="$APPEND enforcing=0" ;;
             *) APPEND="$APPEND selinux=0" ;;
           esac
           if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ] || [ "$MODE" = "ksud-ns" ] || [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
@@ -416,6 +440,11 @@ jobs:
           elif [ "$MODE" = "netfilter" ]; then
             grep -q 'DNSK_NETFILTER_LKM_OK' qemu.log
             grep -q 'DNSK_NETFILTER_OK' qemu.log
+          elif [ "$MODE" = "apps" ]; then
+            grep -q 'DNSK_NETFILTER_LKM_OK' qemu.log
+            grep -q 'DNSK_UFW_OK' qemu.log
+            grep -q 'DNSK_FAIL2BAN_OK' qemu.log
+            grep -q 'DNSK_APPS_OK' qemu.log
           else
             grep -q 'DNSK_DEVICE_KERNEL_OK' qemu.log
           fi
