@@ -26,6 +26,10 @@ on:
         description: reuse device-boot artifact from this run id (empty = extract)
         required: false
         default: ""
+      module_layout_crc:
+        description: device kernel module_layout CRC (hex)
+        required: false
+        default: "0xe976b219"
 
 permissions:
   contents: read
@@ -125,6 +129,7 @@ jobs:
         if: ${{ inputs.mode == 'cgpids' }}
         env:
           DEVICE_RELEASE: ${{ inputs.device_release }}
+          MODULE_LAYOUT_CRC: ${{ inputs.module_layout_crc }}
         run: |
           set -euxo pipefail
           RELEASE="$DEVICE_RELEASE"
@@ -154,6 +159,18 @@ jobs:
           PY
             aarch64-linux-gnu-objcopy --update-section .modinfo=modinfo.new "$ko"
             modinfo -F vermagic "$ko"
+            aarch64-linux-gnu-objcopy --dump-section __versions=versions.bin "$ko"
+            python3 - "$MODULE_LAYOUT_CRC" <<'PY'
+          import struct, sys
+          crc = int(sys.argv[1], 16)
+          data = bytearray(open('versions.bin', 'rb').read())
+          for i in range(0, len(data) - 64 + 1, 64):
+              if data[i + 8:i + 64].split(b'\0')[0] == b'module_layout':
+                  struct.pack_into('<Q', data, i, crc)
+                  break
+          open('versions.new', 'wb').write(data)
+          PY
+            aarch64-linux-gnu-objcopy --update-section __versions=versions.new "$ko"
           done
       - name: Build loader and initramfs
         run: |

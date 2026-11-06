@@ -92,10 +92,13 @@ jobs:
           KDIR="/opt/ddk/kdir/android16-6.12"
           SRC="/opt/ddk/src/android16-6.12"
           test -x "$SRC/scripts/config"
+          # Base the oracle on the actual device config (extracted from the
+          # beryl boot image), then apply only explicit test deltas below.
+          zcat "$GITHUB_WORKSPACE/profiles/device/beryl-6.12.30.config.gz" > "$KDIR/.config"
           "$SRC/scripts/config" --file "$KDIR/.config" \
             -e NAMESPACES -e UTS_NS -e IPC_NS -e PID_NS -e NET_NS -e USER_NS \
             -e POSIX_MQUEUE -e POSIX_MQUEUE_SYSCTL -e SYSVIPC -e SYSVIPC_SYSCTL \
-            -e CGROUPS -e CGROUP_PIDS -e CGROUP_DEVICE -e MEMCG -e CGROUP_BPF -e PSI \
+            -e CGROUPS -e CGROUP_PIDS -e MEMCG -e CGROUP_BPF -e PSI \
             -e DEVTMPFS -e DEVTMPFS_MOUNT -e NF_TABLES -e NF_TABLES_INET \
             -e NF_TABLES_IPV4 -e NF_TABLES_IPV6 -e NFT_NAT -e NFT_CHAIN_NAT \
             -e NFT_COMPAT -e NF_NAT -e NF_NAT_MASQUERADE \
@@ -108,7 +111,7 @@ jobs:
             -e VETH -e BRIDGE -e VIRTIO_NET -e VIRTIO_PCI -e VIRTIO_BLK \
             -e SECCOMP -e SECCOMP_FILTER -d MODULE_SIG_FORCE
           if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
-            "$SRC/scripts/config" --file "$KDIR/.config" -d CGROUP_PIDS -d CGROUP_DEVICE
+            "$SRC/scripts/config" --file "$KDIR/.config" -d CGROUP_PIDS
           fi
           make -C "$SRC" O="$KDIR" ARCH=arm64 LLVM=1 olddefconfig
           grep -E '^CONFIG_(IPC_NS|PID_NS|USER_NS|POSIX_MQUEUE|CGROUP_PIDS|DEVTMPFS|NF_TABLES|IP_SET)=' "$KDIR/.config"
