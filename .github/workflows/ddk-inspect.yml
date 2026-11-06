@@ -33,13 +33,13 @@ jobs:
           mkdir -p /tmp/modtest
           printf 'obj-m := modtest.o\n' >/tmp/modtest/Makefile
           cat >/tmp/modtest/modtest.c <<'EOF'
-#include <linux/module.h>
-#include <linux/kernel.h>
-static int __init mt_init(void) { pr_info("modtest\n"); return 0; }
-static void __exit mt_exit(void) {}
-module_init(mt_init); module_exit(mt_exit);
-MODULE_LICENSE("GPL");
-EOF
+          #include <linux/module.h>
+          #include <linux/kernel.h>
+          static int __init mt_init(void) { pr_info("modtest\n"); return 0; }
+          static void __exit mt_exit(void) {}
+          module_init(mt_init); module_exit(mt_exit);
+          MODULE_LICENSE("GPL");
+          EOF
           make -C "$KDIR" M=/tmp/modtest modules V=1 || true
           echo '=== generated ==='
           sed -n '1,60p' /tmp/modtest/modtest.mod.c 2>/dev/null || true
