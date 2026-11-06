@@ -8,7 +8,9 @@ Vendored paths:
 
 - `vendor/port/*` from `src/port/*` (android16-6.12 PID/IPC port)
 - `vendor/gki-target.h` from `src/gki-target.h`
-- `vendor/kallrecon/*` from `vendor/kallrecon/*`
+- `vendor/ksud/*`: local shim, not upstream.  `kallsyms_lookup_name` and
+  `module_kallsyms_lookup_name` are plain imports resolved by `ksud insmod`;
+  the upstream kallrecon kallsyms scanner is not vendored.
 
 Local changes:
 
