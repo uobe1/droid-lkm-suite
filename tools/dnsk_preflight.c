@@ -853,6 +853,7 @@ static struct sym_req cgpids_required[] = {
 	{ "cgroup_kf_syscall_ops", 0 },
 	{ "cgroup_base_files", 0 },
 	{ "kernfs_activate", 0 },
+	{ "tasklist_lock", 0 },
 };
 
 /* tmpfs xattr internals needed by dnsk_tmpfsx; resolved through kallsyms. */
