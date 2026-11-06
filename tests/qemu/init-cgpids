@@ -40,12 +40,15 @@ echo "DNSK_CGPIDS_ROOT_SUBTREE=$(cat /sys/fs/cgroup/cgroup.subtree_control)"
 echo +pids > /sys/fs/cgroup/t/cgroup.subtree_control || fail t_subtree_write
 "$BB" mkdir /sys/fs/cgroup/t/a || fail mkdir_a
 test -e /sys/fs/cgroup/t/a/pids.max || fail no_pids_files
-echo "DNSK_CGPIDS_MAX_BEFORE=$(cat /sys/fs/cgroup/t/a/pids.max)"
+read max_before < /sys/fs/cgroup/t/a/pids.max || fail read_max_before
+echo "DNSK_CGPIDS_MAX_BEFORE=$max_before"
 echo 3 > /sys/fs/cgroup/t/a/pids.max || fail pids_max_write
-echo "DNSK_CGPIDS_MAX=$(cat /sys/fs/cgroup/t/a/pids.max)"
+read max_after < /sys/fs/cgroup/t/a/pids.max || fail read_max
+echo "DNSK_CGPIDS_MAX=$max_after"
 
 echo $$ > /sys/fs/cgroup/t/a/cgroup.procs || fail move_shell
-echo "DNSK_CGPIDS_CURRENT_SHELL=$(cat /sys/fs/cgroup/t/a/pids.current)"
+read current_shell < /sys/fs/cgroup/t/a/pids.current || fail read_shell
+echo "DNSK_CGPIDS_CURRENT_SHELL=$current_shell"
 
 n=0
 while [ "$n" -lt 10 ]; do
@@ -56,15 +59,22 @@ while [ "$n" -lt 10 ]; do
 	fi
 done
 echo "DNSK_CGPIDS_SPAWNED=$n"
-echo "DNSK_CGPIDS_CURRENT=$(cat /sys/fs/cgroup/t/a/pids.current)"
-echo "DNSK_CGPIDS_PEAK=$(cat /sys/fs/cgroup/t/a/pids.peak)"
-echo "DNSK_CGPIDS_EVENTS=$(cat /sys/fs/cgroup/t/a/pids.events | tr '\n' ' ')"
+read current_after < /sys/fs/cgroup/t/a/pids.current || fail read_current
+read peak_after < /sys/fs/cgroup/t/a/pids.peak || fail read_peak
+read events_after < /sys/fs/cgroup/t/a/pids.events || fail read_events
+echo "DNSK_CGPIDS_CURRENT=$current_after"
+echo "DNSK_CGPIDS_PEAK=$peak_after"
+echo "DNSK_CGPIDS_EVENTS=$events_after"
 
+# Re-open headroom before migrating: the limit run left the cgroup full.
+echo 10 > /sys/fs/cgroup/t/a/pids.max || fail raise_limit
 "$BB" mkdir /sys/fs/cgroup/t/b || fail mkdir_b
 sh -c 'sleep 30 & echo $! > /sys/fs/cgroup/t/b/cgroup.procs' || fail migrate_child
 sleep 1
-echo "DNSK_CGPIDS_A_AFTER_MIGRATE=$(cat /sys/fs/cgroup/t/a/pids.current)"
-echo "DNSK_CGPIDS_B_AFTER_MIGRATE=$(cat /sys/fs/cgroup/t/b/pids.current)"
+read a_after < /sys/fs/cgroup/t/a/pids.current || fail read_a_after
+read b_after < /sys/fs/cgroup/t/b/pids.current || fail read_b_after
+echo "DNSK_CGPIDS_A_AFTER_MIGRATE=$a_after"
+echo "DNSK_CGPIDS_B_AFTER_MIGRATE=$b_after"
 
 echo "DNSK_CGPIDS_OK"
 echo "DNSK_QEMU_OK"
