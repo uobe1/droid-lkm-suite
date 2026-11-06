@@ -91,6 +91,7 @@ jobs:
 
   boot:
     needs: extract
+    if: ${{ always() && (needs.extract.result == 'success' || inputs.image_run_id != '') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
