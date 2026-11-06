@@ -5,6 +5,7 @@
  * helpers are reused as-is; only the handlers and mount wiring are missing.
  */
 
+#include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/fs.h>
 #include <linux/mnt_idmapping.h>
@@ -42,10 +43,12 @@ static int dnsk_xattr_set(const struct xattr_handler *handler,
 	struct shmem_inode_info *info = container_of(inode,
 						     struct shmem_inode_info,
 						     vfs_inode);
+	struct simple_xattr *ret;
 
-	return dnsk_simple_xattr_set(&info->xattrs, xattr_full_name(handler,
-								     name),
-				     value, size, flags);
+	ret = dnsk_simple_xattr_set(&info->xattrs,
+				    xattr_full_name(handler, name),
+				    value, size, flags);
+	return IS_ERR(ret) ? PTR_ERR(ret) : 0;
 }
 
 ssize_t dnsk_tmpfsx_listxattr(struct dentry *dentry, char *buffer,
@@ -140,13 +143,16 @@ static int dnsk_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 						     struct shmem_inode_info,
 						     vfs_inode);
 	const char *name = dnsk_acl_xattr_name(type);
+	struct simple_xattr *xret;
 	void *value;
 	int size, ret;
 
 	if (!IS_POSIXACL(inode))
 		return -EOPNOTSUPP;
-	if (!acl)
-		return dnsk_simple_xattr_set(&info->xattrs, name, NULL, 0, 0);
+	if (!acl) {
+		xret = dnsk_simple_xattr_set(&info->xattrs, name, NULL, 0, 0);
+		return IS_ERR(xret) ? PTR_ERR(xret) : 0;
+	}
 	size = posix_acl_xattr_size(acl->a_count);
 	value = kmalloc(size, GFP_KERNEL);
 	if (!value)
@@ -156,9 +162,9 @@ static int dnsk_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 		kfree(value);
 		return ret;
 	}
-	ret = dnsk_simple_xattr_set(&info->xattrs, name, value, size, 0);
+	xret = dnsk_simple_xattr_set(&info->xattrs, name, value, size, 0);
 	kfree(value);
-	return ret;
+	return IS_ERR(xret) ? PTR_ERR(xret) : 0;
 }
 
 void dnsk_tmpfsx_evict_inode(struct inode *inode)

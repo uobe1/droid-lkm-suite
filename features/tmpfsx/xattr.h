@@ -8,9 +8,10 @@
 struct dentry;
 struct inode;
 
-typedef int (*dnsk_xattr_set_fn)(struct simple_xattrs *xattrs,
-				 const char *name, const void *value,
-				 size_t size, int flags);
+typedef struct simple_xattr *(*dnsk_xattr_set_fn)(struct simple_xattrs *xattrs,
+						  const char *name,
+						  const void *value,
+						  size_t size, int flags);
 typedef int (*dnsk_xattr_get_fn)(struct simple_xattrs *xattrs,
 				 const char *name, void *buffer, size_t size);
 typedef ssize_t (*dnsk_xattr_list_fn)(struct inode *inode,
