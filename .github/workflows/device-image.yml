@@ -13,6 +13,7 @@ on:
         options:
           - baseline
           - cgpids
+          - docker
         default: baseline
       module_run_id:
         description: CI run id with core-android16-6.12 artifact (cgpids mode)
@@ -127,7 +128,7 @@ jobs:
             binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross kmod python3
           python3 -m pip install --break-system-packages pyelftools
       - name: Patch module vermagic
-        if: ${{ inputs.mode == 'cgpids' }}
+        if: ${{ inputs.mode != 'baseline' }}
         env:
           DEVICE_RELEASE: ${{ inputs.device_release }}
           MODULE_LAYOUT_CRC: ${{ inputs.module_layout_crc }}
@@ -188,7 +189,7 @@ jobs:
           PY
           done
       - name: Compute device module_layout CRC
-        if: ${{ inputs.mode == 'cgpids' }}
+        if: ${{ inputs.mode != 'baseline' }}
         run: |
           python3 - <<'PY'
           import struct
@@ -217,7 +218,7 @@ jobs:
                           break
           PY
       - name: Inspect device kernel symbols
-        if: ${{ inputs.mode == 'cgpids' }}
+        if: ${{ inputs.mode != 'baseline' }}
         run: |
           if [ -f device/vmlinux.elf ]; then
             nm device/vmlinux.elf | grep -E 'module_layout|__crc_module_layout|kcrctab' | head -20 || true
@@ -241,6 +242,17 @@ jobs:
             aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
             cp insmod_force rootfs/insmod_force
             cp tests/qemu/init-cgpids rootfs/init
+          elif [ "${{ inputs.mode }}" = "docker" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp tests/qemu/init-docker-device rootfs/init
+            curl -fsSL -o docker.tgz \
+              https://download.docker.com/linux/static/stable/aarch64/docker-29.7.2.tgz
+            mkdir -p rootfs/opt
+            tar -xzf docker.tgz -C rootfs/opt
+            cp rootfs/opt/docker/* rootfs/usr/bin/
+            cp alpine.tar.gz rootfs/alpine.tar.gz
           else
             cp tests/qemu/init-device rootfs/init
           fi
@@ -252,12 +264,17 @@ jobs:
           MODE: ${{ inputs.mode }}
         run: |
           set +e
+          MEM=4096
+          TIMEOUT=600
+          if [ "$MODE" = "docker" ]; then
+            TIMEOUT=1200
+          fi
           APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0 module.sig_enforce=0"
-          if [ "$MODE" = "cgpids" ]; then
+          if [ "$MODE" = "cgpids" ] || [ "$MODE" = "docker" ]; then
             APPEND="$APPEND dnsk_lkm=1"
           fi
-          timeout 600 qemu-system-aarch64 \
-            -M virt -cpu max -m 4096 -smp 4 -nographic -no-reboot \
+          timeout "$TIMEOUT" qemu-system-aarch64 \
+            -M virt -cpu max -m "$MEM" -smp 4 -nographic -no-reboot \
             -kernel device/Image -initrd initramfs.cpio.gz \
             -append "$APPEND" \
             2>&1 | tee qemu.log
@@ -272,6 +289,9 @@ jobs:
           if [ "$MODE" = "cgpids" ]; then
             grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
             grep -q 'DNSK_CGPIDS_OK' qemu.log
+          elif [ "$MODE" = "docker" ]; then
+            grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
+            grep -q 'DNSK_DOCKER_DEVICE_OK' qemu.log
           else
             grep -q 'DNSK_DEVICE_KERNEL_OK' qemu.log
           fi

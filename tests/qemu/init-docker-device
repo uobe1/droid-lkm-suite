@@ -1,0 +1,83 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Docker 29.x pids-limit smoke on the beryl device kernel Image.
+# Uses host PID/IPC/UTS/cgroup namespaces because the stock device kernel has
+# those namespace configs disabled; cgroups/pids are still created per container.
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	"$BB" mknod /dev/console c 5 1
+	"$BB" mknod /dev/null c 1 3
+	"$BB" mknod /dev/zero c 1 5
+	"$BB" mknod /dev/random c 1 8
+	"$BB" mknod /dev/urandom c 1 9
+	"$BB" mknod /dev/tty c 5 0
+fi
+"$BB" mkdir -p /dev/pts /dev/shm /tmp /run /var/lib/docker \
+	/var/lib/containerd /var/log /etc /sys/fs/cgroup
+"$BB" mount -t devpts devpts /dev/pts 2>/dev/null
+"$BB" mount -t tmpfs tmpfs /dev/shm 2>/dev/null || true
+ln -sf /proc/self/fd/0 /dev/stdin
+ln -sf /proc/self/fd/1 /dev/stdout
+ln -sf /proc/self/fd/2 /dev/stderr
+ln -sf /proc/self/fd /dev/fd
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg 2>/dev/null | grep -iE 'module|vermagic|signature|dnsk|CFI|panic' | tail -20
+	"$BB" tail -40 /var/log/dockerd.log 2>/dev/null
+	"$BB" poweroff -f
+}
+
+if [ -x /insmod_force ]; then
+	/insmod_force /modules/dnsk_core.ko || fail dnsk_core_insmod
+	/insmod_force /modules/dnsk_cgpids.ko || fail dnsk_cgpids_insmod
+else
+	"$BB" insmod /modules/dnsk_core.ko || fail dnsk_core_insmod
+	"$BB" insmod /modules/dnsk_cgpids.ko || fail dnsk_cgpids_insmod
+fi
+echo "DNSK_CGPIDS_LKM_OK"
+
+"$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup || fail cgroup2_mount
+echo "DNSK_DOCKER_DEVICE_CONTROLLERS=$(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null)"
+
+containerd >/var/log/containerd.log 2>&1 &
+i=0
+while [ ! -S /run/containerd/containerd.sock ] && [ "$i" -lt 60 ]; do
+	sleep 1
+	i=$((i + 1))
+done
+[ -S /run/containerd/containerd.sock ] || fail containerd_socket
+
+export DOCKER_RAMDISK=true
+dockerd --containerd /run/containerd/containerd.sock \
+	--data-root /var/lib/docker --exec-root /run/docker \
+	--pidfile /run/docker.pid --storage-driver vfs \
+	--iptables=false --ip6tables=false --bridge=none \
+	--exec-opt native.cgroupdriver=cgroupfs \
+	>/var/log/dockerd.log 2>&1 &
+i=0
+while ! docker info >/dev/null 2>&1 && [ "$i" -lt 120 ]; do
+	sleep 1
+	i=$((i + 1))
+done
+docker info >/dev/null 2>&1 || fail docker_info
+
+echo "docker_server=$(docker info --format '{{.ServerVersion}}' 2>/dev/null)"
+docker import /alpine.tar.gz alpine:local || fail docker_import
+
+docker run --rm --network none --pid host --ipc host --uts host \
+	--cgroupns host --pids-limit 32 alpine:local /bin/sh -c \
+	'n=0; while [ $n -lt 40 ]; do if (sleep 30 &) 2>/dev/null; then n=$((n+1)); else break; fi; done; \
+	 echo pids_spawned=$n; cat /sys/fs/cgroup/pids.max; cat /sys/fs/cgroup/pids.current; \
+	 cat /sys/fs/cgroup/pids.peak; cat /sys/fs/cgroup/pids.events' \
+	|| fail docker_pids_limit
+
+echo "DNSK_DOCKER_DEVICE_OK"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f
