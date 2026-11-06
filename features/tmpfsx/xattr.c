@@ -21,6 +21,14 @@ static dnsk_xattr_get_fn dnsk_simple_xattr_get;
 static dnsk_xattr_list_fn dnsk_simple_xattr_list;
 static dnsk_xattrs_free_fn dnsk_simple_xattrs_free;
 
+static const char *dnsk_full_name(char *buf,
+				  const struct xattr_handler *handler,
+				  const char *name)
+{
+	snprintf(buf, 256, "%s%s", handler->prefix, name);
+	return buf;
+}
+
 static int dnsk_xattr_get(const struct xattr_handler *handler,
 			  struct dentry *dentry, struct inode *inode,
 			  const char *name, void *buffer, size_t size)
@@ -28,9 +36,10 @@ static int dnsk_xattr_get(const struct xattr_handler *handler,
 	struct shmem_inode_info *info = container_of(inode,
 						     struct shmem_inode_info,
 						     vfs_inode);
+	char full[256];
 
-	return dnsk_simple_xattr_get(&info->xattrs, xattr_full_name(handler,
-								     name),
+	return dnsk_simple_xattr_get(&info->xattrs,
+				     dnsk_full_name(full, handler, name),
 				     buffer, size);
 }
 
@@ -42,9 +51,10 @@ static int dnsk_xattr_set(const struct xattr_handler *handler,
 	struct shmem_inode_info *info = container_of(inode,
 						     struct shmem_inode_info,
 						     vfs_inode);
+	char full[256];
 
-	return dnsk_simple_xattr_set(&info->xattrs, xattr_full_name(handler,
-								     name),
+	return dnsk_simple_xattr_set(&info->xattrs,
+				     dnsk_full_name(full, handler, name),
 				     value, size, flags);
 }
 
@@ -147,7 +157,8 @@ static int dnsk_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 		return -EOPNOTSUPP;
 	if (!acl)
 		return dnsk_simple_xattr_set(&info->xattrs, name, NULL, 0, 0);
-	size = posix_acl_xattr_size(acl->a_count);
+	size = sizeof(struct posix_acl_xattr_header) +
+	       acl->a_count * sizeof(struct posix_acl_xattr_entry);
 	value = kmalloc(size, GFP_KERNEL);
 	if (!value)
 		return -ENOMEM;
