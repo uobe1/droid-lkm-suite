@@ -17,6 +17,7 @@ on:
           - ksud-ns
           - docker
           - ksud-docker
+          - tmpfsx
         default: baseline
       module_run_id:
         description: CI run id with core-android16-6.12 artifact (cgpids mode)
@@ -270,6 +271,13 @@ jobs:
             cp runas rootfs/runas
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
             cp tests/qemu/init-ns-device rootfs/init
+          elif [ "${{ inputs.mode }}" = "tmpfsx" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_tmpfsx.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            aarch64-linux-gnu-gcc -static -O2 -o xattr_test tests/qemu/xattr_test.c
+            cp xattr_test rootfs/xattr_test
+            cp tests/qemu/init-tmpfsx-device rootfs/init
           elif [ "${{ inputs.mode }}" = "docker" ] || [ "${{ inputs.mode }}" = "ksud-docker" ]; then
             cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
             [ -e modules/dnsk_ns.ko ] && cp modules/dnsk_ns.ko rootfs/modules/
@@ -340,6 +348,9 @@ jobs:
           elif [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
             grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
             grep -q 'DNSK_DOCKER_DEVICE_OK' qemu.log
+          elif [ "$MODE" = "tmpfsx" ]; then
+            grep -q 'DNSK_TMPFSX_LKM_OK' qemu.log
+            grep -q 'DNSK_TMPFSX_OK' qemu.log
           else
             grep -q 'DNSK_DEVICE_KERNEL_OK' qemu.log
           fi

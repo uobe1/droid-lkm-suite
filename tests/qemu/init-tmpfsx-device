@@ -1,0 +1,45 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# tmpfs xattr on the beryl device Image: mounts that predate the module and
+# mounts created after it must both expose user.* xattrs.
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	"$BB" mknod /dev/console c 5 1
+	"$BB" mknod /dev/null c 1 3
+	"$BB" mknod /dev/zero c 1 5
+fi
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg 2>/dev/null | grep -iE 'dnsk_tmpfsx|dnsk_core|module|vermagic|refus' | tail -20
+	"$BB" poweroff -f
+}
+
+"$BB" mkdir -p /early /late
+mount -t tmpfs tmpfs /early || fail early_mount
+
+/insmod_force /modules/dnsk_core.ko || fail core_insmod
+/insmod_force /modules/dnsk_tmpfsx.ko || fail tmpfsx_insmod
+echo "DNSK_TMPFSX_LKM_OK"
+
+mount -t tmpfs tmpfs /late || fail late_mount
+
+echo data >/early/f || fail early_file
+/xattr_test /early/f || fail early_xattr
+echo data >/late/f || fail late_file
+/xattr_test /late/f || fail late_xattr
+
+echo data >/early/g || fail evict_file
+/xattr_test /early/g keep || fail evict_set
+"$BB" rm -f /early/g
+"$BB" sync
+
+echo "DNSK_TMPFSX_OK"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f
