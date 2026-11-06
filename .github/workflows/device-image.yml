@@ -120,7 +120,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu \
             ipxe-qemu-256k-compat-efi-roms qemu-efi-aarch64 cpio \
-            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu kmod python3
+            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross kmod python3
       - name: Patch module vermagic
         if: ${{ inputs.mode == 'cgpids' }}
         env:

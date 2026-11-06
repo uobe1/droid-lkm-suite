@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#define _GNU_SOURCE
 // Minimal finit_module loader for QEMU: ignores modversions CRCs (the flag is
 // allowed without CONFIG_MODULE_FORCE_LOAD); vermagic is patched in CI.
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/module.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
