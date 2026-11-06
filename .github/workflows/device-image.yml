@@ -13,6 +13,7 @@ on:
         options:
           - baseline
           - cgpids
+          - ksud-cgpids
           - docker
         default: baseline
       module_run_id:
@@ -242,6 +243,12 @@ jobs:
             aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
             cp insmod_force rootfs/insmod_force
             cp tests/qemu/init-cgpids rootfs/init
+          elif [ "${{ inputs.mode }}" = "ksud-cgpids" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android rootfs/
+            cp tests/qemu/init-cgpids rootfs/init
           elif [ "${{ inputs.mode }}" = "docker" ]; then
             cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
             [ -e modules/dnsk_ns.ko ] && cp modules/dnsk_ns.ko rootfs/modules/
@@ -271,7 +278,7 @@ jobs:
             TIMEOUT=1200
           fi
           APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0 module.sig_enforce=0"
-          if [ "$MODE" = "cgpids" ] || [ "$MODE" = "docker" ]; then
+          if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ] || [ "$MODE" = "docker" ]; then
             APPEND="$APPEND dnsk_lkm=1"
           fi
           timeout "$TIMEOUT" qemu-system-aarch64 \
@@ -287,7 +294,7 @@ jobs:
             echo "device kernel did not exit cleanly" >&2
             exit 1
           fi
-          if [ "$MODE" = "cgpids" ]; then
+          if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ]; then
             grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
             grep -q 'DNSK_CGPIDS_OK' qemu.log
           elif [ "$MODE" = "docker" ]; then
