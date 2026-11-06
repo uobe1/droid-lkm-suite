@@ -10,6 +10,10 @@ on:
           - android16-6.12-xt104
           - android16-6.12-xt128
         default: android16-6.12-xt104
+      userns:
+        description: Build dnsk_ns with the USER_NS live port (spike)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -40,6 +44,8 @@ jobs:
           make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
           mkdir -p out
           cp dnsk_core.ko out/
+          NS_EXTRA=""
+          [ "${{ inputs.userns }}" = "true" ] && NS_EXTRA="DNSK_USERNS=1"
           for feat in ns diag devtmpfs netfilter ipset cgpids tmpfsx; do
             make -C "$GITHUB_WORKSPACE/features/$feat" KDIR="$KDIR" \
               DNSK_ABI_PROFILE="${DNSK_ABI_PROFILE:-}" \
@@ -55,7 +61,8 @@ jobs:
               DNSK_CGROUP_SUBSYS_ID="${DNSK_CGROUP_SUBSYS_ID:-}" \
               DNSK_SEQ_FILE_PRIVATE="${DNSK_SEQ_FILE_PRIVATE:-}" \
               DNSK_XT_NOCOMPAT="${DNSK_XT_NOCOMPAT:-}" \
-              DNSK_XT_LAYOUT="${DNSK_XT_LAYOUT:-}" modules
+              DNSK_XT_LAYOUT="${DNSK_XT_LAYOUT:-}" \
+              $([ "$feat" = "ns" ] && echo "$NS_EXTRA") modules
             cp features/"$feat"/dnsk_*.ko out/
           done
           make -C "$GITHUB_WORKSPACE/tests/qemu/selpermissive" KDIR="$KDIR" modules
