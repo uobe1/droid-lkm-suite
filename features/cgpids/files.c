@@ -57,9 +57,62 @@ static int (*orig_mkdir)(struct kernfs_node *parent, const char *name,
 			 umode_t mode);
 static int (*orig_rmdir)(struct kernfs_node *kn);
 
+/*
+ * Some cgroup internals are static and never address-taken in the kernel, so
+ * the kernel compiler did not emit a KCFI preamble for them.  Call them from
+ * __nocfi helpers: the signatures are verified against BTF/source, and the
+ * helpers themselves are direct-called, so their missing preamble is fine.
+ */
+static __nocfi noinline int dnsk_call_init_cftypes(void)
+{
+	return dnsk_cgroup_init_cftypes(NULL, dnsk_pids_files);
+}
+
+static __nocfi noinline int dnsk_call_addrm(struct cgroup *cgrp, bool add)
+{
+	return dnsk_cgroup_addrm_files(&cgrp->self, cgrp, dnsk_pids_files,
+				       add);
+}
+
+static __nocfi noinline struct cgroup_subsys_state *
+dnsk_call_of_css(struct kernfs_open_file *of)
+{
+	return dnsk_of_css(of);
+}
+
+static __nocfi noinline int dnsk_call_mkdir(struct kernfs_node *parent,
+					    const char *name, umode_t mode)
+{
+	return orig_mkdir(parent, name, mode);
+}
+
+static __nocfi noinline int dnsk_call_rmdir(struct kernfs_node *kn)
+{
+	return orig_rmdir(kn);
+}
+
+static __nocfi noinline int dnsk_call_controllers_show(struct seq_file *seq,
+						       void *v)
+{
+	return orig_controllers_show(seq, v);
+}
+
+static __nocfi noinline int dnsk_call_subtree_show(struct seq_file *seq,
+						   void *v)
+{
+	return orig_subtree_show(seq, v);
+}
+
+static __nocfi noinline ssize_t
+dnsk_call_subtree_write(struct kernfs_open_file *of, char *buf, size_t nbytes,
+			loff_t off)
+{
+	return orig_subtree_write(of, buf, nbytes, off);
+}
+
 static struct cgroup *dnsk_of_cgrp(struct kernfs_open_file *of)
 {
-	struct cgroup_subsys_state *css = dnsk_of_css(of);
+	struct cgroup_subsys_state *css = dnsk_call_of_css(of);
 
 	return css ? css->cgroup : NULL;
 }
@@ -87,7 +140,7 @@ static int dnsk_controllers_show(struct seq_file *seq, void *v)
 	bool show = false;
 	int ret;
 
-	ret = orig_controllers_show(seq, v);
+	ret = dnsk_call_controllers_show(seq, v);
 	if (ret)
 		return ret;
 	cgrp = dnsk_seq_cgrp(seq);
@@ -111,7 +164,7 @@ static int dnsk_subtree_show(struct seq_file *seq, void *v)
 	bool show = false;
 	int ret;
 
-	ret = orig_subtree_show(seq, v);
+	ret = dnsk_call_subtree_show(seq, v);
 	if (ret)
 		return ret;
 	cgrp = dnsk_seq_cgrp(seq);
@@ -191,7 +244,7 @@ static ssize_t dnsk_subtree_write(struct kernfs_open_file *of, char *buf,
 	buf = strstrip(buf);
 	dnsk_filter_pids(buf, &enable, &disable);
 	if (!enable && !disable)
-		return orig_subtree_write(of, buf, nbytes, off);
+		return dnsk_call_subtree_write(of, buf, nbytes, off);
 
 	if (disable && dnsk_child_enabled(cgrp))
 		return -EBUSY;
@@ -200,7 +253,7 @@ static ssize_t dnsk_subtree_write(struct kernfs_open_file *of, char *buf,
 	if (!st)
 		return -ENOMEM;
 
-	ret = orig_subtree_write(of, buf, nbytes, off);
+	ret = dnsk_call_subtree_write(of, buf, nbytes, off);
 	if (ret >= 0) {
 		if (enable)
 			st->enabled = true;
@@ -376,7 +429,7 @@ static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name,
 	struct dnsk_pids_state *st;
 	int ret, add_ret;
 
-	ret = orig_mkdir(parent_kn, name, mode);
+	ret = dnsk_call_mkdir(parent_kn, name, mode);
 	if (ret)
 		return ret;
 	parent = parent_kn->priv;
@@ -396,8 +449,7 @@ static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name,
 	}
 	add_ret = 0;
 	if (!st->files_added) {
-		add_ret = dnsk_cgroup_addrm_files(&child->self, child,
-						  dnsk_pids_files, true);
+		add_ret = dnsk_call_addrm(child, true);
 		if (!add_ret)
 			st->files_added = true;
 	}
@@ -405,8 +457,7 @@ static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name,
 
 	if (add_ret) {
 		mutex_lock(dnsk_cgroup_mutex);
-		dnsk_cgroup_addrm_files(&child->self, child, dnsk_pids_files,
-					false);
+		dnsk_call_addrm(child, false);
 		mutex_unlock(dnsk_cgroup_mutex);
 		dnsk_pids_destroy(child);
 	}
@@ -418,7 +469,7 @@ static int dnsk_rmdir(struct kernfs_node *kn)
 	struct cgroup *cgrp = kn->priv;
 	int ret;
 
-	ret = orig_rmdir(kn);
+	ret = dnsk_call_rmdir(kn);
 	if (!ret && cgrp)
 		dnsk_pids_destroy(cgrp);
 	return ret;
@@ -448,7 +499,7 @@ int dnsk_cgpids_files_init(void)
 	int ret;
 
 	mutex_lock(dnsk_cgroup_mutex);
-	ret = dnsk_cgroup_init_cftypes(NULL, dnsk_pids_files);
+	ret = dnsk_call_init_cftypes();
 	if (ret)
 		goto out;
 
