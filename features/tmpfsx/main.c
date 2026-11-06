@@ -318,7 +318,6 @@ out_fill:
 	dnsk_fill_ready = false;
 out_acl:
 	dnsk_del_acl_hooks();
-out_dops:
 	dnsk_api->hook_del(DNSK_TMPFSX_KEY_DOPS);
 	dnsk_dops_ready = false;
 out_iops:
