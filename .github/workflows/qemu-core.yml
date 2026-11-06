@@ -156,6 +156,13 @@ jobs:
             tar -xzf docker.tgz -C rootfs/opt
             cp rootfs/opt/docker/* rootfs/usr/bin/
             cp alpine.tar.gz rootfs/alpine.tar.gz
+            APK_BASE=https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64
+            for pkg in iptables-1.8.10-r3 libip4tc-1.8.10-r3 \
+                       libip6tc-1.8.10-r3 libxtables-1.8.10-r3 \
+                       libnftnl-1.2.6-r0; do
+              curl -fsSL -o "$pkg.apk" "$APK_BASE/$pkg.apk"
+              tar -xzf "$pkg.apk" -C rootfs 2>/dev/null
+            done
           fi
           if [ "${{ inputs.mode }}" = "baseline" ]; then
             cp tests/qemu/init rootfs/init

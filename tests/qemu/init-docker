@@ -27,6 +27,8 @@ fail() {
 
 echo "DNSK_QEMU_DOCKER_BOOT $(cat /proc/sys/kernel/osrelease)"
 "$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup || fail cgroup2_mount
+iptables --version || fail iptables_missing
+iptables -t nat -L -n >/dev/null 2>&1 || fail iptables_kernel
 
 for opt in m p u i n U C T; do
 	if "$BB" unshare -"$opt" true 2>/dev/null; then
@@ -49,8 +51,7 @@ export DOCKER_RAMDISK=true
 dockerd --containerd /run/containerd/containerd.sock \
 	--data-root /var/lib/docker --exec-root /run/docker \
 	--pidfile /run/docker.pid --storage-driver vfs \
-	--iptables=false --ip6tables=false \
-	--ip-forward=false --ip-masq=false \
+	--ip6tables=false \
 	--exec-opt native.cgroupdriver=cgroupfs \
 	>/var/log/dockerd.log 2>&1 &
 i=0
@@ -87,6 +88,15 @@ docker run --rm alpine:local /bin/sh -c \
 	'echo BRIDGE_DEV; cat /proc/net/dev; ping -c1 -W1 172.17.0.1' \
 	|| fail docker_bridge
 echo "DNSK_DOCKER_BRIDGE_OK"
+
+docker run -d --name dnsk-nat -p 18080:80 alpine:local /bin/sh -c \
+	'while true; do printf "HTTP/1.0 200 OK\r\n\r\nDOCKER_NAT_OK" | nc -l -p 80; done' \
+	|| fail docker_nat_start
+sleep 2
+printf 'GET / HTTP/1.0\r\n\r\n' | nc -w2 127.0.0.1 18080 | grep -q DOCKER_NAT_OK \
+	|| fail docker_nat
+docker rm -f dnsk-nat >/dev/null 2>&1 || true
+echo "DNSK_DOCKER_NAT_OK"
 
 echo "DNSK_DOCKER_OK"
 echo "DNSK_QEMU_OK"
