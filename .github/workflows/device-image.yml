@@ -289,6 +289,8 @@ jobs:
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
             aarch64-linux-gnu-gcc -static -O2 -o xattr_test tests/qemu/xattr_test.c
             cp xattr_test rootfs/xattr_test
+            aarch64-linux-gnu-gcc -static -O2 -o acl_test tests/qemu/acl_test.c
+            cp acl_test rootfs/acl_test
             cp tests/qemu/init-tmpfsx-device rootfs/init
           elif [ "${{ inputs.mode }}" = "userns" ]; then
             cp modules/dnsk_core.ko modules/dnsk_ns.ko rootfs/modules/
