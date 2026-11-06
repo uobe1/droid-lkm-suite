@@ -110,7 +110,8 @@ jobs:
             -e TMPFS_XATTR -e TMPFS_POSIX_ACL -e FUSE_FS -e OVERLAY_FS \
             -e VETH -e BRIDGE -e VIRTIO_NET -e VIRTIO_PCI -e VIRTIO_BLK \
             -e SECCOMP -e SECCOMP_FILTER -d MODULE_SIG_FORCE \
-            -d TRIM_UNUSED_KSYMS -d MODULE_SIG_ALL -d MODULE_SIG_PROTECT
+            -d TRIM_UNUSED_KSYMS -d MODULE_SIG_ALL -d MODULE_SIG_PROTECT \
+            --set-str MODULE_SIG_PROTECT_LIST ""
           if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
             "$SRC/scripts/config" --file "$KDIR/.config" -d CGROUP_PIDS
           fi
