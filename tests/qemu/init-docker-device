@@ -74,8 +74,11 @@ docker info >/dev/null 2>&1 || fail docker_info
 echo "docker_server=$(docker info --format '{{.ServerVersion}}' 2>/dev/null)"
 docker import /alpine.tar.gz alpine:local || fail docker_import
 
-docker run --rm --network none --pid host --ipc host --uts host \
-	--cgroupns host --pids-limit 32 alpine:local /bin/sh -c \
+RUN_NS="--pid host --ipc host --uts host --cgroupns host"
+if [ -e /modules/dnsk_ns.ko ]; then
+	RUN_NS="--cgroupns host"
+fi
+docker run --rm --network none $RUN_NS --pids-limit 32 alpine:local /bin/sh -c \
 	'n=0; while [ $n -lt 40 ]; do if (sleep 30 &) 2>/dev/null; then n=$((n+1)); else break; fi; done; \
 	 echo pids_spawned=$n; cat /sys/fs/cgroup/pids.max; cat /sys/fs/cgroup/pids.current; \
 	 cat /sys/fs/cgroup/pids.peak; cat /sys/fs/cgroup/pids.events' \
