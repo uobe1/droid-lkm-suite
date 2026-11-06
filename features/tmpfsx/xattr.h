@@ -19,11 +19,20 @@ typedef ssize_t (*dnsk_xattr_list_fn)(struct inode *inode,
 typedef void (*dnsk_xattrs_free_fn)(struct simple_xattrs *xattrs,
 				    size_t *freed_space);
 
-extern const struct xattr_handler *const dnsk_tmpfsx_handlers[];
+struct dnsk_acl_methods {
+	void *get_inode_acl;
+	void *get_acl;
+	void *set_acl;
+};
+
+extern const struct xattr_handler *dnsk_tmpfsx_handlers[6];
 
 int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
 			   dnsk_xattr_list_fn list,
 			   dnsk_xattrs_free_fn free_fn);
+int dnsk_tmpfsx_acl_init(void *from_xattr, void *to_xattr, void *user_ns,
+			 void *access_handler, void *default_handler,
+			 struct dnsk_acl_methods *methods);
 void dnsk_tmpfsx_evict_inode(struct inode *inode);
 ssize_t dnsk_tmpfsx_listxattr(struct dentry *dentry, char *buffer,
 			      size_t size);

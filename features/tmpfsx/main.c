@@ -34,6 +34,7 @@ static bool dnsk_dops_ready;
 static bool dnsk_fill_ready;
 static bool dnsk_evict_ready;
 static bool dnsk_feature_ready;
+static struct dnsk_acl_methods dnsk_acl_ops;
 
 static void dnsk_wire_sb(struct super_block *sb, void *arg)
 {
@@ -77,6 +78,30 @@ static int dnsk_add_data_hook(const char *key, void *table, void *fn)
 	return dnsk_api->hook_add(&req);
 }
 
+static int dnsk_add_acl_hook(const char *key, void *table, size_t off,
+			     void *fn)
+{
+	struct dnsk_hook_req req = {
+		.key = key,
+		.type = DNSK_HOOK_DATA,
+		.owner = THIS_MODULE,
+		.target = (char *)table + off,
+		.replacement = fn,
+	};
+
+	return dnsk_api->hook_add(&req);
+}
+
+static void dnsk_del_acl_hooks(void)
+{
+	dnsk_api->hook_del("tmpfsx.dops.set_acl");
+	dnsk_api->hook_del("tmpfsx.dops.get_acl");
+	dnsk_api->hook_del("tmpfsx.dops.get_inode_acl");
+	dnsk_api->hook_del("tmpfsx.iops.set_acl");
+	dnsk_api->hook_del("tmpfsx.iops.get_acl");
+	dnsk_api->hook_del("tmpfsx.iops.get_inode_acl");
+}
+
 static int dnsk_add_kprobe_hook(const char *key, const char *symbol, void *fn)
 {
 	struct dnsk_hook_req req = {
@@ -93,6 +118,8 @@ static int dnsk_add_kprobe_hook(const char *key, const char *symbol, void *fn)
 static int dnsk_resolve_symbols(void)
 {
 	void *xattr_set, *xattr_get, *xattr_list, *xattrs_free;
+	void *acl_from, *acl_to, *user_ns, *acl_access, *acl_default;
+	int ret;
 
 	dnsk_iops = dnsk_api->resolve("shmem_inode_operations");
 	dnsk_dops = dnsk_api->resolve("shmem_dir_inode_operations");
@@ -101,16 +128,26 @@ static int dnsk_resolve_symbols(void)
 	xattr_get = dnsk_api->resolve("simple_xattr_get");
 	xattr_list = dnsk_api->resolve("simple_xattr_list");
 	xattrs_free = dnsk_api->resolve("simple_xattrs_free");
+	acl_from = dnsk_api->resolve("posix_acl_from_xattr");
+	acl_to = dnsk_api->resolve("posix_acl_to_xattr");
+	user_ns = dnsk_api->resolve("init_user_ns");
+	acl_access = dnsk_api->resolve("posix_acl_access_xattr_handler");
+	acl_default = dnsk_api->resolve("posix_acl_default_xattr_handler");
 
 	if (!dnsk_iops || !dnsk_dops || !dnsk_iterate_supers || !xattr_set ||
-	    !xattr_get || !xattr_list || !xattrs_free) {
-		pr_err("dnsk_tmpfsx: missing tmpfs or xattr symbols\n");
+	    !xattr_get || !xattr_list || !xattrs_free || !acl_from ||
+	    !acl_to || !user_ns || !acl_access || !acl_default) {
+		pr_err("dnsk_tmpfsx: missing tmpfs, xattr or ACL symbols\n");
 		return -ENOENT;
 	}
-	return dnsk_tmpfsx_xattr_init((dnsk_xattr_set_fn)xattr_set,
-				      (dnsk_xattr_get_fn)xattr_get,
-				      (dnsk_xattr_list_fn)xattr_list,
-				      (dnsk_xattrs_free_fn)xattrs_free);
+	ret = dnsk_tmpfsx_xattr_init((dnsk_xattr_set_fn)xattr_set,
+				     (dnsk_xattr_get_fn)xattr_get,
+				     (dnsk_xattr_list_fn)xattr_list,
+				     (dnsk_xattrs_free_fn)xattrs_free);
+	if (ret)
+		return ret;
+	return dnsk_tmpfsx_acl_init(acl_from, acl_to, user_ns, acl_access,
+				    acl_default, &dnsk_acl_ops);
 }
 
 static struct dnsk_feature_desc dnsk_tmpfsx_desc = {
@@ -159,6 +196,39 @@ static int __init dnsk_tmpfsx_init(void)
 		goto out_iops;
 	dnsk_dops_ready = true;
 
+	ret = dnsk_add_acl_hook("tmpfsx.iops.get_inode_acl", dnsk_iops,
+				offsetof(struct inode_operations,
+					 get_inode_acl),
+				dnsk_acl_ops.get_inode_acl);
+	if (ret)
+		goto out_acl;
+	ret = dnsk_add_acl_hook("tmpfsx.iops.get_acl", dnsk_iops,
+				offsetof(struct inode_operations, get_acl),
+				dnsk_acl_ops.get_acl);
+	if (ret)
+		goto out_acl;
+	ret = dnsk_add_acl_hook("tmpfsx.iops.set_acl", dnsk_iops,
+				offsetof(struct inode_operations, set_acl),
+				dnsk_acl_ops.set_acl);
+	if (ret)
+		goto out_acl;
+	ret = dnsk_add_acl_hook("tmpfsx.dops.get_inode_acl", dnsk_dops,
+				offsetof(struct inode_operations,
+					 get_inode_acl),
+				dnsk_acl_ops.get_inode_acl);
+	if (ret)
+		goto out_acl;
+	ret = dnsk_add_acl_hook("tmpfsx.dops.get_acl", dnsk_dops,
+				offsetof(struct inode_operations, get_acl),
+				dnsk_acl_ops.get_acl);
+	if (ret)
+		goto out_acl;
+	ret = dnsk_add_acl_hook("tmpfsx.dops.set_acl", dnsk_dops,
+				offsetof(struct inode_operations, set_acl),
+				dnsk_acl_ops.set_acl);
+	if (ret)
+		goto out_acl;
+
 	ret = dnsk_add_kprobe_hook(DNSK_TMPFSX_KEY_FILL, "shmem_fill_super",
 				   dnsk_fill_super_pre);
 	if (ret)
@@ -190,6 +260,8 @@ out_evict:
 out_fill:
 	dnsk_api->hook_del(DNSK_TMPFSX_KEY_FILL);
 	dnsk_fill_ready = false;
+out_acl:
+	dnsk_del_acl_hooks();
 out_dops:
 	dnsk_api->hook_del(DNSK_TMPFSX_KEY_DOPS);
 	dnsk_dops_ready = false;
@@ -214,6 +286,7 @@ static void __exit dnsk_tmpfsx_exit(void)
 		dnsk_api->hook_del(DNSK_TMPFSX_KEY_FILL);
 	if (dnsk_dops_ready)
 		dnsk_api->hook_del(DNSK_TMPFSX_KEY_DOPS);
+	dnsk_del_acl_hooks();
 	if (dnsk_iops_ready)
 		dnsk_api->hook_del(DNSK_TMPFSX_KEY_IOPS);
 	if (dnsk_iterate_supers)

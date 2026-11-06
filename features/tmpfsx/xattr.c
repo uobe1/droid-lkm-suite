@@ -8,7 +8,10 @@
 #include <linux/errno.h>
 #include <linux/fs.h>
 #include <linux/mnt_idmapping.h>
+#include <linux/posix_acl.h>
+#include <linux/posix_acl_xattr.h>
 #include <linux/shmem_fs.h>
+#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/xattr.h>
 #include "xattr.h"
@@ -74,12 +77,89 @@ static const struct xattr_handler dnsk_xattr_security_handler = {
 	.set = dnsk_xattr_set,
 };
 
-const struct xattr_handler *const dnsk_tmpfsx_handlers[] = {
-	&dnsk_xattr_security_handler,
-	&dnsk_xattr_trusted_handler,
-	&dnsk_xattr_user_handler,
-	NULL,
-};
+const struct xattr_handler *dnsk_tmpfsx_handlers[6];
+
+static struct posix_acl *(*dnsk_acl_from_xattr)(struct user_namespace *userns,
+						const void *value,
+						size_t size);
+static int (*dnsk_acl_to_xattr)(struct user_namespace *userns,
+				const struct posix_acl *acl, void *buffer,
+				size_t size);
+static struct user_namespace *dnsk_user_ns;
+
+static const char *dnsk_acl_xattr_name(int type)
+{
+	return type == ACL_TYPE_ACCESS ? XATTR_NAME_POSIX_ACL_ACCESS :
+					 XATTR_NAME_POSIX_ACL_DEFAULT;
+}
+
+static struct posix_acl *dnsk_get_inode_acl(struct inode *inode, int type,
+					    bool rcu)
+{
+	struct shmem_inode_info *info = container_of(inode,
+						     struct shmem_inode_info,
+						     vfs_inode);
+	const char *name = dnsk_acl_xattr_name(type);
+	struct posix_acl *acl;
+	void *value;
+	ssize_t size;
+
+	if (rcu)
+		return ERR_PTR(-ECHILD);
+	if (!IS_POSIXACL(inode))
+		return NULL;
+	size = dnsk_simple_xattr_get(&info->xattrs, name, NULL, 0);
+	if (size == -ENODATA)
+		return NULL;
+	if (size < 0)
+		return ERR_PTR(size);
+	value = kmalloc(size, GFP_KERNEL);
+	if (!value)
+		return ERR_PTR(-ENOMEM);
+	size = dnsk_simple_xattr_get(&info->xattrs, name, value, size);
+	if (size < 0) {
+		kfree(value);
+		return ERR_PTR(size);
+	}
+	acl = dnsk_acl_from_xattr(dnsk_user_ns, value, size);
+	kfree(value);
+	return acl;
+}
+
+static struct posix_acl *dnsk_get_acl(struct mnt_idmap *idmap,
+				      struct dentry *dentry, int type)
+{
+	return dnsk_get_inode_acl(d_inode(dentry), type, false);
+}
+
+static int dnsk_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
+			struct posix_acl *acl, int type)
+{
+	struct inode *inode = d_inode(dentry);
+	struct shmem_inode_info *info = container_of(inode,
+						     struct shmem_inode_info,
+						     vfs_inode);
+	const char *name = dnsk_acl_xattr_name(type);
+	void *value;
+	int size, ret;
+
+	if (!IS_POSIXACL(inode))
+		return -EOPNOTSUPP;
+	if (!acl)
+		return dnsk_simple_xattr_set(&info->xattrs, name, NULL, 0, 0);
+	size = posix_acl_xattr_size(acl->a_count);
+	value = kmalloc(size, GFP_KERNEL);
+	if (!value)
+		return -ENOMEM;
+	ret = dnsk_acl_to_xattr(dnsk_user_ns, acl, value, size);
+	if (ret < 0) {
+		kfree(value);
+		return ret;
+	}
+	ret = dnsk_simple_xattr_set(&info->xattrs, name, value, size, 0);
+	kfree(value);
+	return ret;
+}
 
 void dnsk_tmpfsx_evict_inode(struct inode *inode)
 {
@@ -99,5 +179,29 @@ int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
 	dnsk_simple_xattr_get = get;
 	dnsk_simple_xattr_list = list;
 	dnsk_simple_xattrs_free = free_fn;
+	dnsk_tmpfsx_handlers[0] = &dnsk_xattr_security_handler;
+	dnsk_tmpfsx_handlers[1] = &dnsk_xattr_trusted_handler;
+	dnsk_tmpfsx_handlers[2] = &dnsk_xattr_user_handler;
+	dnsk_tmpfsx_handlers[3] = NULL;
+	dnsk_tmpfsx_handlers[4] = NULL;
+	dnsk_tmpfsx_handlers[5] = NULL;
+	return 0;
+}
+
+int dnsk_tmpfsx_acl_init(void *from_xattr, void *to_xattr, void *user_ns,
+			 void *access_handler, void *default_handler,
+			 struct dnsk_acl_methods *methods)
+{
+	if (!from_xattr || !to_xattr || !user_ns || !access_handler ||
+	    !default_handler || !methods)
+		return -EINVAL;
+	dnsk_acl_from_xattr = (typeof(dnsk_acl_from_xattr))from_xattr;
+	dnsk_acl_to_xattr = (typeof(dnsk_acl_to_xattr))to_xattr;
+	dnsk_user_ns = user_ns;
+	dnsk_tmpfsx_handlers[3] = access_handler;
+	dnsk_tmpfsx_handlers[4] = default_handler;
+	methods->get_inode_acl = (void *)dnsk_get_inode_acl;
+	methods->get_acl = (void *)dnsk_get_acl;
+	methods->set_acl = (void *)dnsk_set_acl;
 	return 0;
 }
