@@ -28,11 +28,6 @@ on:
         required: false
         type: string
         default: ""
-      module_run_id:
-        description: override modules from core-android16-6.12 artifact of this run id
-        required: false
-        type: string
-        default: ""
 
 permissions:
   contents: read
@@ -174,13 +169,6 @@ jobs:
           path: qemu
           run-id: ${{ inputs.image_run_id }}
           github-token: ${{ github.token }}
-      - uses: actions/download-artifact@v4
-        if: ${{ inputs.module_run_id != '' }}
-        with:
-          name: core-android16-6.12
-          path: module-override
-          run-id: ${{ inputs.module_run_id }}
-          github-token: ${{ github.token }}
       - name: Install QEMU
         run: |
           PKGS="qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio"
@@ -198,9 +186,6 @@ jobs:
           tar -xzf alpine.tar.gz -C rootfs
           mkdir -p rootfs/modules rootfs/proc rootfs/sys rootfs/dev rootfs/tmp
           for ko in qemu/dnsk_*.ko; do
-            [ -e "$ko" ] && cp "$ko" rootfs/modules/
-          done
-          for ko in module-override/dnsk_*.ko; do
             [ -e "$ko" ] && cp "$ko" rootfs/modules/
           done
           curl -fsSL -o libmnl.apk \
