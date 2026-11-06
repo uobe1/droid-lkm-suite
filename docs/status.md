@@ -12,7 +12,7 @@
 | xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | active load/unload + netns 内 addrtype/recent/REJECT 规则通过; 原生 REJECT 正确跳过; Docker/UFW/Fail2ban 验收待完成 |
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | development | 6.12 构建/导出/QEMU hash 语义通过; 设备 no-compat ABI 修复后 insmod/xt_set 注册/rmmod 通过; iptables 规则与容器验收待完成 |
 | USER_NS + idmapped/child overlay/FUSE/selftests | D → N | merged-build spike | 上游 userns live 已 vendor 进 `dnsk_ns`（`DNSK_USERNS=1`），设备 Image 门与 idmapped/child overlay/FUSE/selftests 未验证；见 [evidence/m0-userns.md](evidence/m0-userns.md) |
-| TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | feasibility → xattr prototype | `dnsk_tmpfsx` 已能在 beryl Image 通过 ksud 加载并安装 handler；`simple_xattr_set` KCFI 原型已修正，xattr 功能门待重跑；设备缺少 tmpfs ACL native handler，ACL 仅在内核提供 handler 的 KMI 上接线，否则 fail-closed；见 [evidence/m0-tmpfs.md](evidence/m0-tmpfs.md) |
+| TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | feasibility → xattr prototype | beryl Image 上 ksud 加载成功，early/late tmpfs 的 user.* get/set/list/remove 均通过；ACL 由模块自实现 handler（内核 `posix_acl_from_xattr/to_xattr`/`set_posix_acl`），`acl/noacl` 支持新 mount API 与 legacy `mount(2)`；ACL 门重跑中，LSM 差分未做；见 [evidence/m0-tmpfs.md](evidence/m0-tmpfs.md) |
 | CGROUP_PIDS（虚拟控制器） | V/D → N | development | 设备 Image 差分通过（run 42247140068，ksud 加载；controllers/subtree/max/current/peak/events/EAGAIN/migration 与 Native baseline 一致，无 negative counter）；Docker 29.x 设备镜像门通过（run 42245959539：隔离命名空间、`--pids-limit 32`、pids_spawned=30）；v1 标 unsupported；见 evidence/cgpids-differential.md |
 | CFS_BANDWIDTH | N/N/A | native/待按 KMI 核对 | 不写 LKM |
 | FUSE / OverlayFS / NET_NS / UTS / TIME / CGROUP ns | N | native | USER_NS 场景单独验收 |
