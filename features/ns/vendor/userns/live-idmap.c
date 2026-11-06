@@ -153,11 +153,8 @@ struct mnt_idmap *ds_userns_alloc_mnt_idmap(struct user_namespace *userns)
 	if (pending && userns == &init_user_ns)
 		userns = pending;
 	id = ds_userns_alloc_mnt_idmap_original(userns);
-	if (!IS_ERR(id))
-		pr_info("alloc_mnt_idmap: ret=%px extents=%u first=%u lower=%u count=%u\n",
-			id, id->uid_map.nr_extents,
-			id->uid_map.extent[0].first,
-			id->uid_map.extent[0].lower_first,
-			id->uid_map.extent[0].count);
+	pr_info("alloc_mnt_idmap: ret=%px userns=%px uid0=%u uid1=%u\n",
+		id, userns, from_kuid(userns, KUIDT_INIT(0)),
+		from_kuid(userns, KUIDT_INIT(1)));
 	return id;
 }
