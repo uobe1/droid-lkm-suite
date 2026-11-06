@@ -199,6 +199,17 @@ static int child_idmap_test(void)
 		printf("IDMAP_CLONE_UID=%u\n", (unsigned)st.st_uid);
 	else
 		printf("IDMAP_CLONE_STAT_ERR=%d\n", errno);
+	{
+		struct statx stx;
+		int ret2;
+
+		memset(&stx, 0, sizeof(stx));
+		ret2 = syscall(SYS_statx, tfd, "f", 0, STATX_UID, &stx);
+		if (ret2 == 0)
+			printf("IDMAP_CLONE_STATX_UID=%u\n", stx.stx_uid);
+		else
+			printf("IDMAP_CLONE_STATX_ERR=%d\n", errno);
+	}
 	step = "mkdir_target";
 	if (mkdir("/tmp/idmap2", 0755) < 0 && errno != EEXIST)
 		goto fail_tree;
