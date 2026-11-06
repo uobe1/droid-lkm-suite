@@ -38,21 +38,29 @@ prototype 已落代码；未达 Native，不打 tag。**
    其他 KMI 若 `sizeof(shared_policy)!=0` 必须在 preflight 拒绝。
 5. 模块安装后 pin 到重启（sb 持有模块内 handler 数组指针）。
 
-## ACL 设计缺口（未实现）
+## ACL 实现（设备门已通过）
 
-原生 ACL xattr handler 依赖 `IS_POSIXACL(inode)`（即 `sb->s_flags &
-SB_POSIXACL`）并调用 `inode->i_op->get_inode_acl/set_acl`。设备
-`CONFIG_TMPFS_POSIX_ACL=n` 时：
+设备 `CONFIG_TMPFS_POSIX_ACL=n`：`shmem_parse_one()` 不接受 `acl`，
+挂载不置 `SB_POSIXACL`，`shmem_inode_operations` 的 ACL 槽为空。
 
-1. `shmem_parse_one()` 不接受 `acl` 挂载选项；
-2. tmpfs 挂载不会置 `SB_POSIXACL`；
-3. `shmem_inode_operations` 的 ACL 槽为空。
+实现方式：挂载选项层面接受/记录 `acl` 并为该 sb 置 `SB_POSIXACL`；
+以 `simple_xattr` + `posix_acl_from_xattr/to_xattr` 实现
+`get_inode_acl`/`get_acl`/`set_acl` 三个 i_op 槽。syscall 侧的
+`setxattr/getxattr` 对 ACL 名走 `do_set_acl/do_get_acl`，不经过
+`sb->s_xattr`，所以这三个 i_op 是唯一生效路径。
 
-因此完整 Native ACL 需要：挂载选项层面接受/记录 `acl`（按 sb），只为
-带 `acl` 的挂载置 `SB_POSIXACL`，再以 `simple_xattr` +
-`posix_acl_from_xattr/to_xattr` 实现三个 i_op 槽，并复用
-`posix_acl_access_xattr_handler`/`posix_acl_default_xattr_handler`。
-ACL 是 M4 硬阻塞，当前 prototype 只交付 xattr。
+关键修正（2026-11-06）：`do_get_acl` 先查 `inode->i_acl` 缓存。文件
+open 阶段的权限检查会把“无 ACL”缓存为 NULL；`set_acl` 只写
+`simple_xattr` 而不更新缓存时，后续 `getxattr` 命中旧 NULL，返回
+`ENODATA`。现按 `simple_set_acl` 语义先 `posix_acl_update_mode()`
+（最小 ACL 归一为 NULL），写入后 `set_cached_acl()`；删除路径缓存
+NULL。设备门 run 42254936230：fsopen + `-o acl` 与 legacy
+`mount -t tmpfs -o acl` 的 set/get/remove 全部通过
+（`DNSK_TMPFSX_ACL_OK` / `DNSK_TMPFSX_ACL_LEGACY_OK`）。
+
+Native-first：若内核已有 tmpfs xattr（`shmem_inode_operations.listxattr`
+非空）则整个模块不接管；若已有 native ACL（i_op 槽或 handler），只保留
+原生 ACL，不安装自有实现。
 
 ## 已落代码
 
@@ -74,4 +82,4 @@ ACL 落地细节（2026-11-06）：
 - KCFI 教训：`simple_xattr_set` 在 beryl 返回 `struct simple_xattr *`（不是
   int），`simple_xattr_list` 返回 `ssize_t`；函数指针原型必须与设备 BTF
   的 FUNC_PROTO 完全一致，否则首次调用触发 CFI failure。
-- LSM 差分、发布级 preflight stamp 与真机验证仍未完成。
+- LSM 差分与发布级 preflight stamp 未做；设备 Image 门已通过。

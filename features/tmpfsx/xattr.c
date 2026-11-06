@@ -114,10 +114,8 @@ static int dnsk_acl_xattr_get(const struct xattr_handler *handler,
 						     vfs_inode);
 	int ret;
 
-	ret = dnsk_simple_xattr_get(&info->xattrs, handler->name, buffer,
-				    size);
-	pr_info("dnsk_tmpfsx: acl get %s -> %d\n", handler->name, ret);
-	return ret;
+	return dnsk_simple_xattr_get(&info->xattrs, handler->name, buffer,
+				     size);
 }
 
 static int dnsk_acl_xattr_set(const struct xattr_handler *handler,
@@ -174,7 +172,6 @@ static struct posix_acl *dnsk_get_inode_acl(struct inode *inode, int type,
 	if (!IS_POSIXACL(inode))
 		return NULL;
 	size = dnsk_simple_xattr_get(&info->xattrs, name, NULL, 0);
-	pr_err("dnsk_tmpfsx: acl get %s size=%zd\n", name, size);
 	if (size == -ENODATA)
 		return NULL;
 	if (size < 0)

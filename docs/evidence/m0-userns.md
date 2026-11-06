@@ -88,3 +88,15 @@ Native 证据，不对外宣称。**
   证据，再决定模块边界调整。
 - 在此之前 USER_NS 保持 feasibility gate，不得宣称 Native/Real；M4 的
   idmapped/overlay/FUSE/selftests 仍是发布硬阻塞。
+
+## 设备 Image 首门与 ThinLTO 修正（2026-11-06）
+
+合并构建 `dnsk_ns.ko`（`DNSK_USERNS=1`）在 beryl Image 上经 ksud 加载：
+PID/IPC preflight、分配/共享/延迟销毁与 `DNSK_USERNS_LKM_OK` 通过。
+`unshare(CLONE_NEWUSER)` 返回 `EINVAL`：该 GKI 用 ThinLTO 把
+`ksys_unshare()` 内联进 `__arm64_sys_unshare`，只 hook `ksys_unshare`
+不会命中 syscall 路径，调用落入 `CONFIG_USER_NS=n` 的 stub。
+
+修正：同时 hook `__arm64_sys_unshare` 到 `ds_unshare` 包装
+（`ds_ksys_unshare`），并在 live 初始化前用核心 kallsyms 检查原生
+`create_user_ns`；存在原生 USER_NS 时拒绝加载，保留原生实现。门重跑中。

@@ -9,10 +9,10 @@
 | core ABI / symbol / patch / hook / panic | N/A | M0 完成 | ABI 2；状态桥/生命周期真机验证；stock GKI QEMU core smoke 通过 |
 | PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV/mqueue + nested PID + 100 cycles + 嵌套 Debian 容器 smoke 通过；pidfd setns 的 `ipc_ns=NULL` panic 已修复并复测（EINVAL + ns smoke）；full R 待 setns/Docker/容器 reboot |
 | DEVTMPFS | R | development | active 真机通过：ready=Y、节点挂载、宿主 /dev 不变、嵌套容器 /dev smoke；模块按设计 pin；Docker/droidspaces 工作负载待完成 |
-| xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | active load/unload + netns 内 addrtype/recent/REJECT 规则通过; 原生 REJECT 正确跳过; Docker/UFW/Fail2ban 验收待完成 |
+| xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | active load/unload + netns 内 addrtype/recent/REJECT/ipset/xt_set 规则通过; 原生 REJECT 正确跳过; 内核缺 `IP6_NF_NAT` 时由模块补齐 legacy `nat` 表（DNAT/MASQUERADE，run 42254952259，符号由 ksud 解析）; Docker/UFW/Fail2ban 验收待完成 |
 | IP_SET / HASH_IP / HASH_NET / XT_SET | R | development | 6.12 构建/导出/QEMU hash 语义通过; 设备 no-compat ABI 修复后 insmod/xt_set 注册/rmmod 通过; iptables 规则与容器验收待完成 |
-| USER_NS + idmapped/child overlay/FUSE/selftests | D → N | merged-build spike | 上游 userns live 已 vendor 进 `dnsk_ns`（`DNSK_USERNS=1`），设备 Image 门与 idmapped/child overlay/FUSE/selftests 未验证；见 [evidence/m0-userns.md](evidence/m0-userns.md) |
-| TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | feasibility → xattr prototype | beryl Image 上 ksud 加载成功，early/late tmpfs 的 user.* get/set/list/remove 均通过；ACL 由模块自实现 handler（内核 `posix_acl_from_xattr/to_xattr`/`set_posix_acl`），`acl/noacl` 支持新 mount API 与 legacy `mount(2)`；ACL 门重跑中，LSM 差分未做；见 [evidence/m0-tmpfs.md](evidence/m0-tmpfs.md) |
+| USER_NS + idmapped/child overlay/FUSE/selftests | D → N | merged-build spike | 上游 userns live 已 vendor 进 `dnsk_ns`（`DNSK_USERNS=1`）；设备 Image 首次门中 PID/IPC 与模块加载通过，`unshare(CLONE_NEWUSER)` 因 ThinLTO 内联 `ksys_unshare` 返回 EINVAL，已补 `__arm64_sys_unshare` 入口 hook 并加原生 USER_NS 拒绝逻辑，门重跑中；idmapped/child overlay/FUSE/selftests 未验证；见 [evidence/m0-userns.md](evidence/m0-userns.md) |
+| TMPFS_XATTR / POSIX_ACL（全局 Native 语义） | D → N | development | beryl Image 上 ksud 加载成功，early/late tmpfs 的 user.* get/set/list/remove 均通过；ACL 由模块自实现 i_op（内核 `posix_acl_*`/`set_posix_acl`），`acl/noacl` 支持新 mount API 与 legacy `mount(2)`，set 后更新 inode ACL 缓存；ACL 门 run 42254936230 通过；有原生 tmpfs xattr/ACL 时保持原生；LSM 差分未做；见 [evidence/m0-tmpfs.md](evidence/m0-tmpfs.md) |
 | CGROUP_PIDS（虚拟控制器） | V/D → N | development | 设备 Image 差分通过（run 42247140068，ksud 加载；controllers/subtree/max/current/peak/events/EAGAIN/migration 与 Native baseline 一致，无 negative counter）；Docker 29.x 设备镜像门通过（run 42245959539：隔离命名空间、`--pids-limit 32`、pids_spawned=30）；v1 标 unsupported；见 evidence/cgpids-differential.md |
 | CFS_BANDWIDTH | N/N/A | native/待按 KMI 核对 | 不写 LKM |
 | FUSE / OverlayFS / NET_NS / UTS / TIME / CGROUP ns | N | native | USER_NS 场景单独验收 |
@@ -32,6 +32,12 @@
   `--pids-limit 32` 与 DNAT 端口映射通过（run 41276935359 / 42201793594 /
   42208592119）。stock DDK 缺少这些 config，不能直接跑 Docker。见
   [evidence/qemu-docker.md](evidence/qemu-docker.md)。
+- tmpfs ACL：设备 Image 上 fsopen 与 legacy `-o acl` 的 set/get/remove
+  通过（run 42254936230）；`set_acl` 必须同步更新 `inode->i_acl` 缓存，
+  否则 open 阶段缓存的 NULL 会让 getxattr 返回 ENODATA。
+- legacy ip6 NAT：设备缺 `CONFIG_IP6_NF_NAT` 时 `dnsk_netfilter` 注册
+  上游 `ip6table_nat`，9 个未导出符号由 ksud 解析；netns 内 DNAT/
+  MASQUERADE 通过（run 42254952259）；原生模板存在时 `-EEXIST` 跳过。
 - netfilter ABI：设备 BTF 复核 nf_hook_ops(40)/nf_conn(272)/
   pernet_operations(72)/nfnetlink_subsystem(64)/nfnl_callback(32)/
   net(4160)/rhashtable(160)；`--feature netfilter` 同时校验符号；见
