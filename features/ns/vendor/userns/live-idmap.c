@@ -36,6 +36,7 @@ static struct ds_idmap_pending ds_idmap_slots[DS_IDMAP_SLOTS];
 extern long ds_userns_mount_setattr_original(const struct pt_regs *regs);
 extern struct mnt_idmap *
 ds_userns_alloc_mnt_idmap_original(struct user_namespace *userns);
+extern bool proc_ns_file(const struct file *file);
 
 static struct user_namespace *ds_userns_from_fd(unsigned int fd)
 {
