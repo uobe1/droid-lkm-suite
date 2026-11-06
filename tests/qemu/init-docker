@@ -94,10 +94,14 @@ docker run --rm alpine:local /bin/sh -c \
 echo "DNSK_DOCKER_BRIDGE_OK"
 
 docker run -d --name dnsk-nat -p 18080:80 alpine:local /bin/sh -c \
-	'while true; do printf "HTTP/1.0 200 OK\r\n\r\nDOCKER_NAT_OK" | nc -l -p 80; done' \
+	'echo DOCKER_NAT_OK > /tmp/index.html; exec httpd -f -p 80 -h /tmp' \
 	|| fail docker_nat_start
-sleep 3
-if ! printf 'GET / HTTP/1.0\r\n\r\n' | nc -w2 127.0.0.1 18080 | grep -q DOCKER_NAT_OK; then
+sleep 2
+nat_ip=$(docker inspect -f '{{.NetworkSettings.IPAddress}}' dnsk-nat 2>/dev/null)
+echo "nat_container_ip=$nat_ip"
+wget -qO- --timeout=3 "http://$nat_ip/" | grep -q DOCKER_NAT_OK \
+	|| fail docker_nat_direct
+if ! wget -qO- --timeout=3 http://127.0.0.1:18080/ | grep -q DOCKER_NAT_OK; then
 	echo "nat diagnostics:"
 	docker ps -a 2>&1 | tail -5
 	docker logs dnsk-nat 2>&1 | tail -10
