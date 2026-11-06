@@ -23,6 +23,11 @@
 extern u32 ds_userns_fuse_simple_request_original[];
 extern u32 ds_userns_fuse_do_set_acl_original[], ds_userns_fuse_do_get_acl_original[];
 extern u32 ds_userns_mm_init_original[], ds_userns_ns_ioctl_original[], ds_userns_sk_getsockopt_original[], ds_userns_fuse_get_tree_original[];
+extern u32 ds_userns_mount_setattr_original[], ds_userns_alloc_mnt_idmap_original[];
+extern long ds_userns_mount_setattr(const struct pt_regs *);
+struct user_namespace;
+struct mnt_idmap;
+extern struct mnt_idmap *ds_userns_alloc_mnt_idmap(struct user_namespace *);
 #include <linux/user_namespace.h>
 #include <linux/utsname.h>
 #endif
@@ -311,6 +316,10 @@ static struct ds_hook hooks[] = {
 	HOOK("proc_tid_base_lookup", ds_userns_tid_lookup),
 	HOOK("proc_tgid_base_readdir", ds_userns_tgid_readdir),
 	HOOK("proc_tid_base_readdir", ds_userns_tid_readdir),
+	HOOK_ORIGINAL("__arm64_sys_mount_setattr", ds_userns_mount_setattr,
+		      ds_userns_mount_setattr_original),
+	HOOK_ORIGINAL("alloc_mnt_idmap", ds_userns_alloc_mnt_idmap,
+		      ds_userns_alloc_mnt_idmap_original),
 #endif
 	HOOK_ORIGINAL("perf_event_alloc", ds_perf_event_alloc, ds_perf_alloc_original),
 	HOOK_ORIGINAL("free_event_rcu", ds_perf_free_event_rcu, ds_perf_free_original),
