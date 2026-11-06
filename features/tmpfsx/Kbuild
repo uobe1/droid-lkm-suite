@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+obj-m := dnsk_tmpfsx.o
+
+dnsk_tmpfsx-y := main.o xattr.o
+
+ifneq ($(DNSK_ABI_PROFILE),)
+ccflags-y += -DDNSK_ABI_PROFILE=\"$(DNSK_ABI_PROFILE)\"
+endif
+ifneq ($(DNSK_PAGE_SIZE),)
+ccflags-y += -DDNSK_PAGE_SIZE=$(DNSK_PAGE_SIZE)
+endif
+ifneq ($(DNSK_MAX_SKB_FRAGS),)
+ccflags-y += -DDNSK_MAX_SKB_FRAGS=$(DNSK_MAX_SKB_FRAGS)
+endif
+ifneq ($(DNSK_CGROUP_SUBSYS_COUNT),)
+ccflags-y += -DDNSK_CGROUP_SUBSYS_COUNT=$(DNSK_CGROUP_SUBSYS_COUNT)
+endif
+
+ccflags-y += -I$(src)/../../core/include -I$(src)
+ccflags-y += -std=gnu11 -Wno-declaration-after-statement
