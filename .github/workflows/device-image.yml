@@ -8,14 +8,24 @@ on:
         required: true
         default: "https://bkt-sgp-miui-ota-update-alisgp.oss-ap-southeast-1.aliyuncs.com/OS3.0.305.0.WOQCNXM/beryl_images_OS3.0.305.0.WOQCNXM_20260416.0000.00_16.0_cn_49a1fa8b77.tgz"
       mode:
-        description: baseline kernel boot check
+        description: device kernel test
         type: choice
         options:
           - baseline
+          - cgpids
         default: baseline
+      module_run_id:
+        description: CI run id with core-android16-6.12 artifact (cgpids mode)
+        required: false
+        default: ""
+      device_release:
+        description: override kernel release (empty = derive from Image)
+        required: false
+        default: ""
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   extract:
@@ -83,29 +93,84 @@ jobs:
         with:
           name: device-boot
           path: device
-      - name: Install QEMU
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.mode == 'cgpids' && inputs.module_run_id != '' }}
+        with:
+          name: core-android16-6.12
+          path: modules
+          run-id: ${{ inputs.module_run_id }}
+          github-token: ${{ github.token }}
+      - name: Install QEMU and module tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            qemu-system-arm qemu-system-common qemu-system-data cpio
-      - name: Build initramfs
+            qemu-system-arm qemu-system-common qemu-system-data cpio \
+            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu kmod python3
+      - name: Patch module vermagic
+        if: ${{ inputs.mode == 'cgpids' }}
+        env:
+          DEVICE_RELEASE: ${{ inputs.device_release }}
+        run: |
+          set -euxo pipefail
+          RELEASE="$DEVICE_RELEASE"
+          if [ -z "$RELEASE" ]; then
+            RELEASE=$(awk '{print $1}' device/release.txt 2>/dev/null || true)
+          fi
+          test -n "$RELEASE"
+          VERMAGIC="$RELEASE SMP preempt mod_unload modversions aarch64"
+          echo "target vermagic: $VERMAGIC"
+          for ko in modules/dnsk_*.ko; do
+            aarch64-linux-gnu-objcopy --dump-section .modinfo=modinfo.bin "$ko"
+            python3 - "$VERMAGIC" <<'PY'
+          import sys
+          magic = sys.argv[1].encode()
+          data = open('modinfo.bin', 'rb').read()
+          out = []
+          found = False
+          for entry in data.split(b'\0'):
+              if entry.startswith(b'vermagic='):
+                  out.append(b'vermagic=' + magic)
+                  found = True
+              elif entry:
+                  out.append(entry)
+          if not found:
+              out.append(b'vermagic=' + magic)
+          open('modinfo.new', 'wb').write(b'\0'.join(out) + b'\0')
+          PY
+            aarch64-linux-gnu-objcopy --update-section .modinfo=modinfo.new "$ko"
+            modinfo -F vermagic "$ko"
+          done
+      - name: Build loader and initramfs
         run: |
           set -euxo pipefail
           curl -fsSL -o alpine.tar.gz \
             https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.3-aarch64.tar.gz
-          mkdir -p rootfs
+          mkdir -p rootfs/modules
           tar -xzf alpine.tar.gz -C rootfs
-          cp tests/qemu/init-device rootfs/init
+          if [ "${{ inputs.mode }}" = "cgpids" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp tests/qemu/init-cgpids rootfs/init
+          else
+            cp tests/qemu/init-device rootfs/init
+          fi
           chmod 0755 rootfs/init
           (cd rootfs && find . | cpio -o -H newc | gzip -9) > initramfs.cpio.gz
       - name: Boot and check
         shell: bash
+        env:
+          MODE: ${{ inputs.mode }}
         run: |
           set +e
+          APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0"
+          if [ "$MODE" = "cgpids" ]; then
+            APPEND="$APPEND dnsk_lkm=1"
+          fi
           timeout 600 qemu-system-aarch64 \
             -M virt -cpu max -m 4096 -smp 4 -nographic -no-reboot \
             -kernel device/Image -initrd initramfs.cpio.gz \
-            -append "console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0" \
+            -append "$APPEND" \
             2>&1 | tee qemu.log
           rc=${PIPESTATUS[0]}
           set -e
@@ -115,14 +180,19 @@ jobs:
             echo "device kernel did not exit cleanly" >&2
             exit 1
           fi
-          grep -q 'DNSK_DEVICE_KERNEL_OK' qemu.log
+          if [ "$MODE" = "cgpids" ]; then
+            grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
+            grep -q 'DNSK_CGPIDS_OK' qemu.log
+          else
+            grep -q 'DNSK_DEVICE_KERNEL_OK' qemu.log
+          fi
           grep -q 'DNSK_QEMU_OK' qemu.log
-          if grep -Eq 'Kernel panic|Oops|BUG:|CFI failure' qemu.log; then
+          if grep -Eq 'Kernel panic|Oops|BUG:|CFI failure|Unknown symbol|invalid module format' qemu.log; then
             echo "kernel failure in device-image QEMU log" >&2
             exit 1
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: device-image-log
+          name: device-image-log-${{ inputs.mode }}
           path: qemu.log
           if-no-files-found: error
