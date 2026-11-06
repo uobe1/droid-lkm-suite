@@ -84,7 +84,10 @@ jobs:
             -e POSIX_MQUEUE -e POSIX_MQUEUE_SYSCTL -e SYSVIPC -e SYSVIPC_SYSCTL \
             -e CGROUPS -e CGROUP_PIDS -e CGROUP_DEVICE -e MEMCG -e CGROUP_BPF -e PSI \
             -e DEVTMPFS -e DEVTMPFS_MOUNT -e NF_TABLES -e NF_TABLES_INET \
-            -e NF_TABLES_IPV4 -e NF_TABLES_IPV6 \
+            -e NF_TABLES_IPV4 -e NF_TABLES_IPV6 -e NFT_NAT -e NFT_CHAIN_NAT \
+            -e NFT_COMPAT -e NF_NAT -e NF_NAT_MASQUERADE \
+            -e IP_NF_IPTABLES -e IP_NF_FILTER -e IP_NF_NAT \
+            -e IP_NF_TARGET_MASQUERADE -e NETFILTER_XTABLES \
             -e IP_SET -e IP_SET_HASH_IP -e IP_SET_HASH_NET -e NETFILTER_XT_SET \
             -e NETFILTER_XT_MATCH_ADDRTYPE -e NETFILTER_XT_TARGET_REJECT \
             -e NETFILTER_XT_MATCH_RECENT \
@@ -157,9 +160,11 @@ jobs:
             cp rootfs/opt/docker/* rootfs/usr/bin/
             cp alpine.tar.gz rootfs/alpine.tar.gz
             APK_BASE=https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64
-            for pkg in iptables-1.8.10-r3 libip4tc-1.8.10-r3 \
-                       libip6tc-1.8.10-r3 libxtables-1.8.10-r3 \
-                       libnftnl-1.2.6-r0; do
+            for pkg in iptables-1.8.10-r3 iptables-legacy-1.8.10-r3 \
+                       libip4tc-1.8.10-r3 libip6tc-1.8.10-r3 \
+                       libxtables-1.8.10-r3 libnftnl-1.2.6-r0 \
+                       nftables-1.0.9-r2 gmp-6.3.0-r1 jansson-2.14-r4 \
+                       readline-8.2.10-r0 ncurses-libs-6.4_p20240420-r2; do
               curl -fsSL -o "$pkg.apk" "$APK_BASE/$pkg.apk"
               tar -xzf "$pkg.apk" -C rootfs 2>/dev/null
             done
