@@ -279,6 +279,12 @@ static int __init dnsk_cgpids_init(void)
 		return ret;
 	}
 
+	if (dnsk_api->resolve("pids_cgrp_subsys")) {
+		pr_err("dnsk_cgpids: native pids subsystem present; refusing\n");
+		ret = -EOPNOTSUPP;
+		goto out_api;
+	}
+
 	ret = dnsk_resolve_symbols();
 	if (ret)
 		goto out_api;

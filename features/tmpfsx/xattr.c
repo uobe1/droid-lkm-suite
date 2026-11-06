@@ -92,6 +92,11 @@ static void (*dnsk_acl_release)(struct posix_acl *acl);
 static int (*dnsk_set_posix_acl)(struct mnt_idmap *idmap,
 				 struct dentry *dentry, int type,
 				 struct posix_acl *acl);
+static int (*dnsk_acl_update_mode)(struct mnt_idmap *idmap,
+				   struct inode *inode, umode_t *mode_p,
+				   struct posix_acl **acl);
+static void (*dnsk_set_cached_acl)(struct inode *inode, int type,
+				   struct posix_acl *acl);
 static struct user_namespace *dnsk_user_ns;
 
 static const char *dnsk_acl_xattr_name(int type)
@@ -205,13 +210,28 @@ static int dnsk_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 	void *value;
 	int size, ret;
 
-	pr_info("dnsk_tmpfsx: iop set_acl type=%d acl=%px\n", type, acl);
 	if (!IS_POSIXACL(inode))
 		return -EOPNOTSUPP;
-	if (!acl) {
-		xret = dnsk_simple_xattr_set(&info->xattrs, name, NULL, 0, 0);
-		return IS_ERR(xret) ? PTR_ERR(xret) : 0;
+
+	/*
+	 * Mirror simple_set_acl(): an access ACL also rewrites the mode and
+	 * a minimal ACL collapses back to a NULL xattr.
+	 */
+	if (type == ACL_TYPE_ACCESS && acl) {
+		ret = dnsk_acl_update_mode(idmap, inode, &inode->i_mode, &acl);
+		if (ret)
+			return ret;
 	}
+
+	if (!acl) {
+		/* simple_xattr_set() returns the replaced/removed entry. */
+		xret = dnsk_simple_xattr_set(&info->xattrs, name, NULL, 0, 0);
+		if (IS_ERR(xret))
+			return PTR_ERR(xret);
+		dnsk_set_cached_acl(inode, type, NULL);
+		return 0;
+	}
+
 	size = posix_acl_xattr_size(acl->a_count);
 	value = kmalloc(size, GFP_KERNEL);
 	if (!value)
@@ -222,12 +242,11 @@ static int dnsk_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 		return ret;
 	}
 	xret = dnsk_simple_xattr_set(&info->xattrs, name, value, size, 0);
-	pr_err("dnsk_tmpfsx: acl store %s size=%d ret=%ld\n", name, size,
-	       IS_ERR(xret) ? PTR_ERR(xret) : (xret ? 0 : -EIO));
 	kfree(value);
 	if (IS_ERR(xret))
 		return PTR_ERR(xret);
-	return xret ? 0 : -EIO;
+	dnsk_set_cached_acl(inode, type, acl);
+	return 0;
 }
 
 void dnsk_tmpfsx_evict_inode(struct inode *inode)
@@ -259,15 +278,18 @@ int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
 
 int dnsk_tmpfsx_acl_init(void *from_xattr, void *to_xattr, void *user_ns,
 			 void *release_acl, void *set_posix_acl,
+			 void *update_mode, void *set_cached_acl,
 			 struct dnsk_acl_methods *methods)
 {
 	if (!from_xattr || !to_xattr || !user_ns || !release_acl ||
-	    !set_posix_acl || !methods)
+	    !set_posix_acl || !update_mode || !set_cached_acl || !methods)
 		return -EINVAL;
 	dnsk_acl_from_xattr = (typeof(dnsk_acl_from_xattr))from_xattr;
 	dnsk_acl_to_xattr = (typeof(dnsk_acl_to_xattr))to_xattr;
 	dnsk_acl_release = (typeof(dnsk_acl_release))release_acl;
 	dnsk_set_posix_acl = (typeof(dnsk_set_posix_acl))set_posix_acl;
+	dnsk_acl_update_mode = (typeof(dnsk_acl_update_mode))update_mode;
+	dnsk_set_cached_acl = (typeof(dnsk_set_cached_acl))set_cached_acl;
 	dnsk_user_ns = user_ns;
 	dnsk_tmpfsx_handlers[3] = &dnsk_acl_access_handler;
 	dnsk_tmpfsx_handlers[4] = &dnsk_acl_default_handler;

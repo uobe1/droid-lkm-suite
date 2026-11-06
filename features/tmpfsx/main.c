@@ -39,15 +39,18 @@ static bool dnsk_evict_ready;
 static bool dnsk_feature_ready;
 static struct dnsk_acl_methods dnsk_acl_ops;
 static bool dnsk_acl_ready;
+static bool dnsk_keep_native;
 
 static void dnsk_wire_sb(struct super_block *sb, void *arg)
 {
 	if (sb->s_magic != TMPFS_MAGIC)
 		return;
-	if (arg)
-		WRITE_ONCE(sb->s_xattr, dnsk_tmpfsx_handlers);
-	else
+	if (arg) {
+		if (!READ_ONCE(sb->s_xattr))
+			WRITE_ONCE(sb->s_xattr, dnsk_tmpfsx_handlers);
+	} else if (READ_ONCE(sb->s_xattr) == dnsk_tmpfsx_handlers) {
 		WRITE_ONCE(sb->s_xattr, NULL);
+	}
 }
 
 static int dnsk_fill_super_pre(struct kprobe *kp, struct pt_regs *regs)
@@ -57,7 +60,8 @@ static int dnsk_fill_super_pre(struct kprobe *kp, struct pt_regs *regs)
 
 	if (sb) {
 		dnsk_tmpfsx_mount_sb(sb, fc);
-		WRITE_ONCE(sb->s_xattr, dnsk_tmpfsx_handlers);
+		if (!READ_ONCE(sb->s_xattr))
+			WRITE_ONCE(sb->s_xattr, dnsk_tmpfsx_handlers);
 	}
 	return 0;
 }
@@ -136,10 +140,20 @@ static int dnsk_resolve_symbols(void)
 {
 	void *xattr_set, *xattr_get, *xattr_list, *xattrs_free;
 	void *acl_from, *acl_to, *user_ns, *acl_release, *acl_set;
+	void *acl_update_mode, *acl_set_cached;
+	void *native_acl_access, *native_acl_default;
 	void *fc_ops, *parse_param, *parse_monolithic;
 	int ret;
 
 	dnsk_iops = dnsk_api->resolve("shmem_inode_operations");
+	if (dnsk_iops &&
+	    READ_ONCE(*(void **)((char *)dnsk_iops +
+				 offsetof(struct inode_operations, listxattr)))) {
+		/* Native CONFIG_TMPFS_XATTR: never replace its handlers. */
+		pr_info("dnsk_tmpfsx: native tmpfs xattr present; keeping native\n");
+		dnsk_keep_native = true;
+		return 0;
+	}
 	dnsk_dops = dnsk_api->resolve("shmem_dir_inode_operations");
 	dnsk_iterate_supers = dnsk_api->resolve("iterate_supers");
 	xattr_set = dnsk_api->resolve("simple_xattr_set");
@@ -151,6 +165,10 @@ static int dnsk_resolve_symbols(void)
 	user_ns = dnsk_api->resolve("init_user_ns");
 	acl_release = dnsk_api->resolve("posix_acl_release");
 	acl_set = dnsk_api->resolve("set_posix_acl");
+	acl_update_mode = dnsk_api->resolve("posix_acl_update_mode");
+	acl_set_cached = dnsk_api->resolve("set_cached_acl");
+	native_acl_access = dnsk_api->resolve("posix_acl_access_xattr_handler");
+	native_acl_default = dnsk_api->resolve("posix_acl_default_xattr_handler");
 	fc_ops = dnsk_api->resolve("shmem_fs_context_ops");
 
 	if (!dnsk_iops || !dnsk_dops || !dnsk_iterate_supers || !xattr_set ||
@@ -184,9 +202,19 @@ static int dnsk_resolve_symbols(void)
 				     (dnsk_xattrs_free_fn)xattrs_free);
 	if (ret)
 		return ret;
-	if (acl_from && acl_to && user_ns && acl_release && acl_set) {
+	if ((native_acl_access && native_acl_default) ||
+	    READ_ONCE(*(void **)((char *)dnsk_iops +
+				 offsetof(struct inode_operations,
+					  get_inode_acl))) ||
+	    READ_ONCE(*(void **)((char *)dnsk_iops +
+				 offsetof(struct inode_operations, set_acl)))) {
+		pr_info("dnsk_tmpfsx: native ACL present; keeping native\n");
+	} else if (acl_from && acl_to && user_ns && acl_release && acl_set &&
+		   acl_update_mode && acl_set_cached) {
 		ret = dnsk_tmpfsx_acl_init(acl_from, acl_to, user_ns,
-					   acl_release, acl_set, &dnsk_acl_ops);
+					   acl_release, acl_set,
+					   acl_update_mode, acl_set_cached,
+					   &dnsk_acl_ops);
 		if (ret)
 			return ret;
 		dnsk_acl_ready = true;
@@ -219,6 +247,11 @@ static int __init dnsk_tmpfsx_init(void)
 	ret = dnsk_resolve_symbols();
 	if (ret)
 		goto out_api;
+	if (dnsk_keep_native) {
+		module_put(dnsk_api->owner);
+		dnsk_api = NULL;
+		return 0;
+	}
 
 	/* Fail closed when the kernel already has native tmpfs xattr. */
 	if (READ_ONCE(*(void **)((char *)dnsk_iops + listxattr_off)) ||
@@ -348,6 +381,8 @@ out_api:
 
 static void __exit dnsk_tmpfsx_exit(void)
 {
+	if (!dnsk_api)
+		return;
 	if (dnsk_feature_ready)
 		dnsk_api->feature_del("tmpfsx");
 	if (dnsk_evict_ready)
