@@ -8,6 +8,7 @@
 
 #include <linux/fs.h>
 #include <linux/fs_context.h>
+#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/xarray.h>
 #include "mount.h"
