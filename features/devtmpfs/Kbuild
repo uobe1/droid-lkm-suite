@@ -4,13 +4,9 @@ obj-m := dnsk_devtmpfs.o
 dnsk_devtmpfs-y := \
 	vendor/devtmpfs/main.o vendor/devtmpfs/devtmpfs.o \
 	vendor/devtmpfs/hooks.o vendor/devtmpfs/original.o \
-	vendor/kallrecon/lib/core.o vendor/kallrecon/lib/access.o \
-	vendor/kallrecon/lib/discover.o vendor/kallrecon/lib/symbol.o \
-	vendor/kallrecon/lib/slide.o vendor/kallrecon/lib/fastboot.o \
-	vendor/kallrecon/lib/hint.o vendor/kallrecon/lib/variant.o \
-	vendor/kallrecon/lib/anchor.o
+	vendor/ksud/symbols.o
 
-ccflags-y += -I$(src)/vendor/kallrecon/lib -I$(src)/vendor
+ccflags-y += -I$(src)/vendor/ksud -I$(src)/vendor
 ccflags-y += -I$(srctree)
 ifneq ($(DNSK_ABI_PROFILE),)
 ccflags-y += -DDNSK_ABI_PROFILE=\"$(DNSK_ABI_PROFILE)\"

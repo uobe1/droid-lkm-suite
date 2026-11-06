@@ -7,7 +7,9 @@ License: GPL-2.0-only (see `vendor/COPYING`; vendored source keeps its SPDX).
 Vendored paths:
 
 - `vendor/devtmpfs/*` from `src/devtmpfs/*`
-- `vendor/kallrecon/*` from `vendor/kallrecon/*`
+- `vendor/ksud/*`: local shim, not upstream.  `kallsyms_lookup_name` is a
+  plain import resolved by `ksud insmod`; the upstream kallrecon scanner is
+  not vendored.
 
 Local changes:
 
