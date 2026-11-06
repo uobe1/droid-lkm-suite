@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/ptrace.h>
 #include <linux/string.h>
+#include <linux/version.h>
 #include <dnsk_abi.h>
 #include <dnsk_core.h>
 #include "xattr.h"
