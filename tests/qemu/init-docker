@@ -17,6 +17,10 @@ fi
 	/var/lib/containerd /var/log /etc /sys/fs/cgroup
 "$BB" mount -t devpts devpts /dev/pts 2>/dev/null
 "$BB" mount -t tmpfs tmpfs /dev/shm 2>/dev/null || true
+ln -sf /proc/self/fd/0 /dev/stdin
+ln -sf /proc/self/fd/1 /dev/stdout
+ln -sf /proc/self/fd/2 /dev/stderr
+ln -sf /proc/self/fd /dev/fd
 
 fail() {
 	echo "DNSK_QEMU_FAIL $*"
@@ -92,9 +96,14 @@ echo "DNSK_DOCKER_BRIDGE_OK"
 docker run -d --name dnsk-nat -p 18080:80 alpine:local /bin/sh -c \
 	'while true; do printf "HTTP/1.0 200 OK\r\n\r\nDOCKER_NAT_OK" | nc -l -p 80; done' \
 	|| fail docker_nat_start
-sleep 2
-printf 'GET / HTTP/1.0\r\n\r\n' | nc -w2 127.0.0.1 18080 | grep -q DOCKER_NAT_OK \
-	|| fail docker_nat
+sleep 3
+if ! printf 'GET / HTTP/1.0\r\n\r\n' | nc -w2 127.0.0.1 18080 | grep -q DOCKER_NAT_OK; then
+	echo "nat diagnostics:"
+	docker ps -a 2>&1 | tail -5
+	docker logs dnsk-nat 2>&1 | tail -10
+	iptables -t nat -S 2>&1 | tail -20
+	fail docker_nat
+fi
 docker rm -f dnsk-nat >/dev/null 2>&1 || true
 echo "DNSK_DOCKER_NAT_OK"
 
