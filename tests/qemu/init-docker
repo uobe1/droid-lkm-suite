@@ -49,7 +49,7 @@ export DOCKER_RAMDISK=true
 dockerd --containerd /run/containerd/containerd.sock \
 	--data-root /var/lib/docker --exec-root /run/docker \
 	--pidfile /run/docker.pid --storage-driver vfs \
-	--iptables=false --ip6tables=false --bridge=none \
+	--iptables=false --ip6tables=false \
 	--ip-forward=false --ip-masq=false \
 	--exec-opt native.cgroupdriver=cgroupfs \
 	>/var/log/dockerd.log 2>&1 &
@@ -82,6 +82,11 @@ else
 		'echo DOCKER_HOSTNS_OK; cat /proc/1/cgroup; id' || fail docker_hostns_run
 	echo "DNSK_DOCKER_HOSTNS_ONLY"
 fi
+
+docker run --rm alpine:local /bin/sh -c \
+	'echo BRIDGE_DEV; cat /proc/net/dev; ping -c1 -W1 172.17.0.1' \
+	|| fail docker_bridge
+echo "DNSK_DOCKER_BRIDGE_OK"
 
 echo "DNSK_DOCKER_OK"
 echo "DNSK_QEMU_OK"
