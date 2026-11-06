@@ -112,7 +112,6 @@ static int dnsk_acl_xattr_get(const struct xattr_handler *handler,
 	struct shmem_inode_info *info = container_of(inode,
 						     struct shmem_inode_info,
 						     vfs_inode);
-	int ret;
 
 	return dnsk_simple_xattr_get(&info->xattrs, handler->name, buffer,
 				     size);
