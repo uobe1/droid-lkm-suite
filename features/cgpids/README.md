@@ -20,8 +20,9 @@ Scope and limits:
   pids. This is reported as `VIRTUAL`, never as native.
 - Files are added to cgroups created after module load; pre-existing cgroups
   are not retrofitted.
-- A cgroup state pins the module until the cgroup is removed; unload therefore
-  reports "needs reboot" while states exist, by design.
+- A cgroup state is created on demand and pins the module until reboot
+  (matching the plan's "cgpids fixed after activation" rule); unload reports
+  "needs reboot" once any state has been created.
 
 Acceptance is Docker 29.x `--pids-limit` plus a Native-vs-Virtual differential
 contract against an AOSP/DDK oracle with `CONFIG_CGROUP_PIDS=y`.

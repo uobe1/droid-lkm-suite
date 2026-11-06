@@ -27,7 +27,6 @@ struct dnsk_pids_state {
 	atomic64_t events_local[DNSK_PIDS_EVENT_COUNT];
 	bool enabled;
 	bool files_added;
-	bool active_ref;
 	struct rcu_head rcu;
 };
 

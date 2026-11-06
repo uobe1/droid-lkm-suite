@@ -13,6 +13,7 @@
 
 DEFINE_XARRAY(dnsk_pids_xa);
 DEFINE_SPINLOCK(dnsk_pids_lock);
+static bool dnsk_pids_pinned;
 
 struct dnsk_pids_state *dnsk_pids_lookup(struct cgroup *cgrp)
 {
@@ -27,6 +28,23 @@ static void dnsk_pids_free_rcu(struct rcu_head *rcu)
 	kfree(st);
 }
 
+static bool dnsk_pids_pin_module(void)
+{
+	unsigned long flags;
+	bool ok;
+
+	spin_lock_irqsave(&dnsk_pids_lock, flags);
+	if (dnsk_pids_pinned) {
+		ok = true;
+	} else {
+		ok = try_module_get(THIS_MODULE);
+		if (ok)
+			dnsk_pids_pinned = true;
+	}
+	spin_unlock_irqrestore(&dnsk_pids_lock, flags);
+	return ok;
+}
+
 struct dnsk_pids_state *dnsk_pids_ensure(struct cgroup *cgrp)
 {
 	struct dnsk_pids_state *st, *old;
@@ -37,6 +55,10 @@ struct dnsk_pids_state *dnsk_pids_ensure(struct cgroup *cgrp)
 		return NULL;
 	st->cgrp = cgrp;
 	atomic64_set(&st->limit, DNSK_PIDS_MAX);
+	if (!dnsk_pids_pin_module()) {
+		kfree(st);
+		return NULL;
+	}
 
 	spin_lock_irqsave(&dnsk_pids_lock, flags);
 	rcu_read_lock();
@@ -47,23 +69,11 @@ struct dnsk_pids_state *dnsk_pids_ensure(struct cgroup *cgrp)
 		kfree(st);
 		return old;
 	}
-	/*
-	 * A state owns module code (cftype callbacks and accounting).  Pin the
-	 * module until the cgroup is destroyed, matching the plan's
-	 * "cgpids pinned after activation" rule.
-	 */
-	if (!try_module_get(THIS_MODULE)) {
-		spin_unlock_irqrestore(&dnsk_pids_lock, flags);
-		kfree(st);
-		return NULL;
-	}
 	if (xa_store(&dnsk_pids_xa, (unsigned long)cgrp, st, GFP_ATOMIC)) {
 		spin_unlock_irqrestore(&dnsk_pids_lock, flags);
-		module_put(THIS_MODULE);
 		kfree(st);
 		return NULL;
 	}
-	st->active_ref = true;
 	spin_unlock_irqrestore(&dnsk_pids_lock, flags);
 	return st;
 }
@@ -78,28 +88,19 @@ void dnsk_pids_destroy(struct cgroup *cgrp)
 	spin_unlock_irqrestore(&dnsk_pids_lock, flags);
 	if (!st)
 		return;
-	if (st->active_ref) {
-		st->active_ref = false;
-		module_put(THIS_MODULE);
-	}
 	call_rcu(&st->rcu, dnsk_pids_free_rcu);
 }
 
 void dnsk_pids_activate(struct dnsk_pids_state *st)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dnsk_pids_lock, flags);
-	if (!st->active_ref) {
-		if (try_module_get(THIS_MODULE))
-			st->active_ref = true;
-	}
-	spin_unlock_irqrestore(&dnsk_pids_lock, flags);
+	/* The module is pinned once on the first state creation. */
+	(void)st;
 }
 
 void dnsk_pids_deactivate(struct dnsk_pids_state *st)
 {
-	/* Pinned from state creation until cgroup destruction. */
+	/* Pinned until reboot; see README. */
+	(void)st;
 }
 
 static void dnsk_pids_update_peak(struct dnsk_pids_state *st, s64 val)
