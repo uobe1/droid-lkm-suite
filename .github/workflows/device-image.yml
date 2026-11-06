@@ -470,6 +470,7 @@ jobs:
             if [ "$MODE" = "ksud-docker" ]; then
               grep -q 'DNSK_DOCKER_NETFILTER_OK' qemu.log
               grep -q 'DNSK_DOCKER_NET_OK' qemu.log
+              grep -q 'DNSK_DOCKER_NFT_OK' qemu.log
             fi
             grep -q 'DNSK_DOCKER_DEVICE_OK' qemu.log
           elif [ "$MODE" = "tmpfsx" ]; then
