@@ -116,9 +116,12 @@ nat_diag() {
 [ -n "$nat_ip" ] || { nat_diag; fail docker_nat_ip; }
 wget -qO- --timeout=3 "http://$nat_ip/" | grep -q DOCKER_NAT_OK \
 	|| { nat_diag; fail docker_nat_direct; }
-host_ip=$(ip -4 -o addr show eth0 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
+host_ip=$(ifconfig -a 2>/dev/null | awk '/inet addr:/ {
+	sub(/.*inet addr:/, ""); sub(/[[:space:]].*/, "");
+	if ($0 !~ /^127\./) { print; exit }
+}')
 echo "nat_host_ip=$host_ip"
-[ -n "$host_ip" ] || { nat_diag; fail docker_nat_no_hostip; }
+[ -n "$host_ip" ] || { ifconfig -a; nat_diag; fail docker_nat_no_hostip; }
 wget -qO- --timeout=3 "http://$host_ip:18080/" | grep -q DOCKER_NAT_OK \
 	|| { nat_diag; fail docker_nat_dnat; }
 wget -qO- --timeout=3 http://127.0.0.1:18080/ | grep -q DOCKER_NAT_OK \
