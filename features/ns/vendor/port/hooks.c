@@ -22,7 +22,7 @@
 #include "../userns/live-fuse.h"
 extern u32 ds_userns_fuse_simple_request_original[];
 extern u32 ds_userns_fuse_do_set_acl_original[], ds_userns_fuse_do_get_acl_original[];
-extern u32 ds_userns_mm_alloc_original[], ds_userns_dup_mmap_original[];
+extern u32 ds_userns_mm_alloc_original[], ds_userns_wake_up_new_task_original[];
 extern u32 ds_userns_ns_ioctl_original[], ds_userns_sk_getsockopt_original[], ds_userns_fuse_get_tree_original[];
 extern u32 ds_userns_mount_setattr_original[], ds_userns_alloc_mnt_idmap_original[];
 extern long ds_userns_mount_setattr(const struct pt_regs *);
@@ -266,8 +266,8 @@ static struct ds_hook hooks[] = {
 	HOOK("net_ns_get_ownership", ds_userns_net_ns_get_ownership),
 	HOOK_ORIGINAL("mm_alloc", ds_userns_mm_alloc,
 		      ds_userns_mm_alloc_original),
-	HOOK_ORIGINAL("dup_mmap", ds_userns_dup_mmap,
-		      ds_userns_dup_mmap_original),
+	HOOK_ORIGINAL("wake_up_new_task", ds_userns_wake_up_new_task,
+		      ds_userns_wake_up_new_task_original),
 	HOOK("__mmdrop", ds_userns_mmdrop),
 	HOOK("begin_new_exec", ds_userns_begin_new_exec),
 	HOOK("would_dump", ds_userns_would_dump),

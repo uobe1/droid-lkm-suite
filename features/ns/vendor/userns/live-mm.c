@@ -18,8 +18,7 @@
 #include "live.h"
 extern struct kmem_cache *mm_cachep;
 extern struct mm_struct *ds_userns_mm_alloc_original(void);
-extern int ds_userns_dup_mmap_original(struct mm_struct *mm,
-				       struct mm_struct *oldmm);
+extern void ds_userns_wake_up_new_task_original(struct task_struct *p);
 
 /*
  * The native mm_init() is inlined into mm_alloc()/dup_mm() on this build, so
@@ -77,15 +76,20 @@ struct mm_struct *ds_userns_mm_alloc(void)
 	return mm;
 }
 
-int ds_userns_dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
+void ds_userns_wake_up_new_task(struct task_struct *p)
 {
-	struct user_namespace *ns = oldmm->user_ns ? oldmm->user_ns :
-						     current_user_ns();
-	int ret = ds_userns_dup_mmap_original(mm, oldmm);
+	struct user_namespace *ns = current->mm ? current->mm->user_ns :
+						   current_user_ns();
 
-	if (!ret && ds_mm_track(mm))
-		mm->user_ns = get_user_ns(ns);
-	return ret;
+	/*
+	 * A fresh mm (fork without CLONE_VM) had its user_ns overwritten by
+	 * the inlined !USER_NS get_user_ns() stub.  Restore the creator's
+	 * namespace and take the reference that __mmdrop will drop.  The task
+	 * is not runnable yet, so this cannot race with its exit.
+	 */
+	if (p->mm && p->mm != current->mm && ds_mm_track(p->mm))
+		p->mm->user_ns = get_user_ns(ns);
+	ds_userns_wake_up_new_task_original(p);
 }
 #define free_mm(mm) kmem_cache_free(mm_cachep, (mm))
 static inline void mm_free_pgd(struct mm_struct *mm)
