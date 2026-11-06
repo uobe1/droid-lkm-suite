@@ -125,6 +125,7 @@ jobs:
             qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu \
             ipxe-qemu-256k-compat-efi-roms qemu-efi-aarch64 cpio \
             binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross kmod python3
+          python3 -m pip install --break-system-packages pyelftools
       - name: Patch module vermagic
         if: ${{ inputs.mode == 'cgpids' }}
         env:
@@ -186,6 +187,35 @@ jobs:
                   break
           PY
           done
+      - name: Compute device module_layout CRC
+        if: ${{ inputs.mode == 'cgpids' }}
+        run: |
+          python3 - <<'PY'
+          import struct
+          from elftools.elf.elffile import ELFFile
+          f = open('device/vmlinux.elf', 'rb')
+          e = ELFFile(f)
+          st = e.get_section_by_name('.symtab')
+          def sym(name):
+              s = st.get_symbol_by_name(name)
+              return s[0]['st_value'] if s else None
+          start = sym('__start___ksymtab')
+          ksym = sym('__ksymtab_module_layout')
+          crcstart = sym('__start___kcrctab')
+          print('start', hex(start or 0), 'ksym', hex(ksym or 0), 'crcstart', hex(crcstart or 0))
+          if start and ksym and crcstart:
+              idx = (ksym - start) // 12
+              print('symbol index', idx)
+              for step, fmt in ((4, '<I'), (8, '<Q')):
+                  addr = crcstart + idx * step
+                  for sec in e.iter_sections():
+                      a = sec['sh_addr']; size = sec['sh_size']
+                      if a <= addr < a + size:
+                          f.seek(sec['sh_offset'] + (addr - a))
+                          val = struct.unpack(fmt, f.read(step))[0]
+                          print('crc step', step, hex(val))
+                          break
+          PY
       - name: Inspect device kernel symbols
         if: ${{ inputs.mode == 'cgpids' }}
         run: |
