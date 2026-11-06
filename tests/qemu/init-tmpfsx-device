@@ -35,6 +35,7 @@ mount -t tmpfs tmpfs /early || fail early_mount
 
 export LD_LIBRARY_PATH=/system/lib64
 /ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
+"$BB" sleep 8
 /ksud sepolicy patch 'permissive kernel' || fail sepolicy_permissive
 echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
 [ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
