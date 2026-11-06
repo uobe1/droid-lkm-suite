@@ -1,0 +1,71 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# cgroup v2 pids differential: same script runs on the native oracle
+# (CONFIG_CGROUP_PIDS=y) and on the virtual controller (oracle-nopids +
+# dnsk_cgpids).  Compare the marked values across both runs.
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	"$BB" mknod /dev/console c 5 1
+	"$BB" mknod /dev/null c 1 3
+fi
+"$BB" mkdir -p /sys/fs/cgroup
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" poweroff -f
+}
+
+"$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup || fail cgroup2_mount
+
+if grep -q 'dnsk_lkm=1' /proc/cmdline; then
+	"$BB" insmod /modules/dnsk_core.ko || fail dnsk_core_insmod
+	"$BB" insmod /modules/dnsk_cgpids.ko || fail dnsk_cgpids_insmod
+	echo "DNSK_CGPIDS_LKM_OK"
+	if grep -q '^pids' /proc/cgroups; then
+		fail cgpids_native_pids_present
+	fi
+fi
+echo "DNSK_CGPIDS_CONTROLLERS=$(cat /sys/fs/cgroup/cgroup.controllers)"
+
+echo +pids > /sys/fs/cgroup/cgroup.subtree_control || fail root_subtree_write
+echo "DNSK_CGPIDS_ROOT_SUBTREE=$(cat /sys/fs/cgroup/cgroup.subtree_control)"
+
+"$BB" mkdir /sys/fs/cgroup/t || fail mkdir_t
+echo +pids > /sys/fs/cgroup/t/cgroup.subtree_control || fail t_subtree_write
+"$BB" mkdir /sys/fs/cgroup/t/a || fail mkdir_a
+test -e /sys/fs/cgroup/t/a/pids.max || fail no_pids_files
+echo "DNSK_CGPIDS_MAX_BEFORE=$(cat /sys/fs/cgroup/t/a/pids.max)"
+echo 3 > /sys/fs/cgroup/t/a/pids.max || fail pids_max_write
+echo "DNSK_CGPIDS_MAX=$(cat /sys/fs/cgroup/t/a/pids.max)"
+
+echo $$ > /sys/fs/cgroup/t/a/cgroup.procs || fail move_shell
+echo "DNSK_CGPIDS_CURRENT_SHELL=$(cat /sys/fs/cgroup/t/a/pids.current)"
+
+n=0
+while [ "$n" -lt 10 ]; do
+	if (sleep 30 &) 2>/dev/null; then
+		n=$((n + 1))
+	else
+		break
+	fi
+done
+echo "DNSK_CGPIDS_SPAWNED=$n"
+echo "DNSK_CGPIDS_CURRENT=$(cat /sys/fs/cgroup/t/a/pids.current)"
+echo "DNSK_CGPIDS_PEAK=$(cat /sys/fs/cgroup/t/a/pids.peak)"
+echo "DNSK_CGPIDS_EVENTS=$(cat /sys/fs/cgroup/t/a/pids.events | tr '\n' ' ')"
+
+"$BB" mkdir /sys/fs/cgroup/t/b || fail mkdir_b
+sh -c 'sleep 30 & echo $! > /sys/fs/cgroup/t/b/cgroup.procs' || fail migrate_child
+sleep 1
+echo "DNSK_CGPIDS_A_AFTER_MIGRATE=$(cat /sys/fs/cgroup/t/a/pids.current)"
+echo "DNSK_CGPIDS_B_AFTER_MIGRATE=$(cat /sys/fs/cgroup/t/b/pids.current)"
+
+echo "DNSK_CGPIDS_OK"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f

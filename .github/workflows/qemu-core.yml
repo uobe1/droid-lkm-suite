@@ -12,6 +12,7 @@ on:
           - active-netfilter
           - active-devtmpfs
           - active-ipset
+          - cgpids
           - docker
         default: baseline
       kernel:
