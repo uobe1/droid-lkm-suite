@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 obj-m := dnsk_tmpfsx.o
 
-dnsk_tmpfsx-y := main.o xattr.o
+dnsk_tmpfsx-y := main.o xattr.o mount.o
 
 ifneq ($(DNSK_ABI_PROFILE),)
 ccflags-y += -DDNSK_ABI_PROFILE=\"$(DNSK_ABI_PROFILE)\"

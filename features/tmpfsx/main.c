@@ -8,6 +8,7 @@
 
 #include <linux/err.h>
 #include <linux/fs.h>
+#include <linux/fs_context.h>
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
 #include <linux/magic.h>
@@ -17,6 +18,7 @@
 #include <linux/version.h>
 #include <dnsk_abi.h>
 #include <dnsk_core.h>
+#include "mount.h"
 #include "xattr.h"
 
 #define DNSK_TMPFSX_KEY_IOPS "tmpfsx.iops.listxattr"
@@ -27,6 +29,7 @@
 static struct dnsk_core_api *dnsk_api;
 static void *dnsk_iops;
 static void *dnsk_dops;
+static void *dnsk_fc_ops;
 static void (*dnsk_iterate_supers)(void (*fn)(struct super_block *, void *),
 				   void *arg);
 static bool dnsk_iops_ready;
@@ -49,9 +52,18 @@ static void dnsk_wire_sb(struct super_block *sb, void *arg)
 static int dnsk_fill_super_pre(struct kprobe *kp, struct pt_regs *regs)
 {
 	struct super_block *sb = (void *)regs->regs[0];
+	struct fs_context *fc = (void *)regs->regs[1];
 
-	if (sb)
+	if (sb) {
+		dnsk_tmpfsx_mount_sb(sb, fc);
 		WRITE_ONCE(sb->s_xattr, dnsk_tmpfsx_handlers);
+	}
+	return 0;
+}
+
+static int dnsk_init_fs_context_pre(struct kprobe *kp, struct pt_regs *regs)
+{
+	dnsk_tmpfsx_mount_reset((void *)regs->regs[0]);
 	return 0;
 }
 
@@ -94,6 +106,9 @@ static int dnsk_add_acl_hook(const char *key, void *table, size_t off,
 
 static void dnsk_del_acl_hooks(void)
 {
+	dnsk_api->hook_del("tmpfsx.init_fs_context");
+	dnsk_api->hook_del("tmpfsx.fc.parse_param");
+	dnsk_tmpfsx_mount_exit();
 	dnsk_api->hook_del("tmpfsx.dops.set_acl");
 	dnsk_api->hook_del("tmpfsx.dops.get_acl");
 	dnsk_api->hook_del("tmpfsx.dops.get_inode_acl");
@@ -119,6 +134,7 @@ static int dnsk_resolve_symbols(void)
 {
 	void *xattr_set, *xattr_get, *xattr_list, *xattrs_free;
 	void *acl_from, *acl_to, *user_ns, *acl_access, *acl_default;
+	void *fc_ops, *parse_param;
 	int ret;
 
 	dnsk_iops = dnsk_api->resolve("shmem_inode_operations");
@@ -133,13 +149,26 @@ static int dnsk_resolve_symbols(void)
 	user_ns = dnsk_api->resolve("init_user_ns");
 	acl_access = dnsk_api->resolve("posix_acl_access_xattr_handler");
 	acl_default = dnsk_api->resolve("posix_acl_default_xattr_handler");
+	fc_ops = dnsk_api->resolve("shmem_fs_context_ops");
 
 	if (!dnsk_iops || !dnsk_dops || !dnsk_iterate_supers || !xattr_set ||
 	    !xattr_get || !xattr_list || !xattrs_free || !acl_from ||
-	    !acl_to || !user_ns || !acl_access || !acl_default) {
+	    !acl_to || !user_ns || !acl_access || !acl_default || !fc_ops) {
 		pr_err("dnsk_tmpfsx: missing tmpfs, xattr or ACL symbols\n");
 		return -ENOENT;
 	}
+	parse_param = READ_ONCE(*(void **)((char *)fc_ops +
+				offsetof(struct fs_context_operations,
+					 parse_param)));
+	if (!parse_param) {
+		pr_err("dnsk_tmpfsx: shmem fs_context has no parse_param\n");
+		return -EOPNOTSUPP;
+	}
+	dnsk_fc_ops = fc_ops;
+	ret = dnsk_tmpfsx_mount_init(
+		(int (*)(struct fs_context *, struct fs_parameter *))parse_param);
+	if (ret)
+		return ret;
 	ret = dnsk_tmpfsx_xattr_init((dnsk_xattr_set_fn)xattr_set,
 				     (dnsk_xattr_get_fn)xattr_get,
 				     (dnsk_xattr_list_fn)xattr_list,
@@ -229,10 +258,22 @@ static int __init dnsk_tmpfsx_init(void)
 	if (ret)
 		goto out_acl;
 
+	ret = dnsk_add_acl_hook("tmpfsx.fc.parse_param", dnsk_fc_ops,
+				offsetof(struct fs_context_operations,
+					 parse_param),
+				(void *)dnsk_tmpfsx_parse_param);
+	if (ret)
+		goto out_acl;
+	ret = dnsk_add_kprobe_hook("tmpfsx.init_fs_context",
+				   "shmem_init_fs_context",
+				   dnsk_init_fs_context_pre);
+	if (ret)
+		goto out_acl;
+
 	ret = dnsk_add_kprobe_hook(DNSK_TMPFSX_KEY_FILL, "shmem_fill_super",
 				   dnsk_fill_super_pre);
 	if (ret)
-		goto out_dops;
+		goto out_acl;
 	dnsk_fill_ready = true;
 
 	ret = dnsk_add_kprobe_hook(DNSK_TMPFSX_KEY_EVICT, "shmem_evict_inode",

@@ -18,8 +18,10 @@ Current prototype:
 
 POSIX ACL inode operations (`get_inode_acl`/`get_acl`/`set_acl`) and the
 native ACL xattr handlers are wired, but they stay inert until a superblock
-has `SB_POSIXACL`.  The per-mount `acl`/`noacl` option (including the legacy
-`parse_monolithic` path) is still missing, as are LSM-specific differential
-checks.  Status is `DEVELOPMENT`; do not claim Native semantics.
+has `SB_POSIXACL`.  A `parse_param` hook records the `acl`/`noacl` option per
+fs_context and `shmem_fill_super` applies `SB_POSIXACL`; the legacy
+`mount(2)` monolithic parser path is not intercepted yet.  LSM-specific
+differential checks are still missing.  Status is `DEVELOPMENT`; do not
+claim Native semantics.
 
 Build: `make -C features/tmpfsx KDIR=... modules`.
