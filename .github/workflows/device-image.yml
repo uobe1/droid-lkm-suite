@@ -113,7 +113,7 @@ jobs:
           run-id: ${{ inputs.image_run_id }}
           github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
-        if: ${{ inputs.mode == 'cgpids' && inputs.module_run_id != '' }}
+        if: ${{ inputs.mode != 'baseline' && inputs.module_run_id != '' }}
         with:
           name: core-android16-6.12
           path: modules
