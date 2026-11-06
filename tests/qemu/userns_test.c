@@ -59,16 +59,14 @@ static int helper_map_write(pid_t pid, const char *name, const char *value)
 }
 
 /*
- * Fork a helper that enters a userns mapping 0 -> kuid 1.  The parent owns
- * the maps; with mount_tmpfs the helper also gets a private mount namespace
- * and mounts a tmpfs there, so the superblock's s_user_ns is the helper's
- * namespace.  The initial userns can later setns into it.
+ * Fork a child that enters a userns mapping 0 -> outer_id.  The caller is
+ * already in the parent userns and owns the maps; the child stays alive to
+ * keep the namespace available as a mount idmap.
  */
-static pid_t spawn_helper(int mount_tmpfs, unsigned int outer_id)
+static pid_t spawn_userns_helper(unsigned int outer_id)
 {
 	int ready[2], go[2];
-	char map[64];
-	char byte;
+	char map[64], byte;
 	pid_t pid;
 
 	if (pipe(ready) < 0 || pipe(go) < 0)
@@ -79,40 +77,22 @@ static pid_t spawn_helper(int mount_tmpfs, unsigned int outer_id)
 	if (pid == 0) {
 		close(ready[0]);
 		close(go[1]);
-		/* Map kuid 1 to uid 0 inside; kuid 0 stays unmapped here. */
-		if (setresgid(1, 1, 1) < 0 || setresuid(1, 1, 1) < 0)
-			_exit(1);
 		if (unshare(CLONE_NEWUSER) < 0)
 			_exit(1);
 		if (write(ready[1], "r", 1) != 1)
-			_exit(1);
+			_exit(2);
 		if (read(go[0], &byte, 1) != 1)
-			_exit(1);
-		if (mount_tmpfs) {
-			int fd;
-
-			if (unshare(CLONE_NEWNS) < 0)
-				_exit(2);
-			mkdir("/tmp/idmapA", 0755);
-			if (mount("tmpfs", "/tmp/idmapA", "tmpfs", 0,
-				  "size=1M") < 0)
-				_exit(3);
-			fd = open("/tmp/idmapA/f", O_CREAT | O_WRONLY, 0644);
-			if (fd < 0)
-				_exit(4);
-			close(fd);
-			if (chown("/tmp/idmapA/f", 0, 0) < 0)
-				_exit(5);
-			if (write(ready[1], "d", 1) != 1)
-				_exit(6);
-		}
+			_exit(3);
 		for (;;)
 			pause();
 	}
 	close(ready[1]);
 	close(go[0]);
-	if (read(ready[0], &byte, 1) != 1)
+	if (read(ready[0], &byte, 1) != 1) {
+		fprintf(stderr, "idmap helper died before ready, errno=%d\n",
+			errno);
 		goto fail;
+	}
 	if (helper_map_write(pid, "setgroups", "deny") < 0 &&
 	    errno != ENOENT)
 		goto fail;
@@ -123,13 +103,12 @@ static pid_t spawn_helper(int mount_tmpfs, unsigned int outer_id)
 		goto fail;
 	if (write(go[1], "g", 1) != 1)
 		goto fail;
-	if (mount_tmpfs && read(ready[0], &byte, 1) != 1)
-		goto fail;
 	close(ready[0]);
 	close(go[1]);
 	return pid;
 
 fail:
+	fprintf(stderr, "idmap helper setup failed, errno=%d\n", errno);
 	kill(pid, SIGKILL);
 	waitpid(pid, NULL, 0);
 	close(ready[0]);
@@ -138,109 +117,152 @@ fail:
 }
 
 /*
- * Helper A maps 0 -> kuid 1, owns the tmpfs and creates a file: the inode
- * uid is kuid 1.  The mount idmap B maps 0 -> kuid 0, so the stat conversion
- * is kuid 1 -> (fs userns A) uid 0 -> (idmap B) kuid 0: uid 1 becomes 0 in
- * the initial userns.  Both namespaces are children of init, which performs
- * the mount_setattr.
+ * Runs inside userns A (mapped 0 -> kuid 0 and 1 -> kuid 1) with a private
+ * mount namespace.  The tmpfs superblock is owned by A; the file f is owned
+ * by kuid 0.  A child userns B maps 0 -> kuid 1 and is used as the mount
+ * idmap, so f must change from uid 0 to uid 1 in A.
  */
-static int idmap_test(void)
+static int child_idmap_test(void)
 {
 	char path[64];
 	const char *step = "start";
 	struct dnsk_mount_attr attr = { .attr_set = MOUNT_ATTR_IDMAP };
 	struct stat st;
-	int saved_mnt = -1, a_mnt = -1, ufd = -1;
-	int ret, saved, in_a = 0;
-	pid_t pa = -1, pb = -1;
+	int fd, ufd = -1, ret, saved;
+	pid_t pb = -1;
 
-	step = "save_ns";
-	saved_mnt = open("/proc/self/ns/mnt", O_RDONLY);
-	if (saved_mnt < 0)
+	step = "mkdir";
+	if (mkdir("/tmp/idmap", 0755) < 0 && errno != EEXIST)
 		goto fail;
-	step = "spawn_sb";
-	pa = spawn_helper(1, 1);
-	if (pa < 0)
-		goto fail;
-	step = "spawn_idmap";
-	pb = spawn_helper(0, 0);
-	if (pb < 0)
-		goto fail;
-	step = "open_sb_ns";
-	snprintf(path, sizeof(path), "/proc/%d/ns/mnt", pa);
-	a_mnt = open(path, O_RDONLY);
-	if (a_mnt < 0)
-		goto fail;
-	step = "setns_sb";
-	if (setns(a_mnt, CLONE_NEWNS) < 0)
-		goto fail;
-	in_a = 1;
-
+	step = "mount";
+	if (mount("tmpfs", "/tmp/idmap", "tmpfs", 0, "size=1M") < 0)
+		goto fail_umount;
+	step = "create";
+	fd = open("/tmp/idmap/f", O_CREAT | O_WRONLY, 0644);
+	if (fd < 0)
+		goto fail_umount;
+	close(fd);
 	step = "pre_stat";
-	if (stat("/tmp/idmapA/f", &st) < 0)
-		goto fail;
-	if (st.st_uid != 1) {
+	if (stat("/tmp/idmap/f", &st) < 0)
+		goto fail_umount;
+	if (st.st_uid != 0) {
 		fprintf(stderr, "USERNS_TEST_FAIL idmap pre uid=%u\n",
 			(unsigned)st.st_uid);
-		goto fail;
+		goto fail_umount;
 	}
+	step = "spawn_idmap";
+	pb = spawn_userns_helper(1);
+	if (pb < 0)
+		goto fail_umount;
 	step = "open_idmap_ns";
 	snprintf(path, sizeof(path), "/proc/%d/ns/user", pb);
 	ufd = open(path, O_RDONLY);
 	if (ufd < 0)
-		goto fail;
+		goto fail_umount;
 	attr.userns_fd = ufd;
 
 	step = "mount_setattr";
-	ret = syscall(SYS_mount_setattr, AT_FDCWD, "/tmp/idmapA", 0,
+	ret = syscall(SYS_mount_setattr, AT_FDCWD, "/tmp/idmap", 0,
 		      &attr, sizeof(attr));
 	if (ret < 0)
-		goto fail;
+		goto fail_umount;
 	step = "post_stat";
-	if (stat("/tmp/idmapA/f", &st) < 0)
-		goto fail;
-	if (st.st_uid != 0) {
+	if (stat("/tmp/idmap/f", &st) < 0)
+		goto fail_umount;
+	if (st.st_uid != 1) {
 		fprintf(stderr, "USERNS_TEST_FAIL idmap uid=%u\n",
 			(unsigned)st.st_uid);
-		goto fail;
+		goto fail_umount;
 	}
 	step = "done";
-	umount2("/tmp/idmapA", MNT_DETACH);
-	if (setns(saved_mnt, CLONE_NEWNS) < 0)
-		goto fail;
-	in_a = 0;
-	close(saved_mnt);
-	close(a_mnt);
-	close(ufd);
-	kill(pa, SIGKILL);
-	kill(pb, SIGKILL);
-	waitpid(pa, NULL, 0);
-	waitpid(pb, NULL, 0);
-	printf("USERNS_IDMAP_OK\n");
-	return 0;
-
-fail:
-	saved = errno;
-	if (in_a) {
-		umount2("/tmp/idmapA", MNT_DETACH);
-		setns(saved_mnt, CLONE_NEWNS);
-	}
-	if (pa > 0) {
-		kill(pa, SIGKILL);
-		waitpid(pa, NULL, 0);
-	}
+	umount2("/tmp/idmap", MNT_DETACH);
 	if (pb > 0) {
 		kill(pb, SIGKILL);
 		waitpid(pb, NULL, 0);
 	}
-	if (saved_mnt >= 0)
-		close(saved_mnt);
-	if (a_mnt >= 0)
-		close(a_mnt);
+	if (ufd >= 0)
+		close(ufd);
+	printf("USERNS_IDMAP_OK\n");
+	return 0;
+
+fail_umount:
+	saved = errno;
+	umount2("/tmp/idmap", MNT_DETACH);
+	errno = saved;
+fail:
+	saved = errno;
+	if (pb > 0) {
+		kill(pb, SIGKILL);
+		waitpid(pb, NULL, 0);
+	}
 	if (ufd >= 0)
 		close(ufd);
 	fprintf(stderr, "USERNS_TEST_FAIL idmap_%s: %s\n", step,
 		strerror(saved));
+	return 1;
+}
+
+static int idmap_test(void)
+{
+	int ready[2], go[2], status;
+	char byte;
+	pid_t pid;
+
+	if (pipe(ready) < 0 || pipe(go) < 0)
+		return perror("idmap pipe"), 1;
+	pid = fork();
+	if (pid < 0)
+		return perror("idmap fork"), 1;
+	if (pid == 0) {
+		close(ready[0]);
+		close(go[1]);
+		if (unshare(CLONE_NEWUSER) < 0) {
+			perror("idmap child unshare");
+			_exit(1);
+		}
+		if (write(ready[1], "r", 1) != 1)
+			_exit(2);
+		if (read(go[0], &byte, 1) != 1)
+			_exit(3);
+		if (unshare(CLONE_NEWNS) < 0) {
+			perror("idmap child unshare mount");
+			_exit(4);
+		}
+		_exit(child_idmap_test());
+	}
+	close(ready[1]);
+	close(go[0]);
+	if (read(ready[0], &byte, 1) != 1) {
+		fprintf(stderr, "USERNS_TEST_FAIL idmap_spawn_sb_ready\n");
+		goto fail;
+	}
+	if (helper_map_write(pid, "setgroups", "deny") < 0 &&
+	    errno != ENOENT)
+		goto fail_map;
+	if (helper_map_write(pid, "uid_map", "0 0 1\n1 1 1\n") < 0)
+		goto fail_map;
+	if (helper_map_write(pid, "gid_map", "0 0 1\n1 1 1\n") < 0)
+		goto fail_map;
+	if (write(go[1], "g", 1) != 1)
+		goto fail_map;
+	close(ready[0]);
+	close(go[1]);
+	waitpid(pid, &status, 0);
+	if (!WIFEXITED(status) || WEXITSTATUS(status)) {
+		fprintf(stderr, "USERNS_TEST_FAIL idmap_child_exit=%d\n",
+			WIFEXITED(status) ? WEXITSTATUS(status) : -WTERMSIG(status));
+		return 1;
+	}
+	return 0;
+
+fail_map:
+	fprintf(stderr, "USERNS_TEST_FAIL idmap_sb_map: %s\n",
+		strerror(errno));
+fail:
+	kill(pid, SIGKILL);
+	waitpid(pid, NULL, 0);
+	close(ready[0]);
+	close(go[1]);
 	return 1;
 }
 
