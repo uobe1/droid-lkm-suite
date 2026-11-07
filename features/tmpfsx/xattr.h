@@ -77,6 +77,7 @@ int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
 int dnsk_tmpfsx_acl_init(void *from_xattr, void *to_xattr, void *user_ns,
 			 void *release_acl, void *set_posix_acl,
 			 void *update_mode, void *set_cached_acl,
+			 void *get_cached_acl,
 			 struct dnsk_acl_methods *methods);
 void dnsk_tmpfsx_evict_inode(struct inode *inode);
 ssize_t dnsk_tmpfsx_listxattr(struct dentry *dentry, char *buffer,

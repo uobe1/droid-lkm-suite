@@ -97,6 +97,8 @@ static int (*dnsk_acl_update_mode)(struct mnt_idmap *idmap,
 				   struct posix_acl **acl);
 static void (*dnsk_set_cached_acl)(struct inode *inode, int type,
 				   struct posix_acl *acl);
+static struct posix_acl *(*dnsk_get_cached_acl)(struct inode *inode,
+						int type);
 static struct user_namespace *dnsk_user_ns;
 
 static const char *dnsk_acl_xattr_name(int type)
@@ -275,10 +277,12 @@ int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
 int dnsk_tmpfsx_acl_init(void *from_xattr, void *to_xattr, void *user_ns,
 			 void *release_acl, void *set_posix_acl,
 			 void *update_mode, void *set_cached_acl,
+			 void *get_cached_acl,
 			 struct dnsk_acl_methods *methods)
 {
 	if (!from_xattr || !to_xattr || !user_ns || !release_acl ||
-	    !set_posix_acl || !update_mode || !set_cached_acl || !methods)
+	    !set_posix_acl || !update_mode || !set_cached_acl ||
+	    !get_cached_acl || !methods)
 		return -EINVAL;
 	dnsk_acl_from_xattr = (typeof(dnsk_acl_from_xattr))from_xattr;
 	dnsk_acl_to_xattr = (typeof(dnsk_acl_to_xattr))to_xattr;
@@ -286,6 +290,7 @@ int dnsk_tmpfsx_acl_init(void *from_xattr, void *to_xattr, void *user_ns,
 	dnsk_set_posix_acl = (typeof(dnsk_set_posix_acl))set_posix_acl;
 	dnsk_acl_update_mode = (typeof(dnsk_acl_update_mode))update_mode;
 	dnsk_set_cached_acl = (typeof(dnsk_set_cached_acl))set_cached_acl;
+	dnsk_get_cached_acl = (typeof(dnsk_get_cached_acl))get_cached_acl;
 	dnsk_user_ns = user_ns;
 	dnsk_tmpfsx_handlers[3] = &dnsk_acl_access_handler;
 	dnsk_tmpfsx_handlers[4] = &dnsk_acl_default_handler;
@@ -312,6 +317,12 @@ static __nocfi noinline int dnsk_call_chmod(struct mnt_idmap *idmap,
 	return dnsk_posix_acl_chmod(idmap, dentry, mode);
 }
 
+static __nocfi noinline struct posix_acl *
+dnsk_call_get_cached_acl(struct inode *inode, int type)
+{
+	return dnsk_get_cached_acl(inode, type);
+}
+
 static __nocfi noinline int dnsk_call_setattr(int (*fn)(struct mnt_idmap *,
 							struct dentry *,
 							struct iattr *),
@@ -322,6 +333,33 @@ static __nocfi noinline int dnsk_call_setattr(int (*fn)(struct mnt_idmap *,
 	return fn(idmap, dentry, attr);
 }
 
+static void dnsk_store_acl(struct inode *inode, int type, const char *name)
+{
+	struct shmem_inode_info *info = container_of(inode,
+						     struct shmem_inode_info,
+						     vfs_inode);
+	struct posix_acl *acl;
+	struct simple_xattr *xret;
+	void *value;
+	int size;
+
+	acl = dnsk_call_get_cached_acl(inode, type);
+	if (!acl || acl == ACL_NOT_CACHED || IS_ERR(acl))
+		return;
+	size = posix_acl_xattr_size(acl->a_count);
+	value = kmalloc(size, GFP_KERNEL);
+	if (!value)
+		return;
+	if (dnsk_acl_to_xattr(dnsk_user_ns, acl, value, size) >= 0) {
+		xret = dnsk_simple_xattr_set(&info->xattrs, name, value,
+					     size, 0);
+		if (IS_ERR(xret))
+			pr_warn_once("dnsk_tmpfsx: store inherited acl failed %ld\n",
+				     PTR_ERR(xret));
+	}
+	kfree(value);
+}
+
 static void dnsk_inherit_acl(struct inode *dir, struct inode *inode)
 {
 	int ret;
@@ -329,8 +367,14 @@ static void dnsk_inherit_acl(struct inode *dir, struct inode *inode)
 	if (!dir || !inode || !IS_POSIXACL(dir))
 		return;
 	ret = dnsk_call_sac(dir, inode);
-	if (ret)
+	if (ret) {
 		pr_warn_once("dnsk_tmpfsx: acl inherit failed %d\n", ret);
+		return;
+	}
+	dnsk_store_acl(inode, ACL_TYPE_ACCESS, XATTR_NAME_POSIX_ACL_ACCESS);
+	if (S_ISDIR(inode->i_mode))
+		dnsk_store_acl(inode, ACL_TYPE_DEFAULT,
+			       XATTR_NAME_POSIX_ACL_DEFAULT);
 }
 
 int dnsk_tmpfsx_create(struct mnt_idmap *idmap, struct inode *dir,

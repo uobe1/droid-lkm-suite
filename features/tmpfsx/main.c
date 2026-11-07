@@ -150,6 +150,7 @@ static int dnsk_resolve_symbols(void)
 	void *acl_from, *acl_to, *user_ns, *acl_release, *acl_set;
 	void *acl_update_mode, *acl_set_cached;
 	void *acl_sac, *acl_chmod, *simple_setattr_fn;
+	void *acl_get_cached;
 	void *native_acl_access, *native_acl_default;
 	void *fc_ops, *parse_param, *parse_monolithic;
 	int ret;
@@ -179,6 +180,7 @@ static int dnsk_resolve_symbols(void)
 	acl_sac = dnsk_api->resolve("simple_acl_create");
 	acl_chmod = dnsk_api->resolve("posix_acl_chmod");
 	simple_setattr_fn = dnsk_api->resolve("simple_setattr");
+	acl_get_cached = dnsk_api->resolve("get_cached_acl");
 	native_acl_access = dnsk_api->resolve("posix_acl_access_xattr_handler");
 	native_acl_default = dnsk_api->resolve("posix_acl_default_xattr_handler");
 	fc_ops = dnsk_api->resolve("shmem_fs_context_ops");
@@ -222,11 +224,12 @@ static int dnsk_resolve_symbols(void)
 				 offsetof(struct inode_operations, set_acl)))) {
 		pr_info("dnsk_tmpfsx: native ACL present; keeping native\n");
 	} else if (acl_from && acl_to && user_ns && acl_release && acl_set &&
-		   acl_update_mode && acl_set_cached && acl_sac && acl_chmod) {
+		   acl_update_mode && acl_set_cached && acl_sac && acl_chmod &&
+		   acl_get_cached) {
 		ret = dnsk_tmpfsx_acl_init(acl_from, acl_to, user_ns,
 					   acl_release, acl_set,
 					   acl_update_mode, acl_set_cached,
-					   &dnsk_acl_ops);
+					   acl_get_cached, &dnsk_acl_ops);
 		if (ret)
 			return ret;
 		dnsk_acl_slots.create = (dnsk_create_fn)READ_ONCE(
