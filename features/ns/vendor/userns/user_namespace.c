@@ -89,14 +89,11 @@ int create_user_ns(struct cred *new)
 	kgid_t group = new->egid;
 	struct ucounts *ucounts;
 	int ret, i;
-	int step = 0;
 
-	step = 1;
 	ret = -ENOSPC;
 	if (parent_ns->level > 32)
 		goto fail;
 
-	step = 2;
 	ucounts = inc_user_namespaces(parent_ns, owner);
 	if (!ucounts)
 		goto fail;
@@ -107,7 +104,6 @@ int create_user_ns(struct cred *new)
 	 * by verifying that the root directory is at the root of the
 	 * mount namespace which allows all files to be accessed.
 	 */
-	step = 3;
 	ret = -EPERM;
 	if (current_chrooted())
 		goto fail_dec;
@@ -116,25 +112,21 @@ int create_user_ns(struct cred *new)
 	 * or else we won't be able to reasonably tell userspace who
 	 * created a user_namespace.
 	 */
-	step = 4;
 	ret = -EPERM;
 	if (!kuid_has_mapping(parent_ns, owner) ||
 	    !kgid_has_mapping(parent_ns, group))
 		goto fail_dec;
 
-	step = 5;
 	ret = security_create_user_ns(new);
 	if (ret < 0)
 		goto fail_dec;
 
-	step = 6;
 	ret = -ENOMEM;
 	ns = kmem_cache_zalloc(user_ns_cachep, GFP_KERNEL);
 	if (!ns)
 		goto fail_dec;
 
 	ns->parent_could_setfcap = cap_raised(new->cap_effective, CAP_SETFCAP);
-	step = 7;
 	ret = ns_alloc_inum(&ns->ns);
 	if (ret)
 		goto fail_free;
@@ -165,7 +157,6 @@ int create_user_ns(struct cred *new)
 	INIT_LIST_HEAD(&ns->keyring_name_list);
 	init_rwsem(&ns->keyring_sem);
 #endif
-	step = 8;
 	ret = -ENOMEM;
 	if (!setup_userns_sysctls(ns))
 		goto fail_keyring;
@@ -183,7 +174,6 @@ fail_free:
 fail_dec:
 	dec_user_namespaces(ucounts);
 fail:
-	pr_info("ds_userns create_user_ns step=%d ret=%d\n", step, ret);
 	return ret;
 }
 
