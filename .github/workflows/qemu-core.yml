@@ -14,6 +14,7 @@ on:
           - active-ipset
           - cgpids
           - tmpfsx
+          - userns
           - docker
         default: baseline
       kernel:
@@ -257,6 +258,21 @@ jobs:
             aarch64-linux-gnu-gcc -static -O2 -o acl_test tests/qemu/acl_test.c
             cp xattr_test acl_test rootfs/
             cp tests/qemu/init-tmpfsx-oracle rootfs/init
+          elif [ "${{ inputs.mode }}" = "userns" ]; then
+            aarch64-linux-gnu-gcc -static -O2 -o userns_test tests/qemu/userns_test.c
+            aarch64-linux-gnu-gcc -static -O2 -o fuse_test tests/qemu/fuse_test.c
+            aarch64-linux-gnu-gcc -static -O2 -pthread -o mount_setattr_test \
+              tests/qemu/selftests/mount_setattr/mount_setattr_test.c
+            cp userns_test fuse_test mount_setattr_test rootfs/
+            curl -fsSL -o apk-tools.apk \
+              https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/apk-tools-static-2.14.13-r0.apk
+            rm -rf /tmp/apk-tools && mkdir -p /tmp/apk-tools
+            tar -xzf apk-tools.apk -C /tmp/apk-tools
+            /tmp/apk-tools/sbin/apk.static --root "$PWD/rootfs" \
+              --arch aarch64 --no-cache --allow-untrusted --no-scripts \
+              --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
+              add e2fsprogs
+            cp tests/qemu/init-userns-oracle rootfs/init
           elif [ "${{ inputs.mode }}" = "baseline" ]; then
             cp tests/qemu/init rootfs/init
           else
@@ -301,6 +317,11 @@ jobs:
             grep -q 'DNSK_TMPFSX_ACL_INHERIT_OK' qemu.log
             grep -q 'DNSK_TMPFSX_ACL_LEGACY_INHERIT_OK' qemu.log
             grep -q 'DNSK_TMPFSX_OK' qemu.log
+          fi
+          if [ "${{ inputs.mode }}" = "userns" ]; then
+            grep -q 'DNSK_OVL_INIT_NS=0' qemu.log
+            grep -q 'DNSK_MOUNT_SETATTR_SELFTEST_OK' qemu.log
+            grep -q 'DNSK_USERNS_OK' qemu.log
           fi
           if grep -Eq 'Kernel panic|Oops|BUG:|CFI failure|Unknown symbol|invalid module format|insmod: can.t insert' qemu.log; then
             echo "kernel failure in QEMU log" >&2
