@@ -104,24 +104,42 @@ echo "DNSK_USERNS_OK"
 echo "DNSK_QEMU_OK"
 
 if [ -f /enforce ]; then
-	for rule in \
-		"allow su rootfs file { open read write execute getattr map }" \
-		"allow su rootfs dir { open read getattr search }" \
-		"allow su rootfs lnk_file { read getattr }" \
-		"allow su tmpfs file { open read write create unlink getattr setattr append map execute }" \
-		"allow su tmpfs dir { open read write getattr search add_name remove_name rmdir create }" \
-		"allow su tmpfs lnk_file { read getattr }" \
-		"allow su devtmpfs chr_file { open read write ioctl getattr }" \
-		"allow su devtmpfs dir { open read getattr search }" \
-		"allow su proc file { open read write getattr ioctl }" \
-		"allow su proc dir { open read getattr search }" \
-		"allow su sysfs file { open read write getattr }" \
-		"allow su sysfs dir { open read getattr search }" \
-		"allow su selinuxfs file { open read write getattr }" \
-		"allow su selinuxfs dir { open read getattr search }"; do
-		/ksud sepolicy patch "$rule" || fail "su_sepolicy:$rule"
-	done
-	su_sh 'read ctx < /proc/self/attr/current 2>/dev/null; echo "DNSK_SU_CTX=$ctx"; echo 1 > /sys/fs/selinux/enforce; echo "DNSK_SELINUX_ENFORCE=$(read e < /sys/fs/selinux/enforce; echo $e)"; /userns_test && /userns_unpriv_test && /fuse_test && /mount_setattr_test && echo "DNSK_USERNS_ENFORCE_OK"; poweroff -f || echo o > /proc/sysrq-trigger' || fail userns_enforce
+	echo 0 > /proc/sys/kernel/printk_ratelimit 2>/dev/null
+	echo 10000 > /proc/sys/kernel/printk_ratelimit_burst 2>/dev/null
+	# The root profile lands in u:r:ksu:s0, so the rules target ksu.
+	cat > /ksu_rules <<'RULES'
+allow ksu rootfs file { open read write execute getattr map create unlink setattr }
+allow ksu rootfs dir { open read write getattr search add_name remove_name rmdir create mounton }
+allow ksu rootfs lnk_file { read getattr }
+allow ksu tmpfs file { open read write create unlink getattr setattr append map execute }
+allow ksu tmpfs dir { open read write getattr search add_name remove_name rmdir create mounton }
+allow ksu tmpfs lnk_file { read getattr }
+allow ksu devtmpfs chr_file { open read write ioctl getattr }
+allow ksu devtmpfs blk_file { open read write getattr ioctl }
+allow ksu devtmpfs dir { open read getattr search add_name remove_name create }
+allow ksu tmpfs filesystem { mount remount }
+allow ksu ext4 filesystem { mount remount }
+allow ksu rootfs filesystem { mount remount }
+allow ksu unlabeled filesystem { mount remount unmount }
+allow unlabeled unlabeled filesystem associate
+allow ksu unlabeled file { open read write create unlink getattr setattr append map ioctl }
+allow ksu unlabeled dir { open read write getattr search add_name remove_name rmdir create mounton }
+allow ksu unlabeled lnk_file { read getattr }
+allow ksu unlabeled chr_file { open read write ioctl getattr }
+allow ksu unlabeled blk_file { open read write ioctl getattr }
+allow ksu proc file { open read write getattr ioctl }
+allow ksu proc dir { open read getattr search }
+allow ksu sysfs file { open read write getattr }
+allow ksu sysfs dir { open read getattr search }
+allow ksu selinuxfs file { open read write getattr }
+allow ksu selinuxfs dir { open read getattr search }
+RULES
+	/ksud sepolicy apply /ksu_rules || fail su_sepolicy
+	su_sh 'read ctx < /proc/self/attr/current 2>/dev/null; echo "DNSK_SU_CTX=$ctx"; echo 1 > /sys/fs/selinux/enforce; echo "DNSK_SELINUX_ENFORCE=$(read e < /sys/fs/selinux/enforce; echo $e)"; /userns_test && /userns_unpriv_test && /fuse_test && /mount_setattr_test && echo "DNSK_USERNS_ENFORCE_OK"; poweroff -f || echo o > /proc/sysrq-trigger'
+	if [ $? -ne 0 ]; then
+		echo "DNSK_QEMU_FAIL userns_enforce"
+		echo o > /proc/sysrq-trigger
+	fi
 fi
 
 "$BB" poweroff -f
