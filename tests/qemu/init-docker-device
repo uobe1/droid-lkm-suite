@@ -19,11 +19,11 @@ if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
 	"$BB" mknod /dev/tty c 5 0
 fi
 
-EXPECT_PIDS=0
+EXPECT_PIDS=1
 MODPARAM=""
 for arg in $(cat /proc/cmdline); do
 	case "$arg" in
-		cgpids_native=1) EXPECT_PIDS=1; MODPARAM="native=1" ;;
+		cgpids_virtual=1) EXPECT_PIDS=0; MODPARAM="native=0" ;;
 	esac
 done
 

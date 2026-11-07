@@ -263,14 +263,14 @@ static struct dnsk_feature_desc dnsk_cgpids_desc = {
 static struct dnsk_feature_desc dnsk_cgpids_native_desc = {
 	.name = "cgpids",
 	.version = "0.2",
-	.status = DNSK_STATUS_DEVELOPMENT,
+	.status = DNSK_STATUS_NATIVE,
 	.caps = "native pids cgroup_subsys injected into the profile slot; v2 files, fork EAGAIN, attach accounting",
 	.owner = THIS_MODULE,
 };
 
-static bool dnsk_native;
+static bool dnsk_native = true;
 module_param_named(native, dnsk_native, bool, 0444);
-MODULE_PARM_DESC(native, "register a real pids subsys in the profile slot (opt-in until the native gate); 0 keeps the virtual controller");
+MODULE_PARM_DESC(native, "register a real pids subsys in the profile slot (default); 0 keeps the virtual controller");
 
 static int __init dnsk_cgpids_init(void)
 {
