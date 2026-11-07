@@ -376,10 +376,17 @@ static ssize_t dnsk_rw_write_file(struct file *file, const char __user *ubuf,
 
 	mutex_lock(&dnsk_rw_lock);
 	cmd = strsep(&p, " ");
+	while (cmd && !*cmd)
+		cmd = strsep(&p, " ");
 	rest = p;
 	arg = rest ? rest : "";
-	if (!cmd)
+	/* A shell may split "cmd\n" into several write() calls; an empty chunk
+	 * is not an error and must not clobber the previous result.
+	 */
+	if (!cmd) {
+		ret = 0;
 		goto out;
+	}
 	if (!strcmp(cmd, "read") || !strcmp(cmd, "readp")) {
 		bool phys = cmd[4] == 'p';
 		unsigned long l;
