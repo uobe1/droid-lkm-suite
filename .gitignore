@@ -31,3 +31,6 @@ docs/notes/
 .vscode/
 *.swp
 .DS_Store
+
+# Future plans (untracked)
+docs/plans/
