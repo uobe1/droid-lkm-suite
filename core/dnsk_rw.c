@@ -462,7 +462,7 @@ int dnsk_rw_init(struct proc_dir_entry *proc_dir)
 	dnsk_rw_read_fn = dnsk_resolve_symbol("copy_from_kernel_nofault");
 	if (!dnsk_rw_read_fn)
 		dnsk_warn("rw: copy_from_kernel_nofault missing; server disabled\n");
-	dnsk_rw_entry = proc_create("rw", 0400, proc_dir, &dnsk_rw_proc_ops);
+	dnsk_rw_entry = proc_create("rw", 0600, proc_dir, &dnsk_rw_proc_ops);
 	if (!dnsk_rw_entry) {
 		dnsk_err("rw: cannot create /proc/dnsk/rw\n");
 		return -ENOMEM;

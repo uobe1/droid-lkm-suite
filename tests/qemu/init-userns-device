@@ -48,7 +48,9 @@ if [ -r /proc/dnsk/rw ]; then
 		"$BB" printf '%s\n' "$1" >/proc/dnsk/rw
 		"$BB" cat /proc/dnsk/rw
 	}
-	rw_cmd 'info' | grep -q 'rw=ready' || fail rw_info
+	rw_info=$(rw_cmd 'info')
+	echo "RW_INFO=$rw_info"
+	echo "$rw_info" | grep -q 'rw=ready' || fail rw_info
 	va=$(rw_cmd 'resolve init_user_ns' | \
 		sed -n 's/^resolve init_user_ns //p')
 	[ -n "$va" ] || fail rw_resolve
