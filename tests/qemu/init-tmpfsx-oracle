@@ -44,12 +44,15 @@ echo data >/early/g || fail evict_file
 "$BB" rm -f /early/g
 "$BB" sync
 
-/acl_test /acl || fail acl_test
+# Native tmpfs has no "acl" mount flag: ACLs are on by default when
+# CONFIG_TMPFS_POSIX_ACL is set (shmem_fill_super sets SB_POSIXACL).
+mount -t tmpfs tmpfs /acl || fail acl_mount
+/acl_test /acl existing || fail acl_test
 echo "DNSK_TMPFSX_ACL_OK"
 /acl_test /acl inherit || fail acl_inherit
 echo "DNSK_TMPFSX_ACL_INHERIT_OK"
 
-mount -t tmpfs -o acl tmpfs /aclled || fail acl_legacy_mount
+mount -t tmpfs tmpfs /aclled || fail acl_legacy_mount
 /acl_test /aclled existing || fail acl_legacy
 echo "DNSK_TMPFSX_ACL_LEGACY_OK"
 /acl_test /aclled inherit || fail acl_legacy_inherit
