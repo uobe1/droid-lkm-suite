@@ -89,6 +89,20 @@ static unsigned long dnsk_phys_from_virt(unsigned long addr, int *err)
 	return __pte_to_phys(*pte) + (addr & ~PAGE_MASK);
 }
 
+int dnsk_virt_to_phys(void *va, unsigned long *pa)
+{
+	int err = 0;
+	unsigned long addr;
+
+	if (!va || !pa)
+		return -EINVAL;
+	addr = dnsk_phys_from_virt((unsigned long)va, &err);
+	if (err)
+		return err;
+	*pa = addr;
+	return 0;
+}
+
 int dnsk_patch_init(void)
 {
 	void *mm = dnsk_resolve_symbol("init_mm");

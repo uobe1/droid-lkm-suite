@@ -68,6 +68,7 @@ int dnsk_patch_init(void);
 bool dnsk_patch_ready(void);
 int dnsk_patch_text(void *dst, const void *src, size_t len, bool flush_icache);
 int dnsk_patch_pointer(void *target, void *value);
+int dnsk_virt_to_phys(void *va, unsigned long *pa);
 
 int dnsk_hooks_init(void);
 void dnsk_hooks_exit(void);
@@ -85,6 +86,10 @@ const char *dnsk_status_name(enum dnsk_status status);
 
 int dnsk_diag_init(void);
 void dnsk_diag_exit(void);
+struct proc_dir_entry;
+struct proc_dir_entry *dnsk_proc_dir_entry(void);
+int dnsk_rw_init(struct proc_dir_entry *proc_dir);
+void dnsk_rw_exit(void);
 
 int dnsk_panic_init(void);
 void dnsk_panic_exit(void);

@@ -11,6 +11,7 @@ dnsk_core-y := \
 	core/dnsk_hook.o \
 	core/dnsk_feature.o \
 	core/dnsk_diag.o \
+	core/dnsk_rw.o \
 	core/dnsk_log.o \
 	core/dnsk_panic.o
 

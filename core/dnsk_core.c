@@ -106,6 +106,9 @@ static int __init dnsk_core_init(void)
 	if (ret)
 		goto err_patch;
 
+	if (dnsk_rw_init(dnsk_proc_dir_entry()))
+		dnsk_warn("rw server unavailable; continuing without it\n");
+
 	if (dnsk_panic_init())
 		dnsk_warn("panic markers unavailable\n");
 
@@ -127,6 +130,7 @@ static void __exit dnsk_core_exit(void)
 {
 	dnsk_core_ready = false;
 	dnsk_panic_exit();
+	dnsk_rw_exit();
 	dnsk_diag_exit();
 	dnsk_features_exit();
 	dnsk_hooks_exit();

@@ -21,6 +21,11 @@ static int dnsk_status_show(struct seq_file *m, void *unused)
 	return 0;
 }
 
+struct proc_dir_entry *dnsk_proc_dir_entry(void)
+{
+	return dnsk_proc_dir;
+}
+
 int dnsk_diag_init(void)
 {
 	dnsk_proc_dir = proc_mkdir("dnsk", NULL);
