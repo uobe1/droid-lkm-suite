@@ -490,8 +490,8 @@ static void dnsk_build_ss(void)
 	DNSK_SS_INT(DNSK_SS_ID, DNSK_CGROUP_SUBSYS_SLOT);
 	DNSK_SS_SET(DNSK_SS_NAME, "pids");
 	DNSK_SS_SET(DNSK_SS_LEGACY_NAME, "pids");
-	DNSK_SS_SET(DNSK_SS_LEGACY_CFTYPES, NULL);
 	DNSK_SS_SET(DNSK_SS_DFL_CFTYPES, dnsk_native_files);
+	DNSK_SS_SET(DNSK_SS_LEGACY_CFTYPES, dnsk_native_files);
 	DNSK_SS_SET(DNSK_SS_ROOT, dnsk_root);
 	idr_init((struct idr *)(dnsk_ss + DNSK_SS_CSS_IDR));
 	INIT_LIST_HEAD((struct list_head *)(dnsk_ss + DNSK_SS_CFTS));
