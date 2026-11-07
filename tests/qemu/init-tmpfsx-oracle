@@ -1,0 +1,51 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Native tmpfs xattr/ACL oracle (CONFIG_TMPFS_XATTR/POSIX_ACL=y).
+# Same test items as the beryl device gate, without any LKM.
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	"$BB" mknod /dev/console c 5 1
+	"$BB" mknod /dev/null c 1 3
+	"$BB" mknod /dev/zero c 1 5
+fi
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg 2>/dev/null | tail -20
+	"$BB" poweroff -f
+}
+
+"$BB" mkdir -p /early /late /acl /aclled
+mount -t tmpfs tmpfs /early || fail early_mount
+mount -t tmpfs tmpfs /late || fail late_mount
+
+echo data >/early/f || fail early_file
+/xattr_test /early/f || fail early_xattr
+echo data >/late/f || fail late_file
+/xattr_test /late/f || fail late_xattr
+
+echo data >/early/g || fail evict_file
+/xattr_test /early/g keep || fail evict_set
+"$BB" rm -f /early/g
+"$BB" sync
+
+/acl_test /acl || fail acl_test
+echo "DNSK_TMPFSX_ACL_OK"
+/acl_test /acl inherit || fail acl_inherit
+echo "DNSK_TMPFSX_ACL_INHERIT_OK"
+
+mount -t tmpfs -o acl tmpfs /aclled || fail acl_legacy_mount
+/acl_test /aclled existing || fail acl_legacy
+echo "DNSK_TMPFSX_ACL_LEGACY_OK"
+/acl_test /aclled inherit || fail acl_legacy_inherit
+echo "DNSK_TMPFSX_ACL_LEGACY_INHERIT_OK"
+
+echo "DNSK_TMPFSX_OK"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f

@@ -13,6 +13,7 @@ on:
           - active-devtmpfs
           - active-ipset
           - cgpids
+          - tmpfsx
           - docker
         default: baseline
       kernel:
@@ -210,7 +211,7 @@ jobs:
           github-token: ${{ github.token }}
       - name: Install QEMU
         run: |
-          PKGS="qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio"
+          PKGS="qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio gcc-aarch64-linux-gnu libc6-dev-arm64-cross"
           APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3"
           if ! sudo timeout 300 apt-get $APT_OPTS install -y --no-install-recommends $PKGS; then
             sudo timeout 180 apt-get $APT_OPTS update
@@ -251,7 +252,12 @@ jobs:
               tar -xzf "$pkg.apk" -C rootfs 2>/dev/null
             done
           fi
-          if [ "${{ inputs.mode }}" = "baseline" ]; then
+          if [ "${{ inputs.mode }}" = "tmpfsx" ]; then
+            aarch64-linux-gnu-gcc -static -O2 -o xattr_test tests/qemu/xattr_test.c
+            aarch64-linux-gnu-gcc -static -O2 -o acl_test tests/qemu/acl_test.c
+            cp xattr_test acl_test rootfs/
+            cp tests/qemu/init-tmpfsx-oracle rootfs/init
+          elif [ "${{ inputs.mode }}" = "baseline" ]; then
             cp tests/qemu/init rootfs/init
           else
             cp "tests/qemu/init-${{ inputs.mode }}" rootfs/init
@@ -291,6 +297,11 @@ jobs:
             exit 1
           fi
           grep -q 'DNSK_QEMU_OK' qemu.log
+          if [ "${{ inputs.mode }}" = "tmpfsx" ]; then
+            grep -q 'DNSK_TMPFSX_ACL_INHERIT_OK' qemu.log
+            grep -q 'DNSK_TMPFSX_ACL_LEGACY_INHERIT_OK' qemu.log
+            grep -q 'DNSK_TMPFSX_OK' qemu.log
+          fi
           if grep -Eq 'Kernel panic|Oops|BUG:|CFI failure|Unknown symbol|invalid module format|insmod: can.t insert' qemu.log; then
             echo "kernel failure in QEMU log" >&2
             exit 1
