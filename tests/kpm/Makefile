@@ -23,7 +23,8 @@ hook-bench.kpm: $(objs)
 	$(CC) -r -o $@ $^
 
 %.o: %.c
-	$(CC) $(CFLAGS) $(INCLUDE_FLAGS) -c -O2 -fno-pie -fno-pic -fno-stack-protector -o $@ $<
+	$(CC) $(CFLAGS) $(INCLUDE_FLAGS) -c -O2 -fno-pie -fno-pic -fno-stack-protector \
+		-mno-outline-atomics -o $@ $<
 
 clean:
 	rm -f *.kpm *.o
