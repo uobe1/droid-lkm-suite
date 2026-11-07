@@ -38,6 +38,14 @@ echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
 [ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
 echo "DNSK_SELINUX_AFTER_KSU=permissive"
 
+# KSU su: the kernel rewrites an exec of the su path into ksud with
+# argv[0]="su" and hands it a ksu_driver_su fd; only that root profile may
+# adjust SELinux policy, so the enforcing pass runs inside it.
+"$BB" mkdir -p /data/adb/ksu/bin
+ln -sf /ksud /su
+ln -sf /ksud /data/adb/ksu/bin/su
+su_sh() { /data/adb/ksu/bin/su -s "$BB" -c "$1"; }
+
 /ksud insmod /modules/dnsk_core.ko || fail core_insmod
 /ksud insmod /modules/dnsk_ns.ko gki=1 activate=1 || fail ns_insmod
 echo "DNSK_USERNS_LKM_OK"
@@ -89,4 +97,26 @@ echo "DNSK_USERNS_UNPRIV_OK"
 echo "DNSK_MOUNT_SETATTR_SELFTEST_OK"
 echo "DNSK_USERNS_OK"
 echo "DNSK_QEMU_OK"
+
+if [ -f /enforce ]; then
+	for rule in \
+		"allow su rootfs file { open read write execute getattr map }" \
+		"allow su rootfs dir { open read getattr search }" \
+		"allow su rootfs lnk_file { read getattr }" \
+		"allow su tmpfs file { open read write create unlink getattr setattr append map execute }" \
+		"allow su tmpfs dir { open read write getattr search add_name remove_name rmdir create }" \
+		"allow su tmpfs lnk_file { read getattr }" \
+		"allow su devtmpfs chr_file { open read write ioctl getattr }" \
+		"allow su devtmpfs dir { open read getattr search }" \
+		"allow su proc file { open read write getattr ioctl }" \
+		"allow su proc dir { open read getattr search }" \
+		"allow su sysfs file { open read write getattr }" \
+		"allow su sysfs dir { open read getattr search }" \
+		"allow su selinuxfs file { open read write getattr }" \
+		"allow su selinuxfs dir { open read getattr search }"; do
+		/ksud sepolicy patch "$rule" || fail "su_sepolicy:$rule"
+	done
+	su_sh 'read ctx < /proc/self/attr/current 2>/dev/null; echo "DNSK_SU_CTX=$ctx"; echo 1 > /sys/fs/selinux/enforce; echo "DNSK_SELINUX_ENFORCE=$(read e < /sys/fs/selinux/enforce; echo $e)"; /userns_test && /userns_unpriv_test && /fuse_test && /mount_setattr_test && echo "DNSK_USERNS_ENFORCE_OK"; poweroff -f' || fail userns_enforce
+fi
+
 "$BB" poweroff -f

@@ -36,6 +36,10 @@ on:
         description: device kernel module_layout CRC (hex)
         required: false
         default: "0xe976b219"
+      enforce_selinux:
+        description: run the userns suite again from a KSU su root under enforcing
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -346,6 +350,9 @@ jobs:
             aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
             cp selinux_load rootfs/selinux_load
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            if [ "${{ inputs.enforce_selinux }}" = "true" ]; then
+              touch rootfs/enforce
+            fi
             aarch64-linux-gnu-gcc -static -O2 -o userns_test tests/qemu/userns_test.c
             cp userns_test rootfs/userns_test
             aarch64-linux-gnu-gcc -static -O2 -o userns_unpriv_test \
