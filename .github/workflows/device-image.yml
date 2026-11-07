@@ -12,11 +12,8 @@ on:
         type: choice
         options:
           - baseline
-          - cgpids
-          - ksud-cgpids
           - bench-lkm
           - ksud-ns
-          - docker
           - ksud-docker
           - tmpfsx
           - userns
@@ -24,7 +21,7 @@ on:
           - apps
         default: baseline
       module_run_id:
-        description: CI run id with core-android16-6.12 artifact (cgpids mode)
+        description: CI run id with core-android16-6.12 artifact (all device modes)
         required: false
         default: ""
       cgpids_native:
@@ -265,25 +262,6 @@ jobs:
             cp bench_getpid tests/kpm/env/bench_repeat.sh rootfs/bench/
             chmod 0755 rootfs/bench/bench_repeat.sh
             cp tests/qemu/init-bench-lkm rootfs/init
-          elif [ "${{ inputs.mode }}" = "cgpids" ]; then
-            cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
-            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
-            cp insmod_force rootfs/insmod_force
-            cp tests/qemu/init-cgpids rootfs/init
-          elif [ "${{ inputs.mode }}" = "ksud-cgpids" ]; then
-            cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
-            cp tests/qemu/assets/ksud rootfs/ksud
-            chmod 0755 rootfs/ksud
-            cp -a tests/qemu/assets/android/. rootfs/
-            chmod 0755 rootfs/system/bin/linker64
-            rm -f rootfs/system/etc/ld.config.txt
-            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
-            cp insmod_force rootfs/insmod_force
-            cp modules/selpermissive.ko rootfs/modules/
-            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
-            cp selinux_load rootfs/selinux_load
-            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
-            cp tests/qemu/init-cgpids rootfs/init
           elif [ "${{ inputs.mode }}" = "ksud-ns" ]; then
             cp modules/dnsk_core.ko modules/dnsk_ns.ko rootfs/modules/
             cp tests/qemu/assets/ksud rootfs/ksud
@@ -390,26 +368,21 @@ jobs:
               --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
               add e2fsprogs
             cp tests/qemu/init-userns-device rootfs/init
-          elif [ "${{ inputs.mode }}" = "docker" ] || [ "${{ inputs.mode }}" = "ksud-docker" ]; then
+          elif [ "${{ inputs.mode }}" = "ksud-docker" ]; then
             cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
             [ -e modules/dnsk_ns.ko ] && cp modules/dnsk_ns.ko rootfs/modules/
             [ -e modules/dnsk_netfilter.ko ] && cp modules/dnsk_netfilter.ko rootfs/modules/
             [ -e modules/dnsk_ipset.ko ] && cp modules/dnsk_ipset.ko rootfs/modules/
-            if [ "${{ inputs.mode }}" = "ksud-docker" ]; then
-              cp tests/qemu/assets/ksud rootfs/ksud
-              chmod 0755 rootfs/ksud
-              cp -a tests/qemu/assets/android/. rootfs/
-              chmod 0755 rootfs/system/bin/linker64
-              aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
-              cp insmod_force rootfs/insmod_force
-              cp modules/selpermissive.ko rootfs/modules/
-              aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
-              cp selinux_load rootfs/selinux_load
-              cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
-            else
-              aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
-              cp insmod_force rootfs/insmod_force
-            fi
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            cp modules/selpermissive.ko rootfs/modules/
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
             # Docker bridge networking drives iptables; install the legacy
             # backend (native xtables) for the NAT/addrtype checks.
             curl -fsSL -o apk-tools.apk \
@@ -447,7 +420,7 @@ jobs:
           set +e
           MEM=4096
           TIMEOUT=600
-          if [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
+          if [ "$MODE" = "ksud-docker" ]; then
             TIMEOUT=1200
           fi
           if [ "$MODE" = "bench-lkm" ]; then
@@ -455,10 +428,10 @@ jobs:
           fi
           APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
           case "$MODE" in
-            ksud-cgpids|ksud-ns|ksud-docker|tmpfsx|userns|netfilter|apps) APPEND="$APPEND enforcing=0" ;;
+            ksud-ns|ksud-docker|tmpfsx|userns|netfilter|apps) APPEND="$APPEND enforcing=0" ;;
             *) APPEND="$APPEND selinux=0" ;;
           esac
-          if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ] || [ "$MODE" = "ksud-ns" ] || [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
+          if [ "$MODE" = "ksud-ns" ] || [ "$MODE" = "ksud-docker" ]; then
             APPEND="$APPEND dnsk_lkm=1"
           fi
           if [ "${{ inputs.cgpids_native }}" = "true" ]; then
@@ -477,10 +450,7 @@ jobs:
             echo "device kernel did not exit cleanly" >&2
             exit 1
           fi
-          if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ]; then
-            grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
-            grep -q 'DNSK_CGPIDS_OK' qemu.log
-          elif [ "$MODE" = "bench-lkm" ]; then
+          if [ "$MODE" = "bench-lkm" ]; then
             grep -q 'DNSK_BENCH_A_OK' qemu.log
             grep -q 'DNSK_BENCH_LKM_OK' qemu.log
             grep -q 'DNSK_BENCH_OK' qemu.log
@@ -490,7 +460,7 @@ jobs:
           elif [ "$MODE" = "ksud-ns" ]; then
             grep -q 'DNSK_KSUD_LATE_LOAD_OK' qemu.log
             grep -q 'DNSK_NS_DEVICE_OK' qemu.log
-          elif [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
+          elif [ "$MODE" = "ksud-docker" ]; then
             grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
             grep -q 'DNSK_CGPIDS_FULL_OK' qemu.log
             grep -q 'DNSK_CGPIDS_STRESS_OK' qemu.log
