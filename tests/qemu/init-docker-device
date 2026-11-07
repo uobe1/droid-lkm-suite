@@ -120,10 +120,15 @@ done
 echo "DNSK_CGPIDS_SPAWNED=$n"
 [ "$n" -lt 10 ] || fail cgpids_fork_limit
 echo 10 > /sys/fs/cgroup/t/a/pids.max || fail cgpids_raise_limit
+# Never leave PID 1 under a pids limit: its next fork would fail and the
+# shell would exit, panicking the kernel.  Move back before external cmds.
+echo $$ > /sys/fs/cgroup/cgroup.procs || fail cgpids_move_back
 "$BB" mkdir /sys/fs/cgroup/t/b || fail cgpids_mkdir_b
+echo 100 > /sys/fs/cgroup/t/b/pids.max || fail cgpids_b_limit
 sh -c '"$0" sleep 30 & echo $! > /sys/fs/cgroup/t/b/cgroup.procs' "$BB" || \
 	fail cgpids_migrate
-( i=0; while [ "$i" -lt 100 ]; do "$BB" sleep 30 & i=$((i + 1)); done ) &
+sh -c 'echo $$ > /sys/fs/cgroup/t/b/cgroup.procs; i=0;
+       while [ "$i" -lt 100 ]; do sleep 30 & i=$((i + 1)); done' &
 stress=$!
 i=0
 while [ "$i" -lt 25 ]; do
@@ -135,7 +140,6 @@ while [ "$i" -lt 25 ]; do
 done
 kill "$stress" 2>/dev/null || true
 echo "DNSK_CGPIDS_STRESS_OK"
-echo $$ > /sys/fs/cgroup/cgroup.procs || fail cgpids_move_back
 "$BB" rmdir /sys/fs/cgroup/t/b 2>/dev/null || true
 "$BB" rmdir /sys/fs/cgroup/t/a 2>/dev/null || true
 "$BB" rmdir /sys/fs/cgroup/t 2>/dev/null || true
