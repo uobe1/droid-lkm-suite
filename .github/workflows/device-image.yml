@@ -26,6 +26,10 @@ on:
         description: CI run id with core-android16-6.12 artifact (cgpids mode)
         required: false
         default: ""
+      cgpids_native:
+        description: load dnsk_cgpids with native=1 (real pids slot injection)
+        type: boolean
+        default: false
       device_release:
         description: override kernel release (empty = derive from Image)
         required: false
@@ -445,6 +449,9 @@ jobs:
           esac
           if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ] || [ "$MODE" = "ksud-ns" ] || [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
             APPEND="$APPEND dnsk_lkm=1"
+          fi
+          if [ "${{ inputs.cgpids_native }}" = "true" ]; then
+            APPEND="$APPEND cgpids_native=1"
           fi
           timeout "$TIMEOUT" qemu-system-aarch64 \
             -M virt -cpu max -m "$MEM" -smp 4 -nographic -no-reboot \

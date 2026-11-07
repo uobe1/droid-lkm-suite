@@ -72,4 +72,9 @@ void dnsk_cgpids_restore_sysops(void);
 int dnsk_cgpids_migration_init(void);
 void dnsk_cgpids_migration_exit(void);
 
+struct dnsk_core_api;
+int dnsk_cgpids_native_init(struct dnsk_core_api *api);
+void dnsk_cgpids_native_exit(void);
+bool dnsk_cgpids_native_active(void);
+
 #endif /* _DNSK_CGPIDS_H */

@@ -5,7 +5,7 @@
 #include <linux/types.h>
 
 #define DNSK_CORE_MAGIC 0x444E534BU
-#define DNSK_CORE_ABI 2
+#define DNSK_CORE_ABI 3
 
 struct module;
 
@@ -72,6 +72,11 @@ struct dnsk_core_api {
 	int (*feature_add)(const struct dnsk_feature_desc *desc);
 	int (*feature_del)(const char *name);
 	void (*log)(int level, const char *fmt, ...);
+	/*
+	 * Write an aligned pointer into read-only-after-init kernel memory.
+	 * Uses the patching backend (stop_machine + fixmap), not a plain store.
+	 */
+	int (*patch_pointer)(void *target, void *value);
 	/*
 	 * dnsk_core_get() returns with one reference taken on this module.
 	 * The caller must keep it for as long as the API may be used and

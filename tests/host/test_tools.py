@@ -57,6 +57,8 @@ class BuildFlagsTests(unittest.TestCase):
         self.assertEqual(flags["DNSK_CGROUP_SUBSYS_COUNT"], "8")
         self.assertEqual(flags["DNSK_CGROUP_SUBSYS_LAYOUT"], "256")
         self.assertEqual(flags["DNSK_CGROUP_SUBSYS_CAN_FORK"], "104")
+        self.assertEqual(flags["DNSK_CGROUP_SUBSYS_SLOT"], "7")
+        self.assertEqual(flags["DNSK_CGROUP_SUBSYS_LEGACY_NAME"], "168")
         self.assertEqual(flags["DNSK_CGROUP_HAS_CSS_KILLED"], "0")
 
         pid, kmi, config = build_flags.load(root / "android16-6.12-xt128.json")

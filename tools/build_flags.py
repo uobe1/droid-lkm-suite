@@ -20,8 +20,9 @@ from pathlib import Path
 
 SUPPORTED_SCHEMA = 2
 
-# Every key is required in every profile.  Values are from the device BTF /
-# /proc/config.gz or from the matching DDK defconfig; see
+# Every key is required in every profile except cgroup_pids_slot, which marks
+# profiles whose kernel has a disposable v1-only cgroup slot.  Values are from
+# the device BTF / /proc/config.gz or from the matching DDK defconfig; see
 # docs/evidence/abi-config-scope.md.
 CONFIG_SPECS = {
     "xtables_compat": ("bool", None),
@@ -63,6 +64,7 @@ CONFIG_SPECS = {
     "cgroups": ("bool", None),
     "cgroup_subsys_count": ("range", (1, 16)),
     "cgroup_subsys_layout": ("enum", ("vendor-256", "ddk-264")),
+    "cgroup_pids_slot": ("range", (1, 15)),
     "cgroup_bpf": ("bool", None),
     "psi": ("bool", None),
     "cgroup_sched": ("bool", None),
@@ -118,11 +120,14 @@ def load(path: Path) -> tuple[str, str, dict[str, int | str]]:
     unknown = sorted(set(config) - set(CONFIG_SPECS))
     if unknown:
         raise ValueError(f"{path}: unsupported config key {unknown[0]!r}")
-    missing = sorted(set(CONFIG_SPECS) - set(config))
+    missing = sorted((set(CONFIG_SPECS) - set(config)) - {"cgroup_pids_slot"})
     if missing:
         raise ValueError(f"{path}: missing config key {missing[0]!r}")
-
-    checked = {key: check_value(path, key, config[key]) for key in CONFIG_SPECS}
+    checked = {
+        key: check_value(path, key, config[key])
+        for key in CONFIG_SPECS
+        if key in config
+    }
     return profile_id, kmi, checked
 
 
@@ -144,6 +149,18 @@ def flags_for(profile_id: str, config: dict[str, int | str]) -> dict[str, str]:
             "DNSK_CGROUP_SUBSYS_RELEASE": "136",
             "DNSK_CGROUP_SUBSYS_ID": "156",
             "DNSK_CGROUP_SUBSYS_NAME": "160",
+            "DNSK_CGROUP_SUBSYS_LEGACY_NAME": "168",
+            "DNSK_CGROUP_SUBSYS_CSS_ALLOC": "0",
+            "DNSK_CGROUP_SUBSYS_CSS_FREE": "32",
+            "DNSK_CGROUP_SUBSYS_CAN_ATTACH": "72",
+            "DNSK_CGROUP_SUBSYS_CANCEL_ATTACH": "80",
+            "DNSK_CGROUP_SUBSYS_BIND": "144",
+            "DNSK_CGROUP_SUBSYS_FLAGS": "152",
+            "DNSK_CGROUP_SUBSYS_CSS_IDR": "184",
+            "DNSK_CGROUP_SUBSYS_CFTS": "208",
+            "DNSK_CGROUP_SUBSYS_DFL_CFTYPES": "224",
+            "DNSK_CGROUP_SUBSYS_LEGACY_CFTYPES": "232",
+            "DNSK_CGROUP_SUBSYS_ROOT": "176",
             "DNSK_CGROUP_HAS_CSS_KILLED": "0",
         })
     else:
@@ -156,8 +173,22 @@ def flags_for(profile_id: str, config: dict[str, int | str]) -> dict[str, str]:
             "DNSK_CGROUP_SUBSYS_RELEASE": "144",
             "DNSK_CGROUP_SUBSYS_ID": "164",
             "DNSK_CGROUP_SUBSYS_NAME": "168",
+            "DNSK_CGROUP_SUBSYS_LEGACY_NAME": "176",
+            "DNSK_CGROUP_SUBSYS_CSS_ALLOC": "0",
+            "DNSK_CGROUP_SUBSYS_CSS_FREE": "32",
+            "DNSK_CGROUP_SUBSYS_CAN_ATTACH": "80",
+            "DNSK_CGROUP_SUBSYS_CANCEL_ATTACH": "88",
+            "DNSK_CGROUP_SUBSYS_BIND": "152",
+            "DNSK_CGROUP_SUBSYS_FLAGS": "160",
+            "DNSK_CGROUP_SUBSYS_CSS_IDR": "192",
+            "DNSK_CGROUP_SUBSYS_CFTS": "216",
+            "DNSK_CGROUP_SUBSYS_DFL_CFTYPES": "232",
+            "DNSK_CGROUP_SUBSYS_LEGACY_CFTYPES": "240",
+            "DNSK_CGROUP_SUBSYS_ROOT": "184",
             "DNSK_CGROUP_HAS_CSS_KILLED": "1",
         })
+    if "cgroup_pids_slot" in config:
+        flags["DNSK_CGROUP_SUBSYS_SLOT"] = str(config["cgroup_pids_slot"])
     return flags
 
 
@@ -180,9 +211,9 @@ def main() -> int:
     if args.json:
         print(json.dumps({"id": profile_id, "kmi": kmi, "flags": flags}, sort_keys=True))
     else:
-        print(f"DNSK_BUILD_PROFILE={shlex.quote(profile_id)}")
+        print(f"export DNSK_BUILD_PROFILE={shlex.quote(profile_id)}")
         for key, value in sorted(flags.items()):
-            print(f"{key}={shlex.quote(value)}")
+            print(f"export {key}={shlex.quote(value)}")
     return 0
 
 

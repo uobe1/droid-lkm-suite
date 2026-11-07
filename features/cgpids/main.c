@@ -260,6 +260,18 @@ static struct dnsk_feature_desc dnsk_cgpids_desc = {
 	.owner = THIS_MODULE,
 };
 
+static struct dnsk_feature_desc dnsk_cgpids_native_desc = {
+	.name = "cgpids",
+	.version = "0.2",
+	.status = DNSK_STATUS_DEVELOPMENT,
+	.caps = "native pids cgroup_subsys injected into the profile slot; v2 files, fork EAGAIN, attach accounting",
+	.owner = THIS_MODULE,
+};
+
+static bool dnsk_native;
+module_param_named(native, dnsk_native, bool, 0444);
+MODULE_PARM_DESC(native, "register a real pids subsys in the profile slot (opt-in until the native gate); 0 keeps the virtual controller");
+
 static int __init dnsk_cgpids_init(void)
 {
 	struct dnsk_hook_req hook = {
@@ -283,6 +295,18 @@ static int __init dnsk_cgpids_init(void)
 		pr_err("dnsk_cgpids: native pids subsystem present; refusing\n");
 		ret = -EOPNOTSUPP;
 		goto out_api;
+	}
+
+	if (dnsk_native) {
+		ret = dnsk_api->feature_add(&dnsk_cgpids_native_desc);
+		if (ret)
+			goto out_api;
+		ret = dnsk_cgpids_native_init(dnsk_api);
+		if (ret) {
+			dnsk_api->feature_del("cgpids");
+			goto out_api;
+		}
+		return 0;
 	}
 
 	ret = dnsk_resolve_symbols();
@@ -333,6 +357,10 @@ out_api:
 
 static void __exit dnsk_cgpids_exit(void)
 {
+	if (dnsk_cgpids_native_active()) {
+		dnsk_cgpids_native_exit();
+		return;
+	}
 	if (dnsk_feature_ready)
 		dnsk_api->feature_del("cgpids");
 	if (dnsk_hook_ready)
