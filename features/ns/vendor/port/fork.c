@@ -433,6 +433,9 @@ bad_unshare_cleanup_fs:
 		free_fs_struct(new_fs);
 
 bad_unshare_out:
+	if (err)
+		pr_info("ds_ksys_unshare flags=%lx err=%d\n", unshare_flags,
+			err);
 	return err;
 }
 
