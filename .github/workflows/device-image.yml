@@ -287,6 +287,11 @@ jobs:
             aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
             cp selinux_load rootfs/selinux_load
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            if [ "${{ inputs.enforce_selinux }}" = "true" ]; then
+              touch rootfs/enforce
+            fi
+            aarch64-linux-gnu-gcc -static -O2 -o exec_shell_su tests/qemu/exec_shell_su.c
+            cp exec_shell_su rootfs/exec_shell_su
             aarch64-linux-gnu-gcc -static -O2 -o xattr_test tests/qemu/xattr_test.c
             cp xattr_test rootfs/xattr_test
             aarch64-linux-gnu-gcc -static -O2 -o acl_test tests/qemu/acl_test.c
@@ -480,6 +485,9 @@ jobs:
             grep -q 'DNSK_TMPFSX_ACL_INHERIT_OK' qemu.log
             grep -q 'DNSK_TMPFSX_ACL_LEGACY_INHERIT_OK' qemu.log
             grep -q 'DNSK_TMPFSX_OK' qemu.log
+            if [ "${{ inputs.enforce_selinux }}" = "true" ]; then
+              grep -q 'DNSK_TMPFSX_ENFORCE_OK' qemu.log
+            fi
           elif [ "$MODE" = "userns" ]; then
             grep -q 'DNSK_USERNS_LKM_OK' qemu.log
             grep -q 'DNSK_RW_OK' qemu.log
