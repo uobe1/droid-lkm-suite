@@ -33,12 +33,12 @@ fi
 export LD_LIBRARY_PATH=/system/lib64
 /insmod_force /modules/selpermissive.ko || fail selpermissive_insmod
 /ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
-i=0
-while [ "$i" -lt 20 ]; do
-	"$BB" dmesg 2>/dev/null | "$BB" grep -q 'late-load start' && break
-	"$BB" sleep 0.2 2>/dev/null || "$BB" sleep 1
-	i=$((i + 1))
-done
+read e < /sys/fs/selinux/enforce 2>/dev/null
+echo "DNSK_ENFORCE_AFTER_LATE=$e"
+echo 0 > /sys/fs/selinux/enforce 2>/dev/null
+read e < /sys/fs/selinux/enforce 2>/dev/null
+echo "DNSK_ENFORCE_RESTORED=$e"
+"$BB" sleep 10
 echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
 [ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
 echo "DNSK_SELINUX_AFTER_KSU=permissive"
