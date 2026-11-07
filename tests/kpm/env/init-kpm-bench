@@ -68,18 +68,20 @@ echo "KPM_BENCH_STAGE=load"
 ./kpatch "$KEY" kpm num || fail "num"
 ./kpatch "$KEY" kpm list || fail "list"
 ./kpatch "$KEY" kpm info dnsk-hook-bench || fail "info"
-./kpatch "$KEY" kpm ctl0 dnsk-hook-bench reset || fail "reset"
+./kpatch "$KEY" kpm ctl0 dnsk-hook-bench reset >/dev/null 2>&1 || fail "reset"
 echo "KPM_BENCH_LOAD_OK"
 
 echo "KPM_BENCH_STAGE=B"
 ./bench_repeat.sh B "$REPS" ./bench_getpid "$N" || fail=bench_B
 [ "${fail:-}" = "" ] || fail "$fail"
-# kpatch requires a CTL_ARGS argument even for a plain stats read; pass "".
-hs=$(./kpatch "$KEY" kpm ctl0 dnsk-hook-bench "" 2>&1 | tr -d '\r')
+# A non-empty CTL_ARGS is required for the stats read; empty args produce no
+# reply.  The Android linker warning is mixed into stderr, so extract hits.
+hs=$(./kpatch "$KEY" kpm ctl0 dnsk-hook-bench status 2>&1 | tr -d '\r' | \
+     sed -n 's/.*\(hits=[0-9][0-9]*\).*/\1/p' | tail -n 1)
 echo "KPM_BENCH_CTL0=$hs"
 case "$hs" in
-    *hits=0*) fail "hits_zero" ;;
-    *hits=*) echo "KPM_BENCH_HITS_OK" ;;
+    hits=0*) fail "hits_zero" ;;
+    hits=*) echo "KPM_BENCH_HITS_OK" ;;
     *) fail "hits_reply" ;;
 esac
 echo "KPM_BENCH_B_OK"
