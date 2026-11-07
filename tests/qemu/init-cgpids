@@ -7,14 +7,6 @@
 BB=/bin/busybox
 export PATH=/usr/bin:/bin:/sbin:/usr/sbin
 
-EXPECT_PIDS=0
-MODPARAM=""
-for arg in $(cat /proc/cmdline); do
-	case "$arg" in
-		cgpids_native=1) EXPECT_PIDS=1; MODPARAM="native=1" ;;
-	esac
-done
-
 "$BB" mount -t proc proc /proc
 "$BB" mount -t sysfs sysfs /sys
 if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
@@ -27,6 +19,15 @@ if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
 	"$BB" mknod /dev/tty c 5 0
 	"$BB" mknod /dev/kmsg c 1 11
 fi
+
+EXPECT_PIDS=0
+MODPARAM=""
+for arg in $(cat /proc/cmdline); do
+	case "$arg" in
+		cgpids_native=1) EXPECT_PIDS=1; MODPARAM="native=1" ;;
+	esac
+done
+
 export ANDROID_ROOT=/system ANDROID_DATA=/data
 "$BB" mkdir -p /sys/fs/cgroup
 
