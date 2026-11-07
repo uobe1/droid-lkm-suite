@@ -24,7 +24,8 @@ hook-bench.kpm: $(objs)
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDE_FLAGS) -c -O2 -fno-pie -fno-pic -fno-stack-protector \
-		-mno-outline-atomics -o $@ $<
+		-mno-outline-atomics -fno-asynchronous-unwind-tables \
+		-fno-unwind-tables -o $@ $<
 
 clean:
 	rm -f *.kpm *.o
