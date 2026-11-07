@@ -248,6 +248,98 @@ static int dnsk_rw_do_revert(unsigned long slot)
 	return 0;
 }
 
+static bool dnsk_rw_find_slot(bool phys, u64 addr, unsigned int *slot)
+{
+	unsigned int i;
+
+	for (i = 0; i < DNSK_RW_SLOTS; i++) {
+		if (dnsk_rw_slots[i].used && dnsk_rw_slots[i].phys == phys &&
+		    dnsk_rw_slots[i].addr == addr) {
+			*slot = i;
+			return true;
+		}
+	}
+	return false;
+}
+
+static int dnsk_rw_selftest(void)
+{
+	u8 *buf, *back;
+	unsigned long pa = 0;
+	u8 a[16], b[16];
+	unsigned int slot;
+	u64 t0, t1;
+	int i, ret;
+
+	buf = kmalloc(64, GFP_KERNEL);
+	back = kmalloc(64, GFP_KERNEL);
+	if (!buf || !back) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	for (i = 0; i < 16; i++) {
+		a[i] = 0xa0 + i;
+		b[i] = 0x50 + i;
+	}
+	memcpy(buf, a, 16);
+	ret = dnsk_virt_to_phys(buf, &pa);
+	if (ret)
+		goto out;
+
+	t0 = ktime_get_ns();
+	/* physical write -> virtual read -> revert */
+	ret = dnsk_rw_do_write((u64)pa, b, 16, true);
+	if (ret)
+		goto out;
+	if (!dnsk_rw_find_slot(true, (u64)pa, &slot)) {
+		ret = -ENOENT;
+		goto out;
+	}
+	ret = dnsk_rw_read_fn(back, buf, 16);
+	if (ret || memcmp(back, b, 16)) {
+		ret = ret ? ret : -EIO;
+		goto out;
+	}
+	ret = dnsk_rw_do_revert(slot);
+	if (ret)
+		goto out;
+	ret = dnsk_rw_read_fn(back, __va((phys_addr_t)pa), 16);
+	if (ret || memcmp(back, a, 16)) {
+		ret = ret ? ret : -EIO;
+		goto out;
+	}
+
+	/* virtual write -> physical read -> revert */
+	ret = dnsk_rw_do_write((u64)(unsigned long)buf, b, 16, false);
+	if (ret)
+		goto out;
+	if (!dnsk_rw_find_slot(false, (u64)(unsigned long)buf, &slot)) {
+		ret = -ENOENT;
+		goto out;
+	}
+	ret = dnsk_rw_read_fn(back, __va((phys_addr_t)pa), 16);
+	if (ret || memcmp(back, b, 16)) {
+		ret = ret ? ret : -EIO;
+		goto out;
+	}
+	ret = dnsk_rw_do_revert(slot);
+	if (ret)
+		goto out;
+	ret = dnsk_rw_read_fn(back, buf, 16);
+	if (ret || memcmp(back, a, 16)) {
+		ret = ret ? ret : -EIO;
+		goto out;
+	}
+	t1 = ktime_get_ns();
+	dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,
+				    "selftest pass pa=0x%lx ns=%llu\n", pa,
+				    t1 - t0);
+out:
+	kfree(buf);
+	kfree(back);
+	return ret;
+}
+
 static ssize_t dnsk_rw_read_file(struct file *file, char __user *ubuf,
 				 size_t count, loff_t *ppos)
 {
@@ -338,6 +430,11 @@ static ssize_t dnsk_rw_write_file(struct file *file, const char __user *ubuf,
 						    "resolve %s %px\n", name, va);
 			ret = 0;
 		}
+	} else if (!strcmp(cmd, "selftest")) {
+		ret = dnsk_rw_selftest();
+		if (ret)
+			dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,
+						    "selftest fail %d\n", ret);
 	} else if (!strcmp(cmd, "info")) {
 		ret = 0;
 		dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,

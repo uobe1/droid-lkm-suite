@@ -43,6 +43,20 @@ echo "DNSK_SELINUX_AFTER_KSU=permissive"
 /ksud insmod /modules/dnsk_ns.ko gki=1 activate=1 || fail ns_insmod
 echo "DNSK_USERNS_LKM_OK"
 
+if [ -r /proc/dnsk/rw ]; then
+	"$BB" printf 'info\n' >/proc/dnsk/rw
+	"$BB" cat /proc/dnsk/rw
+	"$BB" printf 'resolve init_user_ns\n' >/proc/dnsk/rw
+	"$BB" cat /proc/dnsk/rw
+	"$BB" printf 'pa init_user_ns\n' >/proc/dnsk/rw
+	"$BB" cat /proc/dnsk/rw
+	"$BB" printf 'selftest\n' >/proc/dnsk/rw
+	"$BB" cat /proc/dnsk/rw | grep -q 'selftest pass' || fail rw_selftest
+	echo "DNSK_RW_OK"
+else
+	fail rw_proc_missing
+fi
+
 # Host-namespace overlay stays on the untouched native path; the emulated
 # userns path is exercised by userns_test below.
 mkdir -p /tmp/ovlctl
