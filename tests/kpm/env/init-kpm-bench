@@ -42,12 +42,14 @@ if [ -z "$KEY" ]; then
     exit 1
 fi
 
-# The kernel side was patched with this key by kptools -s; write it where
-# kpatch reads it (/data/adb/kpatch) and prove SuperCall works.
+# The kernel side was patched with this key by kptools -s.  This kpatch CLI
+# (APatch 11282) takes the superkey as a positional argument:
+#   kpatch <SUPERKEY> <COMMAND> ...
+# The /data/adb/kpatch copy is kept for apd-style consumers, not for kpatch.
 mkdir -p /data/adb
 printf '%s' "$KEY" > /data/adb/kpatch
 chmod 600 /data/adb/kpatch
-if ! ./kpatch kpver; then
+if ! ./kpatch "$KEY" kpver; then
     echo "KPM_BENCH_FAIL=kpver"
     poweroff -f
     exit 1
@@ -62,17 +64,18 @@ echo "KPM_BENCH_STAGE=A"
 echo "KPM_BENCH_A_OK"
 
 echo "KPM_BENCH_STAGE=load"
-./kpatch kpm load ./hook-bench.kpm bench || fail "load"
-./kpatch kpm num || fail "num"
-./kpatch kpm list || fail "list"
-./kpatch kpm info dnsk-hook-bench || fail "info"
-./kpatch kpm ctl0 dnsk-hook-bench reset || fail "reset"
+./kpatch "$KEY" kpm load ./hook-bench.kpm bench || fail "load"
+./kpatch "$KEY" kpm num || fail "num"
+./kpatch "$KEY" kpm list || fail "list"
+./kpatch "$KEY" kpm info dnsk-hook-bench || fail "info"
+./kpatch "$KEY" kpm ctl0 dnsk-hook-bench reset || fail "reset"
 echo "KPM_BENCH_LOAD_OK"
 
 echo "KPM_BENCH_STAGE=B"
 ./bench_repeat.sh B "$REPS" ./bench_getpid "$N" || fail=bench_B
 [ "${fail:-}" = "" ] || fail "$fail"
-hs=$(./kpatch kpm ctl0 dnsk-hook-bench 2>&1 | tr -d '\r')
+# kpatch requires a CTL_ARGS argument even for a plain stats read; pass "".
+hs=$(./kpatch "$KEY" kpm ctl0 dnsk-hook-bench "" 2>&1 | tr -d '\r')
 echo "KPM_BENCH_CTL0=$hs"
 case "$hs" in
     *hits=0*) fail "hits_zero" ;;
@@ -87,8 +90,8 @@ echo "KPM_BENCH_D_SKIP no_module"
 echo "KPM_BENCH_E_SKIP no_module"
 
 echo "KPM_BENCH_STAGE=unload"
-./kpatch kpm unload dnsk-hook-bench || fail "unload"
-[ "$(./kpatch kpm num 2>&1 | tr -dc '0-9')" = "0" ] || fail "num_after_unload"
+./kpatch "$KEY" kpm unload dnsk-hook-bench || fail "unload"
+[ "$(./kpatch "$KEY" kpm num 2>&1 | tr -dc '0-9')" = "0" ] || fail "num_after_unload"
 echo "KPM_BENCH_UNLOAD_OK"
 
 echo "KPM_BENCH_STAGE=A_after"

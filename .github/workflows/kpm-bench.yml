@@ -129,9 +129,10 @@ jobs:
           test "${#KEY}" -ge 8
           echo "::add-mask::$KEY"
           echo "KPM_SUPERKEY=$KEY" >> "$GITHUB_ENV"
-          # -s bakes the plaintext superkey; kpatch below reads the same value
-          # from /data/adb/kpatch.  No bootloader/boot image is touched: this
-          # is a throwaway QEMU kernel Image.
+          # -s bakes the plaintext superkey; the guest passes the same value
+          # to kpatch as a positional argument (kpatch <SUPERKEY> <COMMAND>).
+          # No bootloader/boot image is touched: this is a throwaway QEMU
+          # kernel Image.
           "$KPTOOLS" -p --image device/Image --kpimg tests/kpm/env/out/kpimg \
             --skey "$KEY" --out Image.kp
           "$KPTOOLS" -l -i Image.kp
