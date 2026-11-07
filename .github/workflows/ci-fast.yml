@@ -67,6 +67,8 @@ jobs:
           done
           make -C "$GITHUB_WORKSPACE/tests/qemu/selpermissive" KDIR="$KDIR" modules
           cp tests/qemu/selpermissive/selpermissive.ko out/
+          make -C "$GITHUB_WORKSPACE/tests/bench" KDIR="$KDIR" modules
+          cp tests/bench/dnsk_bench.ko out/
           SYMVERS="$KDIR/Module.symvers"
           [ -f "$SYMVERS" ] || SYMVERS="$KDIR/vmlinux.symvers"
           cp "$SYMVERS" out/symvers.txt

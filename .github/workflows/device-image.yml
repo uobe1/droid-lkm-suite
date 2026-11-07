@@ -14,6 +14,7 @@ on:
           - baseline
           - cgpids
           - ksud-cgpids
+          - bench-lkm
           - ksud-ns
           - docker
           - ksud-docker
@@ -257,7 +258,14 @@ jobs:
             https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.3-aarch64.tar.gz
           mkdir -p rootfs/modules
           tar -xzf alpine.tar.gz -C rootfs
-          if [ "${{ inputs.mode }}" = "cgpids" ]; then
+          if [ "${{ inputs.mode }}" = "bench-lkm" ]; then
+            cp modules/dnsk_bench.ko rootfs/modules/
+            mkdir -p rootfs/bench
+            aarch64-linux-gnu-gcc -static -O2 -o bench_getpid tests/kpm/bench_getpid.c
+            cp bench_getpid tests/kpm/env/bench_repeat.sh rootfs/bench/
+            chmod 0755 rootfs/bench/bench_repeat.sh
+            cp tests/qemu/init-bench-lkm rootfs/init
+          elif [ "${{ inputs.mode }}" = "cgpids" ]; then
             cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
             aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
             cp insmod_force rootfs/insmod_force
@@ -442,6 +450,9 @@ jobs:
           if [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
             TIMEOUT=1200
           fi
+          if [ "$MODE" = "bench-lkm" ]; then
+            TIMEOUT=1800
+          fi
           APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
           case "$MODE" in
             ksud-cgpids|ksud-ns|ksud-docker|tmpfsx|userns|netfilter|apps) APPEND="$APPEND enforcing=0" ;;
@@ -469,6 +480,13 @@ jobs:
           if [ "$MODE" = "cgpids" ] || [ "$MODE" = "ksud-cgpids" ]; then
             grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
             grep -q 'DNSK_CGPIDS_OK' qemu.log
+          elif [ "$MODE" = "bench-lkm" ]; then
+            grep -q 'DNSK_BENCH_A_OK' qemu.log
+            grep -q 'DNSK_BENCH_LKM_OK' qemu.log
+            grep -q 'DNSK_BENCH_OK' qemu.log
+            grep -q 'KPM_BENCH_STATS mode=A ' qemu.log
+            grep -q 'KPM_BENCH_STATS mode=C ' qemu.log
+            grep -q 'DNSK_QEMU_OK' qemu.log
           elif [ "$MODE" = "ksud-ns" ]; then
             grep -q 'DNSK_KSUD_LATE_LOAD_OK' qemu.log
             grep -q 'DNSK_NS_DEVICE_OK' qemu.log

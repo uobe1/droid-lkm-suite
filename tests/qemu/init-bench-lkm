@@ -1,0 +1,49 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LKM getpid overhead: A baseline, C with the dnsk_bench kprobe, A after unload.
+set -u
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin
+REPS=10
+N=1000000
+
+"$BB" mount -t proc proc /proc 2>/dev/null || true
+"$BB" mount -t sysfs sysfs /sys 2>/dev/null || true
+"$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+mkdir -p /dev/pts /dev/shm /bench
+"$BB" mount -t devpts devpts /dev/pts 2>/dev/null || true
+
+for arg in $(cat /proc/cmdline); do
+	case "$arg" in
+		bench.reps=*) REPS=${arg#bench.reps=} ;;
+		bench.n=*) N=${arg#bench.n=} ;;
+	esac
+done
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg 2>/dev/null | tail -20
+	"$BB" poweroff -f
+}
+
+echo "BENCH_START kver=$(uname -r) reps=$REPS n=$N"
+echo "BENCH_STAGE=A"
+/bench/bench_repeat.sh A "$REPS" /bench/bench_getpid "$N" || fail bench_A
+echo "DNSK_BENCH_A_OK"
+
+"$BB" insmod /modules/dnsk_bench.ko || fail bench_insmod
+echo "BENCH_HITS_BEFORE=$(cat /sys/module/dnsk_bench/parameters/hits)"
+echo "BENCH_STAGE=C"
+/bench/bench_repeat.sh C "$REPS" /bench/bench_getpid "$N" || fail bench_C
+hits=$(cat /sys/module/dnsk_bench/parameters/hits)
+echo "BENCH_HITS=$hits"
+[ "${hits:-0}" -gt 0 ] || fail bench_hits_zero
+echo "DNSK_BENCH_LKM_OK"
+
+"$BB" rmmod dnsk_bench || fail bench_rmmod
+echo "BENCH_STAGE=A_after"
+/bench/bench_repeat.sh A-after "$REPS" /bench/bench_getpid "$N" || fail bench_A2
+echo "DNSK_BENCH_OK"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f
