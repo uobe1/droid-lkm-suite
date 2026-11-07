@@ -21,6 +21,35 @@ if [ -x /selinux_load ] && [ -f /policy.gz ]; then
 	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
 	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
 	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	if [ -x /ksud ]; then
+		export LD_LIBRARY_PATH=/system/lib64
+		while IFS= read -r rule; do
+			[ -n "$rule" ] || continue
+			/ksud sepolicy patch "$rule" || \
+				fail "sepolicy_patch:$rule"
+		done <<'EOF'
+allow kernel rootfs file { open read write execute getattr map }
+allow kernel rootfs dir { open read write getattr search add_name remove_name }
+allow kernel rootfs chr_file { open read write ioctl getattr }
+allow kernel rootfs lnk_file { read getattr }
+allow kernel tmpfs file { open read write create unlink getattr setattr append map execute }
+allow kernel tmpfs dir { open read write getattr search add_name remove_name rmdir create }
+allow kernel tmpfs lnk_file { read getattr }
+allow kernel devtmpfs chr_file { open read write ioctl getattr }
+allow kernel devtmpfs dir { open read getattr search }
+allow kernel proc file { open read write getattr ioctl }
+allow kernel proc dir { open read getattr search }
+allow kernel sysfs file { open read write getattr }
+allow kernel sysfs dir { open read getattr search }
+allow kernel cgroup file { open read write getattr }
+allow kernel cgroup dir { open read write getattr search add_name remove_name }
+allow kernel selinuxfs file { open read write getattr }
+allow kernel selinuxfs dir { open read getattr search }
+allow kernel fuse file { open read write getattr setattr }
+allow kernel fuse dir { open read write getattr search add_name remove_name create }
+allow kernel unlabeled file { open read write getattr }
+EOF
+	fi
 	echo 1 > /sys/fs/selinux/enforce || fail selinux_enforce
 	echo "DNSK_SELINUX_ENFORCE=$(cat /sys/fs/selinux/enforce)"
 fi

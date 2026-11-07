@@ -287,6 +287,11 @@ jobs:
           fi
           chmod 0755 rootfs/init
           if [ "${{ inputs.enforce_selinux }}" = "true" ]; then
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            rm -f rootfs/system/etc/ld.config.txt
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
             aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
             cp selinux_load rootfs/selinux_load
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz

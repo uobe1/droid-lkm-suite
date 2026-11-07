@@ -7,6 +7,7 @@
 #include <sched.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -32,6 +33,12 @@ int main(void)
 		setgroups(0, NULL);
 		if (setgid(1000) || setuid(1000)) {
 			perror("setuid 1000");
+			return 1;
+		}
+		/* setuid() clears dumpable; /proc/self/uid_map would then be
+		 * owned by root and reject the unprivileged writer. */
+		if (prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) < 0) {
+			perror("prctl dumpable");
 			return 1;
 		}
 	}
