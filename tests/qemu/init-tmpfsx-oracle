@@ -22,6 +22,15 @@ fail() {
 }
 
 "$BB" mkdir -p /early /late /acl /aclled
+
+if [ -x /selinux_load ] && [ -f /policy.gz ]; then
+	"$BB" mkdir -p /sys/fs/selinux
+	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
+	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
+	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	echo 1 > /sys/fs/selinux/enforce || fail selinux_enforce
+	echo "DNSK_SELINUX_ENFORCE=$(cat /sys/fs/selinux/enforce)"
+fi
 mount -t tmpfs tmpfs /early || fail early_mount
 mount -t tmpfs tmpfs /late || fail late_mount
 

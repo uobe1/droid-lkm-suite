@@ -16,6 +16,15 @@ if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
 fi
 "$BB" chmod 1777 /tmp 2>/dev/null || true
 
+if [ -x /selinux_load ] && [ -f /policy.gz ]; then
+	"$BB" mkdir -p /sys/fs/selinux
+	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
+	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
+	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	echo 1 > /sys/fs/selinux/enforce || fail selinux_enforce
+	echo "DNSK_SELINUX_ENFORCE=$(cat /sys/fs/selinux/enforce)"
+fi
+
 fail() {
 	echo "DNSK_QEMU_FAIL $*"
 	"$BB" dmesg 2>/dev/null | tail -25

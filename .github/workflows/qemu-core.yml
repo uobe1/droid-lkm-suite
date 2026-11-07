@@ -30,6 +30,10 @@ on:
         required: false
         type: string
         default: ""
+      enforce_selinux:
+        description: load the device policy and run the oracle tests enforcing
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -280,6 +284,11 @@ jobs:
             cp "tests/qemu/init-${{ inputs.mode }}" rootfs/init
           fi
           chmod 0755 rootfs/init
+          if [ "${{ inputs.enforce_selinux }}" = "true" ]; then
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+          fi
           (cd rootfs && find . | cpio -o -H newc | gzip -9) > initramfs.cpio.gz
           ls -l Image 2>/dev/null || ls -l qemu/Image
       - name: Boot and check
