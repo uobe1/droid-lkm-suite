@@ -1,5 +1,10 @@
-# Build a KPM against the KernelPatch kernel headers.
+# Build a KPM against the KernelPatch 0.13.9 kernel headers.
 #   make KP_DIR=/path/to/KernelPatch TARGET_COMPILE=aarch64-linux-gnu-
+# Include layout and `-r` linking follow kpms/demo-syscallhook/Makefile at tag
+# 0.13.9.  A distro aarch64-linux-gnu-gcc may be built --enable-default-pie
+# and/or with a default stack protector, while KernelPatch 0.13.9
+# kernel/patch/module/relo.c only accepts non-GOT relocations, so force
+# non-PIC code and no stack protector explicitly.
 ifndef TARGET_COMPILE
 $(error TARGET_COMPILE not set)
 endif
@@ -18,7 +23,7 @@ hook-bench.kpm: $(objs)
 	$(CC) -r -o $@ $^
 
 %.o: %.c
-	$(CC) $(CFLAGS) $(INCLUDE_FLAGS) -c -O2 -o $@ $<
+	$(CC) $(CFLAGS) $(INCLUDE_FLAGS) -c -O2 -fno-pie -fno-pic -fno-stack-protector -o $@ $<
 
 clean:
 	rm -f *.kpm *.o
