@@ -59,7 +59,7 @@ static struct dnsk_rw_slot dnsk_rw_slots[DNSK_RW_SLOTS];
 static unsigned int dnsk_rw_next;
 static char dnsk_rw_out[DNSK_RW_OUT];
 static size_t dnsk_rw_out_len;
-static int (*dnsk_rw_read_fn)(void *dst, const void *src, size_t size);
+static long (*dnsk_rw_read_fn)(void *dst, const void *src, size_t size);
 static u64 dnsk_rw_reads, dnsk_rw_writes, dnsk_rw_reverts;
 
 static int dnsk_rw_check(u64 addr, size_t len, bool phys)
@@ -161,7 +161,7 @@ static int dnsk_rw_do_read(u64 addr, size_t len, bool phys)
 		return ret;
 	if (!dnsk_rw_read_fn)
 		return -EOPNOTSUPP;
-	ret = dnsk_rw_read_fn(buf, dnsk_rw_ptr(addr, phys), len);
+	ret = (int)dnsk_rw_read_fn(buf, dnsk_rw_ptr(addr, phys), len);
 	if (ret)
 		return ret;
 	dnsk_rw_reads++;
@@ -189,7 +189,7 @@ static int dnsk_rw_do_write(u64 addr, const u8 *data, size_t len, bool phys)
 		return ret;
 	if (!dnsk_patch_ready() || !dnsk_rw_read_fn)
 		return -EOPNOTSUPP;
-	ret = dnsk_rw_read_fn(orig, dnsk_rw_ptr(addr, phys), len);
+	ret = (int)dnsk_rw_read_fn(orig, dnsk_rw_ptr(addr, phys), len);
 	if (ret)
 		return ret;
 
@@ -295,7 +295,7 @@ static int dnsk_rw_selftest(void)
 		ret = -ENOENT;
 		goto out;
 	}
-	ret = dnsk_rw_read_fn(back, buf, 16);
+	ret = (int)dnsk_rw_read_fn(back, buf, 16);
 	if (ret || memcmp(back, b, 16)) {
 		ret = ret ? ret : -EIO;
 		goto out;
@@ -303,7 +303,7 @@ static int dnsk_rw_selftest(void)
 	ret = dnsk_rw_do_revert(slot);
 	if (ret)
 		goto out;
-	ret = dnsk_rw_read_fn(back, __va((phys_addr_t)pa), 16);
+	ret = (int)dnsk_rw_read_fn(back, __va((phys_addr_t)pa), 16);
 	if (ret || memcmp(back, a, 16)) {
 		ret = ret ? ret : -EIO;
 		goto out;
@@ -317,7 +317,7 @@ static int dnsk_rw_selftest(void)
 		ret = -ENOENT;
 		goto out;
 	}
-	ret = dnsk_rw_read_fn(back, __va((phys_addr_t)pa), 16);
+	ret = (int)dnsk_rw_read_fn(back, __va((phys_addr_t)pa), 16);
 	if (ret || memcmp(back, b, 16)) {
 		ret = ret ? ret : -EIO;
 		goto out;
@@ -325,7 +325,7 @@ static int dnsk_rw_selftest(void)
 	ret = dnsk_rw_do_revert(slot);
 	if (ret)
 		goto out;
-	ret = dnsk_rw_read_fn(back, buf, 16);
+	ret = (int)dnsk_rw_read_fn(back, buf, 16);
 	if (ret || memcmp(back, a, 16)) {
 		ret = ret ? ret : -EIO;
 		goto out;
