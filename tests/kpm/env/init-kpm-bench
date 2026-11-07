@@ -1,0 +1,101 @@
+#!/bin/sh
+# QEMU guest /init for the headless KPM benchmark.
+#
+# Boot contract:
+#   - kernel Image already patched with kpimg + a known superkey via
+#     kptools -p -s (see .github/workflows/kpm-bench.yml), because apd's
+#     late-load needs Android userspace and is exercised on the device only;
+#   - initramfs contains /kpm-bench/{kpatch,bench_getpid,hook-bench.kpm,
+#     bench_repeat.sh,superkey} and /system/bin/linker64 + /system/lib64 from
+#     tests/qemu/assets/android for the Android-linked kpatch CLI.
+#
+# Every stage prints a marker consumed by the workflow.  Failure stops the
+# guest and is a job failure; the console log is uploaded regardless.
+set -u
+
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sysfs /sys 2>/dev/null || true
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts 2>/dev/null || true
+
+export PATH=/kpm-bench:/bin:/sbin:/usr/bin:/usr/sbin
+export LD_LIBRARY_PATH=/system/lib64
+cd /kpm-bench || { echo KPM_BENCH_FAIL=no_workdir; poweroff -f; exit 1; }
+
+REPS=20
+N=10000000
+for arg in $(cat /proc/cmdline); do
+    case "$arg" in
+        kpm_bench.reps=*) REPS=${arg#kpm_bench.reps=} ;;
+        kpm_bench.n=*) N=${arg#kpm_bench.n=} ;;
+    esac
+done
+
+echo "KPM_BENCH_START kver=$(uname -r) reps=$REPS n=$N"
+ls -l /system/bin/linker64 2>/dev/null || echo "WARN no android linker64"
+
+KEY=$(cat superkey 2>/dev/null || true)
+if [ -z "$KEY" ]; then
+    echo "KPM_BENCH_FAIL=no_superkey"
+    poweroff -f
+    exit 1
+fi
+
+# The kernel side was patched with this key by kptools -s; write it where
+# kpatch reads it (/data/adb/kpatch) and prove SuperCall works.
+mkdir -p /data/adb
+printf '%s' "$KEY" > /data/adb/kpatch
+chmod 600 /data/adb/kpatch
+if ! ./kpatch kpver; then
+    echo "KPM_BENCH_FAIL=kpver"
+    poweroff -f
+    exit 1
+fi
+echo "KPM_BENCH_KP_OK"
+
+fail() { echo "KPM_BENCH_FAIL=$1"; dmesg | tail -n 60; poweroff -f; exit 1; }
+
+echo "KPM_BENCH_STAGE=A"
+./bench_repeat.sh A "$REPS" ./bench_getpid "$N" || fail=bench_A
+[ "${fail:-}" = "" ] || fail "$fail"
+echo "KPM_BENCH_A_OK"
+
+echo "KPM_BENCH_STAGE=load"
+./kpatch kpm load ./hook-bench.kpm bench || fail "load"
+./kpatch kpm num || fail "num"
+./kpatch kpm list || fail "list"
+./kpatch kpm info dnsk-hook-bench || fail "info"
+./kpatch kpm ctl0 dnsk-hook-bench reset || fail "reset"
+echo "KPM_BENCH_LOAD_OK"
+
+echo "KPM_BENCH_STAGE=B"
+./bench_repeat.sh B "$REPS" ./bench_getpid "$N" || fail=bench_B
+[ "${fail:-}" = "" ] || fail "$fail"
+hs=$(./kpatch kpm ctl0 dnsk-hook-bench 2>&1 | tr -d '\r')
+echo "KPM_BENCH_CTL0=$hs"
+case "$hs" in
+    *hits=0*) fail "hits_zero" ;;
+    *hits=*) echo "KPM_BENCH_HITS_OK" ;;
+    *) fail "hits_reply" ;;
+esac
+echo "KPM_BENCH_B_OK"
+
+# C/D/E stay reserved: no LKM bench module exists in the tree yet.
+echo "KPM_BENCH_C_SKIP no_module"
+echo "KPM_BENCH_D_SKIP no_module"
+echo "KPM_BENCH_E_SKIP no_module"
+
+echo "KPM_BENCH_STAGE=unload"
+./kpatch kpm unload dnsk-hook-bench || fail "unload"
+[ "$(./kpatch kpm num 2>&1 | tr -dc '0-9')" = "0" ] || fail "num_after_unload"
+echo "KPM_BENCH_UNLOAD_OK"
+
+echo "KPM_BENCH_STAGE=A_after"
+./bench_repeat.sh A-after-unload "$REPS" ./bench_getpid "$N" || fail=bench_A2
+[ "${fail:-}" = "" ] || fail "$fail"
+
+dmesg | tail -n 80
+echo "DNSK_KPM_BENCH_OK"
+echo "DNSK_QEMU_OK"
+poweroff -f

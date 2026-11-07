@@ -1,0 +1,4 @@
+# Extracted APatch/KernelPatch binaries and logs.  Never commit them.
+out/
+*.ko
+*.kpm
