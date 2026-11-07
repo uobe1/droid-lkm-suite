@@ -118,7 +118,7 @@ static struct cgroup_subsys_state *(*dnsk_native_of_css)(
 	struct kernfs_open_file *of);
 static int (*dnsk_add_dfl_cftypes)(struct cgroup_subsys *ss,
 				   struct cftype *cfts);
-static int (*dnsk_static_key_enable)(struct static_key *key);
+static void (*dnsk_static_key_enable)(struct static_key *key);
 static void (*dnsk_static_key_disable)(struct static_key *key);
 static void (*dnsk_cgroup_file_notify)(struct cgroup_file *cfile);
 static bool dnsk_native_ready;
@@ -504,9 +504,9 @@ static __nocfi noinline int dnsk_call_add_dfl(struct cgroup_subsys *ss,
 	return dnsk_add_dfl_cftypes(ss, cfts);
 }
 
-static __nocfi noinline int dnsk_call_skey_enable(struct static_key *key)
+static __nocfi noinline void dnsk_call_skey_enable(struct static_key *key)
 {
-	return dnsk_static_key_enable(key);
+	dnsk_static_key_enable(key);
 }
 
 static __nocfi noinline void dnsk_call_skey_disable(struct static_key *key)
@@ -595,9 +595,7 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 	old_inhibit = READ_ONCE(*dnsk_inhibit_mask);
 	WRITE_ONCE(*dnsk_inhibit_mask, old_inhibit & ~BIT(DNSK_CGROUP_SUBSYS_SLOT));
 	key_was_enabled = static_key_enabled(dnsk_on_dfl_key);
-	ret = dnsk_call_skey_enable(dnsk_on_dfl_key);
-	if (ret)
-		goto out_restore_inhibit;
+	dnsk_call_skey_enable(dnsk_on_dfl_key);
 
 	css = dnsk_make_root_css();
 	if (IS_ERR(css)) {
@@ -626,7 +624,6 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 out_disable_key:
 	if (!key_was_enabled)
 		dnsk_call_skey_disable(dnsk_on_dfl_key);
-out_restore_inhibit:
 	WRITE_ONCE(*dnsk_inhibit_mask, old_inhibit);
 	mutex_unlock(dnsk_cgroup_mutex);
 out_put:
