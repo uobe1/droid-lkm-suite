@@ -95,8 +95,10 @@ static pid_t spawn_userns_helper(unsigned int outer_id)
 	if (pid == 0) {
 		close(ready[0]);
 		close(go[1]);
-		if (unshare(CLONE_NEWUSER) < 0)
+		if (unshare(CLONE_NEWUSER) < 0) {
+			perror("idmap helper unshare");
 			_exit(1);
+		}
 		if (write(ready[1], "r", 1) != 1)
 			_exit(2);
 		if (read(go[0], &byte, 1) != 1)

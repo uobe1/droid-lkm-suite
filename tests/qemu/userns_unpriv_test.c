@@ -26,7 +26,7 @@ int main(void)
 {
 	char map[64];
 	uid_t outer;
-	int fd;
+	int fd, gid_ok = 1;
 
 	if (getuid() == 0) {
 		setgroups(0, NULL);
@@ -44,17 +44,21 @@ int main(void)
 		perror("unshare user");
 		return 1;
 	}
-	if (write_str("/proc/self/setgroups", "deny") < 0 &&
-	    errno != ENOENT) {
-		perror("setgroups deny");
-		return 1;
+	if (write_str("/proc/self/setgroups", "deny") < 0) {
+		if (errno != ENOENT) {
+			/* Native kernels require CAP_SETGID in the parent userns
+			 * for this write; an unprivileged creator cannot do it.
+			 * Continue with uid_map only and skip gid_map. */
+			perror("setgroups deny (gid_map skipped)");
+			gid_ok = 0;
+		}
 	}
 	snprintf(map, sizeof(map), "0 %u 1\n", (unsigned)outer);
 	if (write_str("/proc/self/uid_map", map) < 0) {
 		perror("uid_map");
 		return 1;
 	}
-	if (write_str("/proc/self/gid_map", map) < 0) {
+	if (gid_ok && write_str("/proc/self/gid_map", map) < 0) {
 		perror("gid_map");
 		return 1;
 	}
