@@ -40,6 +40,7 @@ static bool dnsk_feature_ready;
 static struct dnsk_acl_methods dnsk_acl_ops;
 static bool dnsk_acl_ready;
 static bool dnsk_keep_native;
+static struct dnsk_acl_orig dnsk_acl_slots;
 
 static void dnsk_wire_sb(struct super_block *sb, void *arg)
 {
@@ -121,6 +122,13 @@ static void dnsk_del_acl_hooks(void)
 	dnsk_api->hook_del("tmpfsx.iops.set_acl");
 	dnsk_api->hook_del("tmpfsx.iops.get_acl");
 	dnsk_api->hook_del("tmpfsx.iops.get_inode_acl");
+	dnsk_api->hook_del("tmpfsx.dops.create");
+	dnsk_api->hook_del("tmpfsx.dops.mkdir");
+	dnsk_api->hook_del("tmpfsx.dops.symlink");
+	dnsk_api->hook_del("tmpfsx.dops.mknod");
+	dnsk_api->hook_del("tmpfsx.dops.tmpfile");
+	dnsk_api->hook_del("tmpfsx.iops.setattr");
+	dnsk_api->hook_del("tmpfsx.dops.setattr");
 }
 
 static int dnsk_add_kprobe_hook(const char *key, const char *symbol, void *fn)
@@ -141,6 +149,7 @@ static int dnsk_resolve_symbols(void)
 	void *xattr_set, *xattr_get, *xattr_list, *xattrs_free;
 	void *acl_from, *acl_to, *user_ns, *acl_release, *acl_set;
 	void *acl_update_mode, *acl_set_cached;
+	void *acl_sac, *acl_chmod, *simple_setattr_fn;
 	void *native_acl_access, *native_acl_default;
 	void *fc_ops, *parse_param, *parse_monolithic;
 	int ret;
@@ -167,6 +176,9 @@ static int dnsk_resolve_symbols(void)
 	acl_set = dnsk_api->resolve("set_posix_acl");
 	acl_update_mode = dnsk_api->resolve("posix_acl_update_mode");
 	acl_set_cached = dnsk_api->resolve("set_cached_acl");
+	acl_sac = dnsk_api->resolve("simple_acl_create");
+	acl_chmod = dnsk_api->resolve("posix_acl_chmod");
+	simple_setattr_fn = dnsk_api->resolve("simple_setattr");
 	native_acl_access = dnsk_api->resolve("posix_acl_access_xattr_handler");
 	native_acl_default = dnsk_api->resolve("posix_acl_default_xattr_handler");
 	fc_ops = dnsk_api->resolve("shmem_fs_context_ops");
@@ -210,11 +222,39 @@ static int dnsk_resolve_symbols(void)
 				 offsetof(struct inode_operations, set_acl)))) {
 		pr_info("dnsk_tmpfsx: native ACL present; keeping native\n");
 	} else if (acl_from && acl_to && user_ns && acl_release && acl_set &&
-		   acl_update_mode && acl_set_cached) {
+		   acl_update_mode && acl_set_cached && acl_sac && acl_chmod) {
 		ret = dnsk_tmpfsx_acl_init(acl_from, acl_to, user_ns,
 					   acl_release, acl_set,
 					   acl_update_mode, acl_set_cached,
 					   &dnsk_acl_ops);
+		if (ret)
+			return ret;
+		dnsk_acl_slots.create = (dnsk_create_fn)READ_ONCE(
+			*(void **)((char *)dnsk_dops +
+				   offsetof(struct inode_operations, create)));
+		dnsk_acl_slots.mkdir = (dnsk_mkdir_fn)READ_ONCE(
+			*(void **)((char *)dnsk_dops +
+				   offsetof(struct inode_operations, mkdir)));
+		dnsk_acl_slots.symlink = (dnsk_symlink_fn)READ_ONCE(
+			*(void **)((char *)dnsk_dops +
+				   offsetof(struct inode_operations, symlink)));
+		dnsk_acl_slots.mknod = (dnsk_mknod_fn)READ_ONCE(
+			*(void **)((char *)dnsk_dops +
+				   offsetof(struct inode_operations, mknod)));
+		dnsk_acl_slots.tmpfile = (dnsk_tmpfile_fn)READ_ONCE(
+			*(void **)((char *)dnsk_dops +
+				   offsetof(struct inode_operations, tmpfile)));
+		dnsk_acl_slots.setattr_iops = (dnsk_setattr_fn)READ_ONCE(
+			*(void **)((char *)dnsk_iops +
+				   offsetof(struct inode_operations, setattr)));
+		dnsk_acl_slots.setattr_dops = (dnsk_setattr_fn)READ_ONCE(
+			*(void **)((char *)dnsk_dops +
+				   offsetof(struct inode_operations, setattr)));
+		if (!dnsk_acl_slots.setattr_dops)
+			dnsk_acl_slots.setattr_dops =
+				(dnsk_setattr_fn)simple_setattr_fn;
+		ret = dnsk_tmpfsx_acl_iops_init(&dnsk_acl_slots, acl_sac,
+						acl_chmod);
 		if (ret)
 			return ret;
 		dnsk_acl_ready = true;
@@ -313,6 +353,62 @@ static int __init dnsk_tmpfsx_init(void)
 					dnsk_acl_ops.set_acl);
 		if (ret)
 			goto out_acl;
+		if (dnsk_acl_slots.create) {
+			ret = dnsk_add_acl_hook("tmpfsx.dops.create", dnsk_dops,
+						offsetof(struct inode_operations,
+							 create),
+						dnsk_tmpfsx_create);
+			if (ret)
+				goto out_acl;
+		}
+		if (dnsk_acl_slots.mkdir) {
+			ret = dnsk_add_acl_hook("tmpfsx.dops.mkdir", dnsk_dops,
+						offsetof(struct inode_operations,
+							 mkdir),
+						dnsk_tmpfsx_mkdir);
+			if (ret)
+				goto out_acl;
+		}
+		if (dnsk_acl_slots.symlink) {
+			ret = dnsk_add_acl_hook("tmpfsx.dops.symlink", dnsk_dops,
+						offsetof(struct inode_operations,
+							 symlink),
+						dnsk_tmpfsx_symlink);
+			if (ret)
+				goto out_acl;
+		}
+		if (dnsk_acl_slots.mknod) {
+			ret = dnsk_add_acl_hook("tmpfsx.dops.mknod", dnsk_dops,
+						offsetof(struct inode_operations,
+							 mknod),
+						dnsk_tmpfsx_mknod);
+			if (ret)
+				goto out_acl;
+		}
+		if (dnsk_acl_slots.tmpfile) {
+			ret = dnsk_add_acl_hook("tmpfsx.dops.tmpfile", dnsk_dops,
+						offsetof(struct inode_operations,
+							 tmpfile),
+						dnsk_tmpfsx_tmpfile);
+			if (ret)
+				goto out_acl;
+		}
+		if (dnsk_acl_slots.setattr_iops) {
+			ret = dnsk_add_acl_hook("tmpfsx.iops.setattr", dnsk_iops,
+						offsetof(struct inode_operations,
+							 setattr),
+						dnsk_tmpfsx_setattr_iops);
+			if (ret)
+				goto out_acl;
+		}
+		if (dnsk_acl_slots.setattr_dops) {
+			ret = dnsk_add_acl_hook("tmpfsx.dops.setattr", dnsk_dops,
+						offsetof(struct inode_operations,
+							 setattr),
+						dnsk_tmpfsx_setattr_dops);
+			if (ret)
+				goto out_acl;
+		}
 	}
 
 	ret = dnsk_add_acl_hook("tmpfsx.fc.parse_param", dnsk_fc_ops,

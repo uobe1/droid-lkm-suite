@@ -294,3 +294,149 @@ int dnsk_tmpfsx_acl_init(void *from_xattr, void *to_xattr, void *user_ns,
 	methods->set_acl = (void *)dnsk_set_acl;
 	return 0;
 }
+
+static struct dnsk_acl_orig dnsk_orig;
+static int (*dnsk_simple_acl_create)(struct inode *dir, struct inode *inode);
+static int (*dnsk_posix_acl_chmod)(struct mnt_idmap *idmap,
+				   struct dentry *dentry, umode_t mode);
+
+static __nocfi noinline int dnsk_call_sac(struct inode *dir,
+					  struct inode *inode)
+{
+	return dnsk_simple_acl_create(dir, inode);
+}
+
+static __nocfi noinline int dnsk_call_chmod(struct mnt_idmap *idmap,
+					    struct dentry *dentry, umode_t mode)
+{
+	return dnsk_posix_acl_chmod(idmap, dentry, mode);
+}
+
+static __nocfi noinline int dnsk_call_setattr(int (*fn)(struct mnt_idmap *,
+							struct dentry *,
+							struct iattr *),
+					      struct mnt_idmap *idmap,
+					      struct dentry *dentry,
+					      struct iattr *attr)
+{
+	return fn(idmap, dentry, attr);
+}
+
+static void dnsk_inherit_acl(struct inode *dir, struct inode *inode)
+{
+	int ret;
+
+	if (!dir || !inode || !IS_POSIXACL(dir))
+		return;
+	ret = dnsk_call_sac(dir, inode);
+	if (ret)
+		pr_warn_once("dnsk_tmpfsx: acl inherit failed %d\n", ret);
+}
+
+int dnsk_tmpfsx_create(struct mnt_idmap *idmap, struct inode *dir,
+		       struct dentry *dentry, umode_t mode, bool excl)
+{
+	int ret;
+
+	if (!dnsk_orig.create)
+		return -EOPNOTSUPP;
+	ret = dnsk_orig.create(idmap, dir, dentry, mode, excl);
+	if (!ret)
+		dnsk_inherit_acl(dir, d_inode(dentry));
+	return ret;
+}
+
+int dnsk_tmpfsx_mkdir(struct mnt_idmap *idmap, struct inode *dir,
+		      struct dentry *dentry, umode_t mode)
+{
+	int ret;
+
+	if (!dnsk_orig.mkdir)
+		return -EOPNOTSUPP;
+	ret = dnsk_orig.mkdir(idmap, dir, dentry, mode);
+	if (!ret)
+		dnsk_inherit_acl(dir, d_inode(dentry));
+	return ret;
+}
+
+int dnsk_tmpfsx_symlink(struct mnt_idmap *idmap, struct inode *dir,
+			struct dentry *dentry, const char *symname)
+{
+	int ret;
+
+	if (!dnsk_orig.symlink)
+		return -EOPNOTSUPP;
+	ret = dnsk_orig.symlink(idmap, dir, dentry, symname);
+	if (!ret)
+		dnsk_inherit_acl(dir, d_inode(dentry));
+	return ret;
+}
+
+int dnsk_tmpfsx_mknod(struct mnt_idmap *idmap, struct inode *dir,
+		      struct dentry *dentry, umode_t mode, dev_t dev)
+{
+	int ret;
+
+	if (!dnsk_orig.mknod)
+		return -EOPNOTSUPP;
+	ret = dnsk_orig.mknod(idmap, dir, dentry, mode, dev);
+	if (!ret)
+		dnsk_inherit_acl(dir, d_inode(dentry));
+	return ret;
+}
+
+int dnsk_tmpfsx_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
+			struct file *file, umode_t mode)
+{
+	int ret;
+
+	if (!dnsk_orig.tmpfile)
+		return -EOPNOTSUPP;
+	ret = dnsk_orig.tmpfile(idmap, dir, file, mode);
+	if (!ret)
+		dnsk_inherit_acl(dir, file_inode(file));
+	return ret;
+}
+
+static int dnsk_do_setattr(int (*fn)(struct mnt_idmap *, struct dentry *,
+				     struct iattr *),
+			   struct mnt_idmap *idmap, struct dentry *dentry,
+			   struct iattr *attr)
+{
+	struct inode *inode = d_inode(dentry);
+	int ret;
+
+	if (!fn)
+		return -EOPNOTSUPP;
+	ret = dnsk_call_setattr(fn, idmap, dentry, attr);
+	if (!ret && inode && (attr->ia_valid & ATTR_MODE) && IS_POSIXACL(inode)) {
+		ret = dnsk_call_chmod(idmap, dentry, inode->i_mode);
+		if (ret)
+			pr_warn_once("dnsk_tmpfsx: acl chmod failed %d\n", ret);
+	}
+	return ret;
+}
+
+int dnsk_tmpfsx_setattr_iops(struct mnt_idmap *idmap, struct dentry *dentry,
+			     struct iattr *attr)
+{
+	return dnsk_do_setattr(dnsk_orig.setattr_iops, idmap, dentry, attr);
+}
+
+int dnsk_tmpfsx_setattr_dops(struct mnt_idmap *idmap, struct dentry *dentry,
+			     struct iattr *attr)
+{
+	return dnsk_do_setattr(dnsk_orig.setattr_dops, idmap, dentry, attr);
+}
+
+int dnsk_tmpfsx_acl_iops_init(const struct dnsk_acl_orig *orig,
+			      void *simple_acl_create, void *acl_chmod)
+{
+	if (!orig || !simple_acl_create || !acl_chmod)
+		return -EINVAL;
+	dnsk_orig = *orig;
+	dnsk_simple_acl_create = (typeof(dnsk_simple_acl_create))
+		simple_acl_create;
+	dnsk_posix_acl_chmod = (typeof(dnsk_posix_acl_chmod))acl_chmod;
+	return 0;
+}
