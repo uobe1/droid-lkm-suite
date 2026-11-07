@@ -22,6 +22,10 @@ __pycache__/
 *.xz
 !tests/fixtures/**/*.xz
 
+# Local agent notes (never tracked)
+AGENTS.md
+docs/notes/
+
 # Editor
 .idea/
 .vscode/
