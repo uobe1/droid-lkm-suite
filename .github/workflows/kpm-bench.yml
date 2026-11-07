@@ -1,0 +1,208 @@
+name: kpm-bench
+
+# Headless KPM-vs-LKM benchmark environment.  Nothing runs on a real device:
+# the job boots the reused beryl Image in QEMU, patches it with kpimg plus a
+# known superkey (APatch's own install-time path), then loads hook-bench.kpm
+# through KernelPatch's SuperCall CLI and measures getpid A/B.
+#
+# The real-device late-load path lives in tests/kpm/env/load_kp_late.sh and is
+# deliberately not exercised here: apd late-load needs Android userspace,
+# SELinux policy and /data/adb state.
+on:
+  workflow_dispatch:
+    inputs:
+      image_run_id:
+        description: run id with the device-boot artifact (beryl Image)
+        required: true
+        default: ""
+      module_run_id:
+        description: optional run id with core-android16-6.12 (C/D/E reservation only)
+        required: false
+        default: ""
+      apk_url:
+        description: URL of the APatch manager APK (not committed; assets only)
+        required: true
+        default: ""
+      kp_ref:
+        description: KernelPatch git tag for kptools + KPM headers
+        required: false
+        default: "0.13.9"
+      superkey:
+        description: KernelPatch superkey (empty = random per run)
+        required: false
+        default: ""
+      reps:
+        description: benchmark repetitions per stage
+        required: false
+        default: "20"
+      n:
+        description: getpid iterations per run
+        required: false
+        default: "10000000"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: device-boot
+          path: device
+          run-id: ${{ inputs.image_run_id }}
+          github-token: ${{ github.token }}
+
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.module_run_id != '' }}
+        with:
+          name: core-android16-6.12
+          path: modules
+          run-id: ${{ inputs.module_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Install tools
+        run: |
+          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
+          PKGS="qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu
+            ipxe-qemu-256k-compat-efi-roms qemu-efi-aarch64 cpio
+            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+            kmod python3 git make gcc zlib1g-dev libssl-dev curl ca-certificates openssl"
+          sudo timeout 900 apt-get $APT_OPTS update || true
+          sudo timeout 900 apt-get $APT_OPTS install -y --no-install-recommends \
+            $PKGS || {
+            sleep 10
+            sudo timeout 900 apt-get $APT_OPTS update || true
+            sudo timeout 900 apt-get $APT_OPTS install -y --no-install-recommends $PKGS
+          }
+          test -s device/Image
+          ls -l device/Image device/release.txt
+
+      - name: Fetch APK and extract KernelPatch runtime
+        env:
+          APK_URL: ${{ inputs.apk_url }}
+        run: |
+          set -euxo pipefail
+          test -n "$APK_URL"
+          curl -fL --retry 3 "$APK_URL" -o APatch.apk
+          ls -l APatch.apk
+          sh tests/kpm/env/extract_apk.sh APatch.apk tests/kpm/env/out
+          cat tests/kpm/env/out/manifest.txt
+          # The runtime must match the KPM ABI the bench module was written to.
+          grep -q '^kernelpatch_version=0.13.9$' tests/kpm/env/out/manifest.txt
+          test -x tests/kpm/env/out/kpatch
+
+      - name: Build kptools and hook-bench.kpm
+        env:
+          KP_REF: ${{ inputs.kp_ref }}
+        run: |
+          set -euxo pipefail
+          KP=/tmp/KernelPatch
+          git clone --depth 1 --branch "$KP_REF" \
+            https://github.com/bmax121/KernelPatch.git "$KP"
+          make -C "$KP/tools" -j"$(nproc)"
+          KPTOOLS=$(find "$KP" -maxdepth 3 -type f -name kptools -perm -u+x | head -n 1)
+          test -x "$KPTOOLS"
+          echo "kptools=$KPTOOLS"
+          "$KPTOOLS" -v -k tests/kpm/env/out/kpimg | tee kpimg-version.txt
+          make -C tests/kpm KP_DIR="$KP" TARGET_COMPILE=aarch64-linux-gnu-
+          test -s tests/kpm/hook-bench.kpm
+          aarch64-linux-gnu-gcc -static -O2 -o bench_getpid tests/kpm/bench_getpid.c
+          file tests/kpm/hook-bench.kpm bench_getpid
+          echo "KPTOOLS=$KPTOOLS" >> "$GITHUB_ENV"
+
+      - name: Patch Image with kpimg and a known superkey
+        env:
+          SUPERKEY_IN: ${{ inputs.superkey }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SUPERKEY_IN" ]; then
+            KEY="$SUPERKEY_IN"
+          else
+            KEY=$(openssl rand -hex 16)
+          fi
+          test "${#KEY}" -ge 8
+          echo "::add-mask::$KEY"
+          echo "KPM_SUPERKEY=$KEY" >> "$GITHUB_ENV"
+          # -s bakes the plaintext superkey; kpatch below reads the same value
+          # from /data/adb/kpatch.  No bootloader/boot image is touched: this
+          # is a throwaway QEMU kernel Image.
+          "$KPTOOLS" -p --image device/Image --kpimg tests/kpm/env/out/kpimg \
+            --skey "$KEY" --out Image.kp
+          "$KPTOOLS" -l -i Image.kp
+          test -s Image.kp
+
+      - name: Build KPM bench initramfs
+        env:
+          REPS: ${{ inputs.reps }}
+          N: ${{ inputs.n }}
+        run: |
+          set -euxo pipefail
+          curl -fsSL -o alpine.tar.gz \
+            https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.3-aarch64.tar.gz
+          mkdir -p rootfs
+          tar -xzf alpine.tar.gz -C rootfs
+          # Android linker64 + bionic libs for the kpatch (kpm) CLI.
+          cp -a tests/qemu/assets/android/. rootfs/
+          rm -f rootfs/system/etc/ld.config.txt
+          mkdir -p rootfs/kpm-bench rootfs/lkm rootfs/data/adb
+          chmod 0755 tests/kpm/env/out/kpatch
+          cp tests/kpm/env/out/kpatch rootfs/kpm-bench/kpatch
+          cp bench_getpid tests/kpm/env/bench_repeat.sh \
+             tests/kpm/hook-bench.kpm rootfs/kpm-bench/
+          printf '%s' "$KPM_SUPERKEY" > rootfs/kpm-bench/superkey
+          chmod 600 rootfs/kpm-bench/superkey
+          if [ -d modules ]; then
+            cp modules/*.ko rootfs/lkm/ 2>/dev/null || true
+            ls -l rootfs/lkm
+          fi
+          cp tests/kpm/env/init-kpm-bench rootfs/init
+          chmod 0755 rootfs/init rootfs/kpm-bench/bench_repeat.sh
+          sudo chown -R 0:0 rootfs
+          sudo mkdir -p rootfs/tmp
+          sudo chmod 1777 rootfs/tmp
+          sudo sh -c 'cd rootfs && find . | cpio -o -H newc' | gzip -9 > initramfs.cpio.gz
+          test -s initramfs.cpio.gz
+
+      - name: Boot QEMU and run A/B benchmark
+        env:
+          REPS: ${{ inputs.reps }}
+          N: ${{ inputs.n }}
+        run: |
+          set +e
+          APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0 selinux=0 kpm_bench.reps=${REPS} kpm_bench.n=${N}"
+          timeout 900 qemu-system-aarch64 \
+            -M virt -cpu max -m 4096 -smp 4 -nographic -no-reboot \
+            -kernel Image.kp -initrd initramfs.cpio.gz \
+            -append "$APPEND" 2>&1 | tee qemu.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "qemu_rc=$rc"
+          test "$rc" -eq 0
+          grep -q 'KPM_BENCH_A_OK' qemu.log
+          grep -q 'KPM_BENCH_LOAD_OK' qemu.log
+          grep -q 'KPM_BENCH_B_OK' qemu.log
+          grep -q 'KPM_BENCH_HITS_OK' qemu.log
+          grep -q 'KPM_BENCH_UNLOAD_OK' qemu.log
+          grep -q 'KPM_BENCH_STATS mode=A ' qemu.log
+          grep -q 'KPM_BENCH_STATS mode=B ' qemu.log
+          grep -q 'DNSK_KPM_BENCH_OK' qemu.log
+          grep -q 'DNSK_QEMU_OK' qemu.log
+          if grep -Eq 'Kernel panic|Oops|BUG:|CFI failure|Unknown symbol|invalid module format|KPM_BENCH_FAIL' qemu.log; then
+            echo "kernel/KPM failure in QEMU log" >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: kpm-bench-log-${{ github.run_id }}
+          path: |
+            qemu.log
+            kpimg-version.txt
+            tests/kpm/env/out/manifest.txt
+          if-no-files-found: warn
