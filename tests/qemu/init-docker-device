@@ -97,6 +97,50 @@ echo "DNSK_DOCKER_NS_OK=$NS_OK"
 "$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup || fail cgroup2_mount
 echo "DNSK_DOCKER_DEVICE_CONTROLLERS=$(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null)"
 
+# --- cgpids full semantic + concurrency suite (same QEMU run) ---
+echo "DNSK_CGPIDS_FULL_START"
+if [ "$EXPECT_PIDS" = 1 ]; then
+	grep -q '^pids' /proc/cgroups || fail cgpids_pids_missing
+fi
+"$BB" mkdir -p /sys/fs/cgroup/t || fail cgpids_mkdir_t
+echo +pids > /sys/fs/cgroup/cgroup.subtree_control || fail cgpids_root_subtree
+echo +pids > /sys/fs/cgroup/t/cgroup.subtree_control || fail cgpids_t_subtree
+"$BB" mkdir /sys/fs/cgroup/t/a || fail cgpids_mkdir_a
+test -e /sys/fs/cgroup/t/a/pids.max || fail cgpids_no_files
+echo 3 > /sys/fs/cgroup/t/a/pids.max || fail cgpids_max_write
+echo $$ > /sys/fs/cgroup/t/a/cgroup.procs || fail cgpids_move_shell
+n=0
+while [ "$n" -lt 10 ]; do
+	if ("$BB" sleep 30 &) 2>/dev/null; then
+		n=$((n + 1))
+	else
+		break
+	fi
+done
+echo "DNSK_CGPIDS_SPAWNED=$n"
+[ "$n" -lt 10 ] || fail cgpids_fork_limit
+echo 10 > /sys/fs/cgroup/t/a/pids.max || fail cgpids_raise_limit
+"$BB" mkdir /sys/fs/cgroup/t/b || fail cgpids_mkdir_b
+sh -c '"$0" sleep 30 & echo $! > /sys/fs/cgroup/t/b/cgroup.procs' "$BB" || \
+	fail cgpids_migrate
+( i=0; while [ "$i" -lt 100 ]; do "$BB" sleep 30 & i=$((i + 1)); done ) &
+stress=$!
+i=0
+while [ "$i" -lt 25 ]; do
+	"$BB" mkdir "/sys/fs/cgroup/t/b/s$i" 2>/dev/null || true
+	sh -c '"$0" sleep 30 & echo $! > "/sys/fs/cgroup/t/b/s$i/cgroup.procs"' \
+		"$BB" 2>/dev/null || true
+	"$BB" rmdir "/sys/fs/cgroup/t/b/s$i" 2>/dev/null || true
+	i=$((i + 1))
+done
+kill "$stress" 2>/dev/null || true
+echo "DNSK_CGPIDS_STRESS_OK"
+echo $$ > /sys/fs/cgroup/cgroup.procs || fail cgpids_move_back
+"$BB" rmdir /sys/fs/cgroup/t/b 2>/dev/null || true
+"$BB" rmdir /sys/fs/cgroup/t/a 2>/dev/null || true
+"$BB" rmdir /sys/fs/cgroup/t 2>/dev/null || true
+echo "DNSK_CGPIDS_FULL_OK"
+
 NET_OK=0
 if [ -x /sbin/iptables-legacy ] && [ -e /modules/dnsk_netfilter.ko ] &&
    [ -x /ksud ]; then

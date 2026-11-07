@@ -492,6 +492,8 @@ jobs:
             grep -q 'DNSK_NS_DEVICE_OK' qemu.log
           elif [ "$MODE" = "docker" ] || [ "$MODE" = "ksud-docker" ]; then
             grep -q 'DNSK_CGPIDS_LKM_OK' qemu.log
+            grep -q 'DNSK_CGPIDS_FULL_OK' qemu.log
+            grep -q 'DNSK_CGPIDS_STRESS_OK' qemu.log
             if [ "$MODE" = "ksud-docker" ]; then
               grep -q 'DNSK_DOCKER_NETFILTER_OK' qemu.log
               grep -q 'DNSK_DOCKER_NET_OK' qemu.log
