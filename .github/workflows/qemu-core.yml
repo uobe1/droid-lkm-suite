@@ -265,10 +265,12 @@ jobs:
             cp tests/qemu/init-tmpfsx-oracle rootfs/init
           elif [ "${{ inputs.mode }}" = "userns" ]; then
             aarch64-linux-gnu-gcc -static -O2 -o userns_test tests/qemu/userns_test.c
+            aarch64-linux-gnu-gcc -static -O2 -o userns_unpriv_test \
+              tests/qemu/userns_unpriv_test.c
             aarch64-linux-gnu-gcc -static -O2 -o fuse_test tests/qemu/fuse_test.c
             aarch64-linux-gnu-gcc -static -O2 -pthread -o mount_setattr_test \
               tests/qemu/selftests/mount_setattr/mount_setattr_test.c
-            cp userns_test fuse_test mount_setattr_test rootfs/
+            cp userns_test userns_unpriv_test fuse_test mount_setattr_test rootfs/
             curl -fsSL -o apk-tools.apk \
               https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/apk-tools-static-2.14.13-r0.apk
             rm -rf /tmp/apk-tools && mkdir -p /tmp/apk-tools
@@ -330,6 +332,7 @@ jobs:
           fi
           if [ "${{ inputs.mode }}" = "userns" ]; then
             grep -q 'DNSK_OVL_INIT_NS=0' qemu.log
+            grep -q 'DNSK_USERNS_UNPRIV_OK' qemu.log
             grep -q 'DNSK_MOUNT_SETATTR_SELFTEST_OK' qemu.log
             grep -q 'DNSK_USERNS_OK' qemu.log
           fi

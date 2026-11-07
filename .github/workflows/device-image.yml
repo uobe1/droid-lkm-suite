@@ -348,6 +348,9 @@ jobs:
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
             aarch64-linux-gnu-gcc -static -O2 -o userns_test tests/qemu/userns_test.c
             cp userns_test rootfs/userns_test
+            aarch64-linux-gnu-gcc -static -O2 -o userns_unpriv_test \
+              tests/qemu/userns_unpriv_test.c
+            cp userns_unpriv_test rootfs/userns_unpriv_test
             aarch64-linux-gnu-gcc -static -O2 -o fuse_test tests/qemu/fuse_test.c
             cp fuse_test rootfs/fuse_test
             aarch64-linux-gnu-gcc -static -O2 -pthread -o mount_setattr_test \
@@ -472,6 +475,7 @@ jobs:
             grep -q 'DNSK_USERNS_LKM_OK' qemu.log
             grep -q 'DNSK_RW_OK' qemu.log
             grep -q 'DNSK_OVL_INIT_NS=0' qemu.log
+            grep -q 'DNSK_USERNS_UNPRIV_OK' qemu.log
             grep -q 'USERNS_IDMAP_OK' qemu.log
             grep -q 'USERNS_OVERLAY_OK' qemu.log
             grep -q 'USERNS_FUSE_OK' qemu.log

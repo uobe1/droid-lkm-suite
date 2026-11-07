@@ -40,6 +40,8 @@ mount -t overlay overlay \
 echo "DNSK_OVL_INIT_NS=0"
 
 /userns_test || fail userns_test
+/userns_unpriv_test || fail userns_unpriv_test
+echo "DNSK_USERNS_UNPRIV_OK"
 /fuse_test || fail fuse_test
 /mount_setattr_test || fail mount_setattr_selftest
 echo "DNSK_MOUNT_SETATTR_SELFTEST_OK"
