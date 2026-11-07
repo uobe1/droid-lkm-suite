@@ -38,13 +38,13 @@ echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
 [ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
 echo "DNSK_SELINUX_AFTER_KSU=permissive"
 
-# KSU su: the kernel rewrites an exec of the su path into ksud with
-# argv[0]="su" and hands it a ksu_driver_su fd; only that root profile may
-# adjust SELinux policy, so the enforcing pass runs inside it.
-"$BB" mkdir -p /data/adb/ksu/bin
-ln -sf /ksud /su
-ln -sf /ksud /data/adb/ksu/bin/su
-su_sh() { /data/adb/ksu/bin/su -s "$BB" -c "$1"; }
+# KSU su: sucompat matches execve of exactly /system/bin/su, replaces it
+# with KSUD_PATH (/data/adb/ksud) and applies the root profile; only that
+# domain may adjust SELinux policy, so the enforcing pass runs inside it.
+"$BB" mkdir -p /data/adb/ksu/bin /system/bin
+ln -sf /ksud /data/adb/ksud
+ln -sf /ksud /system/bin/su
+su_sh() { /system/bin/su -s "$BB" -c "$1"; }
 
 /ksud insmod /modules/dnsk_core.ko || fail core_insmod
 /ksud insmod /modules/dnsk_ns.ko gki=1 activate=1 || fail ns_insmod
