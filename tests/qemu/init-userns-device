@@ -33,7 +33,12 @@ fi
 export LD_LIBRARY_PATH=/system/lib64
 /insmod_force /modules/selpermissive.ko || fail selpermissive_insmod
 /ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
-"$BB" sleep 10
+i=0
+while [ "$i" -lt 20 ]; do
+	"$BB" dmesg 2>/dev/null | "$BB" grep -q 'late-load start' && break
+	"$BB" sleep 0.2 2>/dev/null || "$BB" sleep 1
+	i=$((i + 1))
+done
 echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
 [ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
 echo "DNSK_SELINUX_AFTER_KSU=permissive"
@@ -116,7 +121,7 @@ if [ -f /enforce ]; then
 		"allow su selinuxfs dir { open read getattr search }"; do
 		/ksud sepolicy patch "$rule" || fail "su_sepolicy:$rule"
 	done
-	su_sh 'read ctx < /proc/self/attr/current 2>/dev/null; echo "DNSK_SU_CTX=$ctx"; echo 1 > /sys/fs/selinux/enforce; echo "DNSK_SELINUX_ENFORCE=$(read e < /sys/fs/selinux/enforce; echo $e)"; /userns_test && /userns_unpriv_test && /fuse_test && /mount_setattr_test && echo "DNSK_USERNS_ENFORCE_OK"; poweroff -f' || fail userns_enforce
+	su_sh 'read ctx < /proc/self/attr/current 2>/dev/null; echo "DNSK_SU_CTX=$ctx"; echo 1 > /sys/fs/selinux/enforce; echo "DNSK_SELINUX_ENFORCE=$(read e < /sys/fs/selinux/enforce; echo $e)"; /userns_test && /userns_unpriv_test && /fuse_test && /mount_setattr_test && echo "DNSK_USERNS_ENFORCE_OK"; poweroff -f || echo o > /proc/sysrq-trigger' || fail userns_enforce
 fi
 
 "$BB" poweroff -f

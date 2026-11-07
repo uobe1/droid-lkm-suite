@@ -37,9 +37,9 @@ on:
         required: false
         default: "0xe976b219"
       enforce_selinux:
-        description: run the userns suite again from a KSU su root under enforcing
+        description: also run the userns suite from a KSU su root under enforcing
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -490,6 +490,9 @@ jobs:
             grep -q 'USERNS_FUSE_OK' qemu.log
             grep -q 'DNSK_MOUNT_SETATTR_SELFTEST_OK' qemu.log
             grep -q 'DNSK_USERNS_OK' qemu.log
+            if [ "${{ inputs.enforce_selinux }}" = "true" ]; then
+              grep -q 'DNSK_USERNS_ENFORCE_OK' qemu.log
+            fi
           elif [ "$MODE" = "netfilter" ]; then
             grep -q 'DNSK_NETFILTER_LKM_OK' qemu.log
             grep -q 'DNSK_NETFILTER_OK' qemu.log
