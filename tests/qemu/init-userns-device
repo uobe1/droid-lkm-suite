@@ -55,6 +55,7 @@ if [ -r /proc/dnsk/rw ]; then
 		sed -n 's/^resolve init_user_ns //p')
 	[ -n "$va" ] || fail rw_resolve
 	pa=$(rw_cmd 'pa init_user_ns' | sed -n 's/^pa init_user_ns //p')
+	pa=${pa#0x}
 	[ -n "$pa" ] || fail rw_pa
 	rw_cmd "read $va 8" | grep -q "^read $va " || fail rw_read_va
 	rw_cmd "readp $pa 8" | grep -q "^readp $pa " || fail rw_read_pa
