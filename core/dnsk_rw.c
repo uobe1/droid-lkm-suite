@@ -271,6 +271,8 @@ static int dnsk_rw_selftest(void)
 	u64 t0, t1;
 	int i, ret;
 
+	if (!dnsk_patch_ready() || !dnsk_rw_read_fn)
+		return -EOPNOTSUPP;
 	buf = kmalloc(64, GFP_KERNEL);
 	back = kmalloc(64, GFP_KERNEL);
 	if (!buf || !back) {
@@ -332,8 +334,7 @@ static int dnsk_rw_selftest(void)
 	}
 	t1 = ktime_get_ns();
 	dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,
-				    "selftest pass pa=0x%lx ns=%llu\n", pa,
-				    t1 - t0);
+				    "selftest pass ns=%llu\n", t1 - t0);
 out:
 	kfree(buf);
 	kfree(back);

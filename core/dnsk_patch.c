@@ -25,7 +25,7 @@ atomic_t dnsk_patch_state = ATOMIC_INIT(-EOPNOTSUPP);
 
 typedef void (*dnsk_set_fixmap_fn_t)(enum fixed_addresses idx, phys_addr_t phys,
 				     pgprot_t prot);
-typedef int (*dnsk_copy_nofault_fn_t)(void *dst, const void *src, size_t size);
+typedef long (*dnsk_copy_nofault_fn_t)(void *dst, const void *src, size_t size);
 
 static struct mm_struct *dnsk_init_mm;
 static dnsk_set_fixmap_fn_t dnsk_set_fixmap_fn;
@@ -153,13 +153,13 @@ static __nocfi noinline int dnsk_fixmap_write(unsigned long phy,
 					      const void *src, size_t len)
 {
 	void *map;
-	int err;
+	long err;
 
 	dnsk_set_fixmap_fn(FIX_TEXT_POKE0, phy, PAGE_KERNEL);
 	map = (void *)(__fix_to_virt(FIX_TEXT_POKE0) + (phy & ~PAGE_MASK));
 	err = dnsk_copy_nofault_fn(map, src, len);
 	dnsk_set_fixmap_fn(FIX_TEXT_POKE0, 0, __pgprot(0));
-	return err;
+	return (int)err;
 }
 
 struct dnsk_patch_info {
