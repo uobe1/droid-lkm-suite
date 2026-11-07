@@ -162,7 +162,9 @@ jobs:
             ls -l rootfs/lkm
           fi
           cp tests/kpm/env/init-kpm-bench rootfs/init
-          chmod 0755 rootfs/init rootfs/kpm-bench/bench_repeat.sh
+          chmod 0755 rootfs/init rootfs/kpm-bench/bench_repeat.sh \
+            rootfs/kpm-bench/kpatch rootfs/kpm-bench/bench_getpid \
+            rootfs/system/bin/linker64
           sudo chown -R 0:0 rootfs
           sudo mkdir -p rootfs/tmp
           sudo chmod 1777 rootfs/tmp
