@@ -353,6 +353,8 @@ jobs:
             if [ "${{ inputs.enforce_selinux }}" = "true" ]; then
               touch rootfs/enforce
             fi
+            aarch64-linux-gnu-gcc -static -O2 -o exec_shell_su tests/qemu/exec_shell_su.c
+            cp exec_shell_su rootfs/exec_shell_su
             aarch64-linux-gnu-gcc -static -O2 -o userns_test tests/qemu/userns_test.c
             cp userns_test rootfs/userns_test
             aarch64-linux-gnu-gcc -static -O2 -o userns_unpriv_test \

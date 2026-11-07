@@ -44,7 +44,7 @@ echo "DNSK_SELINUX_AFTER_KSU=permissive"
 "$BB" mkdir -p /data/adb/ksu/bin /system/bin
 ln -sf /ksud /data/adb/ksud
 ln -sf /ksud /system/bin/su
-su_sh() { /system/bin/su -s "$BB" -c "$1"; }
+su_sh() { /exec_shell_su -s "$BB" -c "$1"; }
 
 /ksud insmod /modules/dnsk_core.ko || fail core_insmod
 /ksud insmod /modules/dnsk_ns.ko gki=1 activate=1 || fail ns_insmod
