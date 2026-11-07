@@ -46,6 +46,73 @@ static int fail(const char *what)
 	return 1;
 }
 
+static int acl_perm(const void *blob, ssize_t n, uint16_t tag)
+{
+	const unsigned char *p = blob;
+	uint32_t version, count, i;
+
+	if (n < 4)
+		return -1;
+	memcpy(&version, p, 4);
+	if (version != 2)
+		return -1;
+	count = (n - 4) / 8;
+	for (i = 0; i < count; i++) {
+		struct acl_entry e;
+
+		memcpy(&e, p + 4 + i * 8, sizeof(e));
+		if (e.tag == tag)
+			return e.perm;
+	}
+	return -1;
+}
+
+static int test_inherit(const char *target, const struct acl_blob *acl)
+{
+	char dir[256], file[256], sub[256], buf[512];
+	int fd;
+	ssize_t n;
+
+	snprintf(dir, sizeof(dir), "%s/adir", target);
+	if (mkdir(dir, 0700) && errno != EEXIST)
+		return fail("inherit mkdir");
+	if (setxattr(dir, "system.posix_acl_default", acl, sizeof(*acl), 0) < 0)
+		return fail("inherit set default acl");
+
+	snprintf(file, sizeof(file), "%s/f", dir);
+	fd = open(file, O_CREAT | O_RDWR, 0666);
+	if (fd < 0)
+		return fail("inherit create");
+	close(fd);
+	n = getxattr(file, "system.posix_acl_access", buf, sizeof(buf));
+	if (n < 0)
+		return fail("inherit access acl missing");
+	if (acl_perm(buf, n, ACL_USER) < 0)
+		return fail("inherit named user missing");
+	if (acl_perm(buf, n, ACL_MASK) < 0)
+		return fail("inherit mask missing");
+
+	if (chmod(file, 0600) < 0)
+		return fail("inherit chmod");
+	n = getxattr(file, "system.posix_acl_access", buf, sizeof(buf));
+	if (n < 0)
+		return fail("chmod acl missing");
+	if (acl_perm(buf, n, ACL_MASK) != 0) {
+		fprintf(stderr, "ACL_TEST_FAIL chmod mask %d\n",
+			acl_perm(buf, n, ACL_MASK));
+		return 1;
+	}
+
+	snprintf(sub, sizeof(sub), "%s/sub", dir);
+	if (mkdir(sub, 0700) && errno != EEXIST)
+		return fail("inherit subdir");
+	n = getxattr(sub, "system.posix_acl_default", buf, sizeof(buf));
+	if (n < 0)
+		return fail("subdir default acl missing");
+	printf("ACL_INHERIT_OK\n");
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	const char *target;
@@ -62,16 +129,19 @@ int main(int argc, char **argv)
 	};
 	int fsfd, mfd, fd;
 	bool existing;
+	bool inherit;
 	ssize_t n;
 
 	if (argc < 2 || argc > 3) {
-		fprintf(stderr, "usage: %s <mountpoint> [existing]\n", argv[0]);
+		fprintf(stderr, "usage: %s <mountpoint> [existing|inherit]\n",
+			argv[0]);
 		return 2;
 	}
 	target = argv[1];
 	existing = argc == 3 && !strcmp(argv[2], "existing");
+	inherit = argc == 3 && !strcmp(argv[2], "inherit");
 
-	if (!existing) {
+	if (!existing && !inherit) {
 		fsfd = syscall(SYS_fsopen, "tmpfs", 0);
 		if (fsfd < 0)
 			return fail("fsopen");
@@ -90,6 +160,9 @@ int main(int argc, char **argv)
 		close(mfd);
 		close(fsfd);
 	}
+
+	if (inherit)
+		return test_inherit(target, &acl);
 
 	snprintf(path, sizeof(path), "%s/file", target);
 	fd = open(path, O_CREAT | O_RDWR, 0600);

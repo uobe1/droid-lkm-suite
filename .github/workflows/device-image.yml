@@ -500,6 +500,8 @@ jobs:
             grep -q 'DNSK_DOCKER_DEVICE_OK' qemu.log
           elif [ "$MODE" = "tmpfsx" ]; then
             grep -q 'DNSK_TMPFSX_LKM_OK' qemu.log
+            grep -q 'DNSK_TMPFSX_ACL_INHERIT_OK' qemu.log
+            grep -q 'DNSK_TMPFSX_ACL_LEGACY_INHERIT_OK' qemu.log
             grep -q 'DNSK_TMPFSX_OK' qemu.log
           elif [ "$MODE" = "userns" ]; then
             grep -q 'DNSK_USERNS_LKM_OK' qemu.log

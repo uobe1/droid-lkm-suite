@@ -58,12 +58,16 @@ echo data >/early/g || fail evict_file
 "$BB" sync
 
 "$BB" mkdir -p /acl /aclled
-/acl_test /acl || fail acl_test
+"/acl_test" /acl || fail acl_test
 echo "DNSK_TMPFSX_ACL_OK"
+/acl_test /acl inherit || fail acl_inherit
+echo "DNSK_TMPFSX_ACL_INHERIT_OK"
 
 mount -t tmpfs -o acl tmpfs /aclled || fail acl_legacy_mount
 /acl_test /aclled existing || fail acl_legacy
 echo "DNSK_TMPFSX_ACL_LEGACY_OK"
+/acl_test /aclled inherit || fail acl_legacy_inherit
+echo "DNSK_TMPFSX_ACL_LEGACY_INHERIT_OK"
 
 echo "DNSK_TMPFSX_OK"
 echo "DNSK_QEMU_OK"
