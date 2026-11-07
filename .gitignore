@@ -34,3 +34,6 @@ docs/notes/
 
 # Future plans (untracked)
 docs/plans/
+
+# Harness workspace state
+/.qoder/

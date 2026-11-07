@@ -2,7 +2,7 @@
 
 Native/Real LKM container-subsystem completion for Android GKI.
 
-本页是 MkDocs 首页。当前处于 M0 工程骨架阶段，功能状态见 [status](status.md)。
+本页是 MkDocs 首页。当前处于 M1 开发阶段（android16-6.12），功能状态见 [status](status.md)。
 
 ## 关键约束
 

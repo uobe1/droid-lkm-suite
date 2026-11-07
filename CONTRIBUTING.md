@@ -27,6 +27,9 @@
 - 中文技术文档 + 英文标识/API；代码注释英文。
 - 每篇功能文档必须包含 `Scope`、`Status`、`Non-goals`、`Evidence`。
 - 禁止营销语、emoji、无证据的“完整支持/原生等价”表述。
+- 本机/环境特定信息（主机名、密钥、容器路径、Termux 本地步骤、个人调试流水）
+  不写入 tracked 文档；按三层分流维护：本地 Note（`docs/notes/`，不跟踪）+
+  `AGENTS.md` 索引 + Memory 长期事实。tracked 文档只保留通用流程、契约与证据。
 - 详见 [docs/STYLE.md](docs/STYLE.md)。
 
 ## 许可证
