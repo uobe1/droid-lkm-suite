@@ -1,0 +1,26 @@
+# Build a KPM against the KernelPatch kernel headers.
+#   make KP_DIR=/path/to/KernelPatch TARGET_COMPILE=aarch64-linux-gnu-
+ifndef TARGET_COMPILE
+$(error TARGET_COMPILE not set)
+endif
+ifndef KP_DIR
+$(error KP_DIR not set)
+endif
+
+CC = $(TARGET_COMPILE)gcc
+INCLUDE_DIRS := . include patch/include linux/include linux/arch/arm64/include linux/tools/arch/arm64/include
+INCLUDE_FLAGS := $(foreach dir,$(INCLUDE_DIRS),-I$(KP_DIR)/kernel/$(dir))
+objs := hook_bench.o
+
+all: hook-bench.kpm
+
+hook-bench.kpm: $(objs)
+	$(CC) -r -o $@ $^
+
+%.o: %.c
+	$(CC) $(CFLAGS) $(INCLUDE_FLAGS) -c -O2 -o $@ $<
+
+clean:
+	rm -f *.kpm *.o
+
+.PHONY: all clean
