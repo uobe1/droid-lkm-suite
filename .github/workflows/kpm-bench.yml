@@ -104,6 +104,7 @@ jobs:
           KP=/tmp/KernelPatch
           git clone --depth 1 --branch "$KP_REF" \
             https://github.com/bmax121/KernelPatch.git "$KP"
+          cp "$KP/kernel/include/preset.h" "$KP/tools/"
           make -C "$KP/tools" -j"$(nproc)"
           KPTOOLS=$(find "$KP" -maxdepth 3 -type f -name kptools -perm -u+x | head -n 1)
           test -x "$KPTOOLS"
