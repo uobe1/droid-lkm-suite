@@ -141,7 +141,7 @@ DNSK_QEMU_OK
   `DNSK_DOCKER_MODE=isolated`；`pids_spawned=30`（limit 32）；
   `DNSK_DOCKER_DEVICE_OK`；`DNSK_QEMU_OK`。
 - 范围：cgroup v2、非 host 命名空间、vfs storage、`--network none`；
-  bridge/NAT、cgroup v1、UFW/Fail2ban 尚未在设备 Image 上验收。
+  bridge/NAT、UFW/Fail2ban 尚未在设备 Image 上验收。
 
 ## 备注
 

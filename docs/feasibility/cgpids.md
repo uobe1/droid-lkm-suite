@@ -7,9 +7,6 @@
 - **cgroup v2 虚拟 pids 控制器**可以在不注册真实 `cgroup_subsys` 的前提下达到
   Docker 29.x `--pids-limit` 契约: 真实层级计数、真实 `-EAGAIN`、真实
   `pids.max/current` 文件、真实迁移计数.
-- **cgroup v1 的未修改 Docker `--pids-limit` 不可实现**: `mount -o pids`
-  需要编译期存在的 `SUBSYS(pids)`; 运行时注册不存在, 因此 v1 无法获得
-  Docker sysinfo 认可的 pids mount.
 - 6.12 原生 pids 文件是 `pids.max/current/peak/events[/.local]`;
   `pids.stats` 不存在, 不应伪造.
 - 该结论会影响计划中 "Docker v1 与 v2 都必须无修改通过" 的发布门控:
@@ -80,7 +77,6 @@ fake enabled 状态. 不能把 `+pids` 翻译成 `+memory`/`+misc` (会泄漏 co
 
 ## 不支持的语义
 
-- v1 pids mount 与 Docker v1 `--pids-limit`;
 - `/proc/cgroups`/subsys ID/css 枚举中的 pids;
 - `pids.stats` (6.12 本就不存在);
 - 未验证的 threaded/CLONE_INTO_CGROUP/nsdelegate 组合;
@@ -107,6 +103,5 @@ trampoline BRK 导致写 cgroup.procs 硬崩、迁移任务不计、post_fork �
 
 ## 决策 (2026-11-01)
 
-用户接受 v1.0.0 采用 **v2-only 虚拟控制器**, cgroup v1 的未修改
-`--pids-limit` 明确标为 unsupported; 后续版本必须继续实现 Native 等价,
-不得把当前虚拟控制器当作最终 Native 结论.
+用户接受 v1.0.0 采用 **v2 虚拟控制器**; 后续版本必须继续实现 Native
+等价（现由 slot 注入完成），不得把虚拟控制器当作最终 Native 结论.
