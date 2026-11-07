@@ -34,9 +34,15 @@ on:
         description: load the device policy and run the oracle tests enforcing
         type: boolean
         default: false
+      module_run_id:
+        description: ci-fast run id providing selpermissive.ko for the enforcing pass
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   image:
@@ -296,6 +302,20 @@ jobs:
             aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
             cp selinux_load rootfs/selinux_load
             cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            if [ -n "${{ inputs.module_run_id }}" ]; then
+              mkdir -p /tmp/mods
+              GH_TOKEN="${{ github.token }}" gh run download \
+                "${{ inputs.module_run_id }}" -n core-android16-6.12 -D /tmp/mods || true
+              if [ -f /tmp/mods/selpermissive.ko ]; then
+                mkdir -p rootfs/modules
+                cp /tmp/mods/selpermissive.ko rootfs/modules/
+              fi
+            fi
+            aarch64-linux-gnu-gcc -static -O2 -o exec_shell_su tests/qemu/exec_shell_su.c
+            cp exec_shell_su rootfs/
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/
+            touch rootfs/enforce
           fi
           (cd rootfs && find . | cpio -o -H newc | gzip -9) > initramfs.cpio.gz
           ls -l Image 2>/dev/null || ls -l qemu/Image
@@ -335,6 +355,9 @@ jobs:
             grep -q 'DNSK_TMPFSX_ACL_INHERIT_OK' qemu.log
             grep -q 'DNSK_TMPFSX_ACL_LEGACY_INHERIT_OK' qemu.log
             grep -q 'DNSK_TMPFSX_OK' qemu.log
+            if [ "${{ inputs.enforce_selinux }}" = "true" ]; then
+              grep -q 'DNSK_TMPFSX_ENFORCE_OK' qemu.log
+            fi
           fi
           if [ "${{ inputs.mode }}" = "userns" ]; then
             grep -q 'DNSK_OVL_INIT_NS=0' qemu.log
