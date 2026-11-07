@@ -21,6 +21,12 @@ fail() {
 	"$BB" poweroff -f
 }
 
+warn_scan() {
+	"$BB" dmesg 2>/dev/null | "$BB" grep -A8 'WARNING: CPU' |
+		"$BB" grep -qE 'ds_(un_|userns_)|dnsk_' && return 1
+	return 0
+}
+
 if [ -x /selinux_load ] && [ -f /policy.gz ]; then
 	"$BB" mkdir -p /sys/fs/selinux
 	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
@@ -100,6 +106,7 @@ echo "DNSK_USERNS_UNPRIV_OK"
 /fuse_test || fail fuse_test
 /mount_setattr_test || fail mount_setattr_selftest
 echo "DNSK_MOUNT_SETATTR_SELFTEST_OK"
+warn_scan || fail kernel_warning
 echo "DNSK_USERNS_OK"
 echo "DNSK_QEMU_OK"
 
@@ -135,7 +142,7 @@ allow ksu selinuxfs file { open read write getattr }
 allow ksu selinuxfs dir { open read getattr search }
 RULES
 	/ksud sepolicy apply /ksu_rules || fail su_sepolicy
-	su_sh 'read ctx < /proc/self/attr/current 2>/dev/null; echo "DNSK_SU_CTX=$ctx"; echo 1 > /sys/fs/selinux/enforce; echo "DNSK_SELINUX_ENFORCE=$(read e < /sys/fs/selinux/enforce; echo $e)"; /userns_test && /userns_unpriv_test && /fuse_test && /mount_setattr_test && echo "DNSK_USERNS_ENFORCE_OK"; poweroff -f || echo o > /proc/sysrq-trigger'
+	su_sh 'read ctx < /proc/self/attr/current 2>/dev/null; echo "DNSK_SU_CTX=$ctx"; echo 1 > /sys/fs/selinux/enforce; echo "DNSK_SELINUX_ENFORCE=$(read e < /sys/fs/selinux/enforce; echo $e)"; /userns_test && /userns_unpriv_test && /fuse_test && /mount_setattr_test && { /bin/busybox dmesg | /bin/busybox grep -A8 "WARNING: CPU" | /bin/busybox grep -qE "ds_(un_|userns_)|dnsk_" && echo "DNSK_QEMU_FAIL kernel_warning" || echo "DNSK_USERNS_ENFORCE_OK"; }; /bin/busybox poweroff -f || echo o > /proc/sysrq-trigger'
 	if [ $? -ne 0 ]; then
 		echo "DNSK_QEMU_FAIL userns_enforce"
 		echo o > /proc/sysrq-trigger

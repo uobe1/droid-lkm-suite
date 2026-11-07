@@ -17,7 +17,7 @@ static bool ds_gki_target_supported(void)
 
     if (of_machine_is_compatible("linux,dummy-virt") && !strcmp(release, UTS_RELEASE))
         return true;
-    if (!gki || strncmp(release, DS_GKI_VERSION ".", sizeof(DS_GKI_VERSION)))
+    if (!gki || strncmp(release, DS_GKI_VERSION ".", sizeof(DS_GKI_VERSION) - 1))
         return false;
     patch = release + sizeof(DS_GKI_VERSION);
     if (!isdigit(*patch))

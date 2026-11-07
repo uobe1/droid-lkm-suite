@@ -57,12 +57,12 @@ static int __init ds_port_init(void)
 	/* Symbol scanning in emulated device kernels needs headroom under load. */
 	hint.timeout_ms = 15000;
 	/* Hardware testing is explicit and remains restricted to the recorded device. */
-	if (!of_machine_is_compatible("linux,dummy-virt")) {
 #ifndef DS_GKI_ANDROID
+	if (!of_machine_is_compatible("linux,dummy-virt")) {
 		if (!device || !userns_device_test)
-#endif
 			return -EOPNOTSUPP;
 	}
+#endif
 #endif
 
 #ifdef DS_GKI_ANDROID
@@ -80,8 +80,10 @@ static int __init ds_port_init(void)
 	}
 #endif
 	ret = kallrecon_supply(&hint);
-	if (ret)
+	if (ret) {
+		pr_err("port_init kallrecon: %d\n", ret);
 		return ret;
+	}
 	find_kallsyms_base();
 	if (kallrecon_fail_reason() != KALLRECON_OK || !klnum_val) {
 		pr_err("symbol reconstruction failed: reason=%d symbols=%u\n",
@@ -102,8 +104,10 @@ static int __init ds_port_init(void)
 	ds_set_proc_exit_connector_fn((void *)kallsyms_name_to_addr("proc_exit_connector"));
 	if (activate) {
 		ret = ds_hooks_prepare();
-		if (ret)
+		if (ret) {
+			pr_err("port_init hooks_prepare: %d\n", ret);
 			return ret;
+		}
 	}
 #ifdef DS_USERNS_LIVE
 	ret = ds_userns_core_init();
