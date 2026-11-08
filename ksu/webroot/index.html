@@ -3,82 +3,114 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
 <title>Droid LKM Suite</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-	<h1 data-i18n="title">Droid LKM Suite</h1>
-	<div class="row" role="group" aria-label="Language / 语言">
-		<button type="button" class="lang" id="lang-zh" data-lang="zh" aria-pressed="true">中文</button>
-		<button type="button" class="lang" id="lang-en" data-lang="en" aria-pressed="false">EN</button>
+
+<header class="topbar">
+	<div class="topbar-title">
+		<h1 data-i18n="title">Droid LKM Suite</h1>
+		<p class="topbar-sub" id="kmi-line" data-i18n="kmiPending">读取内核信息…</p>
+	</div>
+	<div class="seg" role="group" aria-label="Language / 语言">
+		<button type="button" class="seg-btn" id="lang-zh" data-lang="zh" aria-pressed="true">中文</button>
+		<button type="button" class="seg-btn" id="lang-en" data-lang="en" aria-pressed="false">EN</button>
 	</div>
 </header>
 
-<p class="sub" data-i18n="subtitle">android16-6.12 dev build. Every result below comes from dnskctl.</p>
+<main class="shell">
 
-<div id="bridge" class="banner warn" role="status" data-i18n="bridgeChecking">Checking the KSU WebUI bridge…</div>
+	<div id="bridge" class="banner banner-info" role="status" data-i18n="bridgeChecking">
+		正在检测 KSU WebUI 桥…
+	</div>
 
-<section class="card">
-	<h2 data-i18n="cmdTitle">Commands</h2>
-	<div class="row">
-		<button type="button" data-cmd="status" data-i18n="btnStatus">Status</button>
-		<button type="button" data-cmd="cap" data-i18n="btnCap">Capabilities</button>
-		<button type="button" data-cmd="probe" data-i18n="btnProbe">Probe</button>
+	<section class="kpi-row" aria-labelledby="kpi-heading">
+		<h2 class="sr-only" id="kpi-heading" data-i18n="kpiHeading">状态概览</h2>
+		<div class="kpi">
+			<span class="kpi-label" data-i18n="kpiLoaded">已加载</span>
+			<span class="kpi-value" id="kpi-loaded">–</span>
+		</div>
+		<div class="kpi">
+			<span class="kpi-label" data-i18n="kpiTotal">模块总数</span>
+			<span class="kpi-value" id="kpi-total">–</span>
+		</div>
+		<div class="kpi">
+			<span class="kpi-label" data-i18n="kpiUnloadable">可安全卸载</span>
+			<span class="kpi-value" id="kpi-unloadable">–</span>
+		</div>
+	</section>
+
+	<section class="actions" aria-labelledby="actions-heading">
+		<h2 id="actions-heading" data-i18n="actionsTitle">全部模块</h2>
+		<div class="actions-row">
+			<button type="button" class="btn btn-primary" id="start-all" data-i18n="startAll">
+				一键启动全部
+			</button>
+			<button type="button" class="btn btn-secondary" id="stop-all" data-i18n="stopAll">
+				全部卸载
+			</button>
+			<button type="button" class="btn btn-ghost" id="refresh" data-i18n="refresh">刷新</button>
+		</div>
+	</section>
+
+	<section class="list" aria-labelledby="modules-heading">
+		<h2 id="modules-heading" data-i18n="modulesTitle">模块状态</h2>
+		<ul class="module-list" id="module-list"></ul>
+		<p class="empty" id="module-empty" hidden data-i18n="emptyModules">
+			还没有读取到模块状态。
+		</p>
+	</section>
+
+	<section class="list" aria-labelledby="diag-heading">
+		<h2 id="diag-heading" data-i18n="diagTitle">诊断</h2>
+		<div class="actions-row">
+			<button type="button" class="btn btn-secondary" data-cmd="cap" data-i18n="btnCap">
+				能力
+			</button>
+			<button type="button" class="btn btn-secondary" data-cmd="probe" data-i18n="btnProbe">
+				探测
+			</button>
+			<button type="button" class="btn btn-secondary" data-cmd="doctor --last-panic"
+				data-i18n="btnDoctor">Doctor</button>
+			<button type="button" class="btn btn-secondary" data-cmd="logs 100"
+				data-i18n="btnLogs">日志</button>
+		</div>
+	</section>
+
+</main>
+
+<!-- Output works as a bottom sheet: the list stays visible behind it. -->
+<div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
+<section class="sheet" id="sheet" role="dialog" aria-modal="false"
+	aria-labelledby="sheet-title" hidden>
+	<div class="sheet-grab" aria-hidden="true"></div>
+	<div class="sheet-head">
+		<h2 id="sheet-title" data-i18n="outputTitle">输出</h2>
+		<button type="button" class="icon-btn" id="sheet-close" data-i18n-label="close">
+			<span aria-hidden="true">✕</span>
+		</button>
 	</div>
-	<div class="row">
-		<button type="button" data-cmd="doctor --last-panic" data-i18n="btnDoctor">Doctor / last panic</button>
-		<button type="button" data-cmd="logs 100" data-i18n="btnLogs">Logs (100)</button>
-		<button type="button" data-cmd="boot-check" data-i18n="btnBoot">Boot check</button>
-	</div>
-	<div class="row">
-		<select id="feature" aria-label="feature module" data-i18n-label="featureLabel">
-			<option value="core">core</option>
-			<option value="ns">ns</option>
-			<option value="devtmpfs">devtmpfs</option>
-			<option value="netfilter">netfilter</option>
-			<option value="ipset">ipset</option>
-			<option value="cgpids">cgpids</option>
-			<option value="tmpfsx">tmpfsx</option>
-			<option value="userns">userns</option>
-		</select>
-		<button type="button" data-cmd="load" class="primary" data-i18n="btnLoad">Load</button>
-		<button type="button" data-cmd="unload" data-i18n="btnUnload">Unload</button>
-	</div>
-	<div class="row">
-		<select id="profile" aria-label="profile" data-i18n-label="profileLabel">
-			<option value="docker-v2">docker-v2</option>
-			<option value="userns-full">userns-full</option>
-			<option value="ufw-fail2ban">ufw-fail2ban</option>
-			<option value="tmpfs-native">tmpfs-native</option>
-		</select>
-		<button type="button" data-cmd="profile" class="primary" data-i18n="btnProfile">Run profile</button>
+	<div class="sheet-body">
+		<p class="sheet-meta" id="out-meta"></p>
+		<pre id="out" tabindex="0">—</pre>
 	</div>
 </section>
 
-<section class="card">
-	<h2 data-i18n="capTitle">Declared capability levels</h2>
-	<div class="table-wrap">
-		<table>
-			<thead>
-				<tr>
-					<th data-i18n="thFeature">Feature</th>
-					<th data-i18n="thLevel">Declared level</th>
-					<th data-i18n="thNotes">Notes</th>
-				</tr>
-			</thead>
-			<tbody id="cap-body"></tbody>
-		</table>
+<!-- Destructive-action confirmation.  Deliberately in-page: window.confirm()
+     is suppressed in many Android WebViews, which would make the button look
+     dead, and an accidental background tap must not start an unload. -->
+<div class="confirm-backdrop" id="confirm-backdrop" hidden></div>
+<section class="confirm" id="confirm" role="alertdialog" aria-modal="true"
+	aria-labelledby="confirm-text" hidden>
+	<p class="confirm-text" id="confirm-text"></p>
+	<div class="confirm-actions">
+		<button type="button" class="btn btn-secondary" id="confirm-cancel"
+			data-i18n="cancel">取消</button>
+		<button type="button" class="btn btn-danger" id="confirm-ok"
+			data-i18n="confirmAction">继续</button>
 	</div>
-	<p class="note" data-i18n="capNote">Declared levels only.</p>
-</section>
-
-<section class="card">
-	<div class="row between">
-		<h2 data-i18n="outTitle">Output</h2>
-		<button type="button" id="clear" data-i18n="clear">Clear</button>
-	</div>
-	<pre id="out" tabindex="0" aria-live="polite">Pick a command above.</pre>
 </section>
 
 <script src="app.js"></script>

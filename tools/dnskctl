@@ -25,9 +25,12 @@ commands:
   probe [--json]            show device/KMI/ksud/cgroup facts
   cap [--json]              show core capability/status
   status [--json]           show loaded modules and /proc/dnsk/status
+  monitor [--json]          one machine-readable state snapshot per call
+  start-all [--json]        load every shipped module in dependency order
+  stop-all [--json]         unload features then core, verifying each step
   preflight [feature]       run device-side preflight (default: core)
-  load <feature>            ksud insmod a feature module
-  unload <feature>          rmmod a feature module (core checks refs)
+  load <feature>            ksud insmod a feature module (idempotent)
+  unload <feature>          rmmod safely: refs, dependants, post-check
   profile <name>            load a named profile
   enable|disable            allow/skip core auto-load on the next boot
   logs [lines]              tail the module state logs
@@ -314,6 +317,10 @@ do_load() {
 	feature=$1
 	ko=$(module_path "$feature")
 	[ -s "$ko" ] || die "module not shipped in this build: $ko"
+	if is_loaded "dnsk_${feature}"; then
+		echo "dnsk_${feature} is already loaded"
+		return 0
+	fi
 	if ! do_preflight "$feature"; then
 		die "preflight failed: $feature (refusing to insmod)"
 	fi
@@ -327,22 +334,254 @@ do_load() {
 	"$ksud" insmod "$@"
 }
 
+# refcnt prints the module refcount, or "-" when /sys/module has no entry.
+module_refcnt() {
+	if [ -r "/sys/module/$1/refcnt" ]; then
+		cat "/sys/module/$1/refcnt" 2>/dev/null || echo -
+	else
+		echo -
+	fi
+}
+
+# module_holders lists the modules that currently reference the given module.
+module_holders() {
+	for d in /sys/module/*/holders/*; do
+		[ -e "$d" ] || continue
+		if [ "$(basename -- "$d")" = "$1" ]; then
+			basename -- "$(dirname -- "$d")"
+		fi
+	done
+}
+
+# dmesg_mark / dmesg_alarms_since bracket an operation so only new messages are
+# inspected: an unload that succeeds but logs BUG/WARNING/refcount is unsafe.
+dmesg_mark() {
+	dmesg 2>/dev/null | wc -l
+}
+
+dmesg_alarms_since() {
+	mark=$1
+	dmesg 2>/dev/null | tail -n +"$((mark + 1))" | \
+		grep -E 'BUG:|WARNING: CPU|refcount_t:|Oops|Unable to handle|Call trace' || true
+}
+
 do_unload() {
 	[ $# -eq 1 ] || die "unload <feature>"
 	need_root
 	feature=$1
-	if ! is_loaded "dnsk_${feature}"; then
-		echo "dnsk_${feature} is not loaded"
+	name="dnsk_${feature}"
+	if ! is_loaded "$name"; then
+		echo "$name is not loaded"
 		return 0
 	fi
 	bb=$(find_busybox)
 	[ -n "$bb" ] || die "busybox not found; cannot rmmod safely"
-	if [ "$feature" = core ]; then
-		if "$bb" lsmod 2>/dev/null | grep '^dnsk_' | grep -qv '^dnsk_core '; then
-			die "feature modules still loaded; unload them first"
+
+	if [ "$feature" != core ]; then
+		holders=$(module_holders "$name")
+		if [ -n "$holders" ]; then
+			die "$name is still referenced by: $(echo "$holders" | tr '\n' ' ')"
 		fi
 	fi
-	"$bb" rmmod "dnsk_${feature}"
+
+	if [ "$feature" = core ]; then
+		deps=$("$bb" lsmod 2>/dev/null | grep '^dnsk_' | awk '$1 != "dnsk_core" {print $1}')
+		if [ -n "$deps" ]; then
+			die "feature modules still loaded; unload them first: $(echo "$deps" | tr '\n' ' ')"
+		fi
+	fi
+
+	refs=$(module_refcnt "$name")
+	mark=$(dmesg_mark)
+	set +e
+	"$bb" rmmod "$name" 2>&1
+	rc=$?
+	set -e
+
+	if [ "$rc" -ne 0 ]; then
+		if is_loaded "$name"; then
+			cat >&2 <<EOF
+dnskctl: rmmod $name failed (rc=$rc); the module is still loaded.
+  refcnt=$refs  holders=$(module_holders "$name" | tr '\n' ' ')
+  This module pins kernel state that has no teardown on this build yet, or a
+  live object still calls into it. Unload the dependants first; if there are
+  none, a reboot is the only safe way to drop it on the current build.
+EOF
+			exit 1
+		fi
+	fi
+
+	if is_loaded "$name"; then
+		die "$name is still loaded after rmmod reported rc=$rc"
+	fi
+	alarms=$(dmesg_alarms_since "$mark")
+	if [ -n "$alarms" ]; then
+		printf '%s\n' "$alarms" >&2
+		die "$name unloaded but the kernel logged alarms; treat this as unsafe"
+	fi
+	echo "unloaded: $name (no kernel alarms)"
+}
+
+# The load order is the dependency order: core first, then features that need
+# it, with ns before the modules that assume its namespace primitives.
+MODULE_ORDER="core ns devtmpfs netfilter ipset cgpids tmpfsx"
+
+do_start_all() {
+	json=0
+	for arg in "$@"; do
+		case "$arg" in
+		--json) json=1 ;;
+		*) die "start-all [--json]" ;;
+		esac
+	done
+	need_root
+	failed=
+	loaded=
+	for feature in $MODULE_ORDER; do
+		ko=$(module_path "$feature" 2>/dev/null || true)
+		[ -s "$ko" ] || continue
+		if is_loaded "dnsk_${feature}"; then
+			loaded="$loaded $feature"
+			continue
+		fi
+		set +e
+		out=$(do_load "$feature" 2>&1)
+		rc=$?
+		set -e
+		if [ "$rc" -eq 0 ]; then
+			loaded="$loaded $feature"
+		else
+			failed="$failed $feature"
+			[ "$json" = 1 ] || printf '%s: %s\n' "$feature" "$out" >&2
+		fi
+	done
+	if [ "$json" = 1 ]; then
+		printf '{"loaded":['
+		first=1
+		for m in $loaded; do
+			[ "$first" = 1 ] || printf ','
+			first=0
+			printf '%s' "$(json_str "$m")"
+		done
+		printf '],"failed":['
+		first=1
+		for m in $failed; do
+			[ "$first" = 1 ] || printf ','
+			first=0
+			printf '%s' "$(json_str "$m")"
+		done
+		printf ']}\n'
+	else
+		[ -n "$loaded" ] && echo "loaded:$loaded"
+		[ -n "$failed" ] && echo "failed:$failed"
+	fi
+	[ -z "$failed" ]
+}
+
+do_stop_all() {
+	json=0
+	for arg in "$@"; do
+		case "$arg" in
+		--json) json=1 ;;
+		*) die "stop-all [--json]" ;;
+		esac
+	done
+	need_root
+	failed=
+	unloaded=
+	# Reverse dependency order: features before core.
+	for feature in tmpfsx cgpids ipset netfilter devtmpfs ns core; do
+		is_loaded "dnsk_${feature}" || continue
+		set +e
+		out=$(do_unload "$feature" 2>&1)
+		rc=$?
+		set -e
+		if [ "$rc" -eq 0 ]; then
+			unloaded="$unloaded $feature"
+		else
+			failed="$failed $feature"
+			[ "$json" = 1 ] || printf '%s: %s\n' "$feature" "$out" >&2
+		fi
+	done
+	if [ "$json" = 1 ]; then
+		printf '{"unloaded":['
+		first=1
+		for m in $unloaded; do
+			[ "$first" = 1 ] || printf ','
+			first=0
+			printf '%s' "$(json_str "$m")"
+		done
+		printf '],"failed":['
+		first=1
+		for m in $failed; do
+			[ "$first" = 1 ] || printf ','
+			first=0
+			printf '%s' "$(json_str "$m")"
+		done
+		printf ']}\n'
+	else
+		[ -n "$unloaded" ] && echo "unloaded:$unloaded"
+		[ -n "$failed" ] && echo "failed:$failed"
+	fi
+	[ -z "$failed" ]
+}
+
+# do_monitor emits one complete state snapshot.  The WebUI polls it; every
+# field comes from the kernel, never from a guess.
+do_monitor() {
+	json=0
+	for arg in "$@"; do
+		case "$arg" in
+		--json) json=1 ;;
+		*) die "monitor [--json]" ;;
+		esac
+	done
+	if [ "$json" = 0 ]; then
+		printf 'kmi %s\n' "$(resolve_kmi 2>/dev/null || echo unsupported)"
+		printf 'core %s\n' "$(is_loaded dnsk_core && echo loaded || echo absent)"
+		if [ -r /proc/dnsk/status ]; then
+			sed 's/^/status /' /proc/dnsk/status
+		fi
+		for feature in ns devtmpfs netfilter ipset cgpids tmpfsx; do
+			if is_loaded "dnsk_${feature}"; then
+				printf '%s loaded refcnt=%s\n' "$feature" \
+					"$(module_refcnt "dnsk_${feature}")"
+			else
+				printf '%s absent\n' "$feature"
+			fi
+		done
+		return 0
+	fi
+
+	release=$(uname -r)
+	kmi=$(resolve_kmi 2>/dev/null || echo unsupported)
+	printf '{"release":%s,"kmi":%s,' "$(json_str "$release")" "$(json_str "$kmi")"
+	if is_loaded dnsk_core; then core_loaded=true; else core_loaded=false; fi
+	printf '"core_loaded":%s,' "$core_loaded"
+	if [ -r /proc/dnsk/status ]; then
+		core_status=$(cat /proc/dnsk/status 2>/dev/null || true)
+		printf '"core_status":%s,' "$(json_str "$core_status")"
+	else
+		printf '"core_status":null,'
+	fi
+	printf '"modules":{'
+	first=1
+	for feature in core ns devtmpfs netfilter ipset cgpids tmpfsx; do
+		[ "$first" = 1 ] || printf ','
+		first=0
+		name="dnsk_${feature}"
+		if is_loaded "$name"; then
+			state=loaded
+		else
+			state=absent
+		fi
+		refs=$(module_refcnt "$name")
+		held=$(module_holders "$name" | tr '\n' ' ')
+		printf '%s:{"state":%s,"refcnt":%s,"holders":%s}' \
+			"$(json_str "$feature")" "$(json_str "$state")" \
+			"$(json_str "$refs")" "$(json_str "$held")"
+	done
+	printf '}}\n'
 }
 
 do_profile() {
@@ -593,6 +832,9 @@ case "$cmd" in
 	probe) do_probe "$@" ;;
 	cap) do_cap "$@" ;;
 	status) do_status "$@" ;;
+	monitor) do_monitor "$@" ;;
+	start-all) do_start_all "$@" ;;
+	stop-all) do_stop_all "$@" ;;
 	preflight) do_preflight "$@" ;;
 	load) do_load "$@" ;;
 	unload) do_unload "$@" ;;

@@ -1,9 +1,16 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Local-only WebUI for KernelSU.  It shells out to dnskctl through the KSU
- * bridge and renders the real stdout/stderr/exit code.  It never fabricates a
- * result: without window.ksu.exec every command is disabled and the page says
- * so.  No innerHTML is used anywhere; all command output goes to textContent.
+ * KernelSU module WebUI for droid-lkm-suite.
+ *
+ * The bridge contract is the one KernelSU documents for `kernelsu.spawn` /
+ * `kernelsu.exec`:  ksu.exec(command, jsonOptions, callbackName) and the
+ * manager then calls window[callbackName](errno, stdout, stderr).  It is NOT a
+ * Promise API.  Calling it as if it returned a Promise resolves to undefined
+ * immediately, which is exactly the "every command shows no output" bug this
+ * rewrite fixes.
+ *
+ * Nothing here fabricates a result: without the bridge every action is
+ * disabled, and output always shows the real errno/stdout/stderr.
  */
 (function () {
 	"use strict";
@@ -11,334 +18,647 @@
 	var MODDIR = "/data/adb/modules/droid_lkm_suite";
 	var TOOL = MODDIR + "/bin/dnskctl";
 	var LANG_KEY = "dnsk.webui.lang";
+	var POLL_MS = 4000;
+	var MODULES = ["core", "ns", "devtmpfs", "netfilter", "ipset", "cgpids", "tmpfsx"];
 
 	var I18N = {
 		zh: {
 			title: "Droid LKM Suite",
-			subtitle: "android16-6.12 开发构建 · 以下结果全部来自 dnskctl 的真实输出",
+			kmiPending: "读取内核信息…",
 			bridgeChecking: "正在检测 KSU WebUI 桥…",
-			bridgeOk: "KSU WebUI 桥可用：命令将通过 dnskctl 以 root 执行",
-			bridgeMissing: "KSU WebUI 桥不可用（缺少 window.ksu.exec）：无法执行任何命令，本页面也不会显示任何虚构的成功结果。",
-			cmdTitle: "命令",
-			btnStatus: "状态",
+			bridgeOk: "KSU WebUI 桥可用，命令通过 dnskctl 以 root 执行",
+			bridgeMissing: "KSU WebUI 桥不可用（缺少 window.ksu.exec）。所有操作已禁用，本页不会显示任何虚构结果。",
+			kpiHeading: "状态概览",
+			kpiLoaded: "已加载",
+			kpiTotal: "模块总数",
+			kpiUnloadable: "可安全卸载",
+			actionsTitle: "全部模块",
+			startAll: "一键启动全部",
+			stopAll: "全部卸载",
+			refresh: "刷新",
+			modulesTitle: "模块状态",
+			diagTitle: "诊断",
+			emptyModules: "还没有读取到模块状态。",
+			outputTitle: "输出",
+			close: "关闭",
 			btnCap: "能力",
 			btnProbe: "探测",
-			btnDoctor: "Doctor（上次 panic）",
-			btnLogs: "日志（100 行）",
-			btnBoot: "启动检查",
-			btnLoad: "加载",
-			btnUnload: "卸载",
-			btnProfile: "执行 profile",
-			featureLabel: "feature 模块",
-			profileLabel: "profile",
-			capTitle: "能力等级（静态声明）",
-			thFeature: "功能",
-			thLevel: "声明等级",
-			thNotes: "说明",
-			capNote: "以上等级取自 docs/status.md（R = 原生语义替代，D = 设备差分，V = 虚拟控制器，N = 原生），只是声明，不代表当前已加载；实际状态请以 status 的真实输出为准。本页不会显示没有证据支撑的“成功”。",
-			outTitle: "输出",
-			clear: "清空",
-			prompt: "点击上方按钮执行命令。",
+			btnDoctor: "Doctor",
+			btnLogs: "日志",
+			absent: "未加载",
+			unloadable: "可卸载",
+			locked: "需重启",
+			load: "加载",
+			unload: "卸载",
+			refcnt: "引用",
+			holders: "被引用",
 			running: "执行中…",
-			exitCode: "退出码",
-			stdoutLabel: "stdout",
-			stderrLabel: "stderr",
-			empty: "（空）",
-			unknown: "未知",
-			execFailed: "调用 dnskctl 失败",
-			bridgeDenied: "命令未执行：KSU WebUI 桥不可用。",
+			done: "退出码",
+			monitorFailed: "状态读取失败",
 			busy: "上一个命令尚未结束。",
-			capNs: "PID/IPC 命名空间、SYSVIPC、POSIX MQUEUE（Droidspaces 移植，含嵌套）",
-			capIpset: "IP_SET、hash:ip、hash:net、xt_set",
-			capNetfilter: "xt addrtype、nft 子集、REJECT、RECENT、IPv6 NAT",
-			capTmpfsx: "tmpfs user.* xattr 与 POSIX ACL（全局 Native 语义）",
-			capCgpids: "虚拟 pids 控制器（仅 cgroup v2）",
-			capUserns: "USER_NS 模拟、idmapped/子 userns overlay、FUSE"
+			unloadConfirm: "卸载会先还原内核 hook，再移除模块。继续？",
+			stopAllConfirm: "将按依赖逆序卸载全部模块，并逐项校验内核无告警。继续？",
+			noBridge: "命令未执行：KSU WebUI 桥不可用。",
+			cancel: "取消",
+			confirmAction: "继续",
+			exitUnknown: "未知"
 		},
 		en: {
 			title: "Droid LKM Suite",
-			subtitle: "android16-6.12 dev build. Every result below is real dnskctl output.",
+			kmiPending: "Reading kernel info…",
 			bridgeChecking: "Checking the KSU WebUI bridge…",
-			bridgeOk: "KSU WebUI bridge available: commands run through dnskctl as root",
-			bridgeMissing: "KSU WebUI bridge unavailable (window.ksu.exec is missing): no command can run and this page will not show any fabricated success.",
-			cmdTitle: "Commands",
-			btnStatus: "Status",
+			bridgeOk: "KSU WebUI bridge available; commands run through dnskctl as root",
+			bridgeMissing: "KSU WebUI bridge unavailable (window.ksu.exec is missing). Every action is disabled and this page shows no fabricated result.",
+			kpiHeading: "Overview",
+			kpiLoaded: "Loaded",
+			kpiTotal: "Modules",
+			kpiUnloadable: "Safely unloadable",
+			actionsTitle: "All modules",
+			startAll: "Start all",
+			stopAll: "Stop all",
+			refresh: "Refresh",
+			modulesTitle: "Module status",
+			diagTitle: "Diagnostics",
+			emptyModules: "No module state has been read yet.",
+			outputTitle: "Output",
+			close: "Close",
 			btnCap: "Capabilities",
 			btnProbe: "Probe",
-			btnDoctor: "Doctor (last panic)",
-			btnLogs: "Logs (100)",
-			btnBoot: "Boot check",
-			btnLoad: "Load",
-			btnUnload: "Unload",
-			btnProfile: "Run profile",
-			featureLabel: "feature module",
-			profileLabel: "profile",
-			capTitle: "Capability levels (static declaration)",
-			thFeature: "Feature",
-			thLevel: "Declared level",
-			thNotes: "Notes",
-			capNote: "Levels come from docs/status.md (R = native semantic replacement, D = device differential, V = virtual controller, N = native). They are a declaration, not a live load state; trust only what status prints. This page never shows unsupported success.",
-			outTitle: "Output",
-			clear: "Clear",
-			prompt: "Pick a command above.",
+			btnDoctor: "Doctor",
+			btnLogs: "Logs",
+			absent: "Not loaded",
+			unloadable: "Unloadable",
+			locked: "Needs reboot",
+			load: "Load",
+			unload: "Unload",
+			refcnt: "refs",
+			holders: "held by",
 			running: "running…",
-			exitCode: "exit code",
-			stdoutLabel: "stdout",
-			stderrLabel: "stderr",
-			empty: "(empty)",
-			unknown: "unknown",
-			execFailed: "dnskctl invocation failed",
-			bridgeDenied: "Command not executed: the KSU WebUI bridge is unavailable.",
+			done: "exit",
+			monitorFailed: "Could not read state",
 			busy: "The previous command is still running.",
-			capNs: "PID/IPC namespaces, SYSVIPC, POSIX MQUEUE (Droidspaces port, nested)",
-			capIpset: "IP_SET, hash:ip, hash:net, xt_set",
-			capNetfilter: "xt addrtype, nft subset, REJECT, RECENT, IPv6 NAT",
-			capTmpfsx: "tmpfs user.* xattr and POSIX ACL (global native semantics)",
-			capCgpids: "virtual pids controller (cgroup v2 only)",
-			capUserns: "USER_NS emulation, idmapped/child userns overlay, FUSE"
+			unloadConfirm: "Unloading restores kernel hooks first, then removes the module. Continue?",
+			stopAllConfirm: "This unloads every module in reverse dependency order and checks the kernel for alarms. Continue?",
+			noBridge: "Command not executed: the KSU WebUI bridge is unavailable.",
+			cancel: "Cancel",
+			confirmAction: "Continue",
+			exitUnknown: "unknown"
 		}
 	};
-
-	var CAPS = [
-		{ name: "ns", level: "R", text: "capNs" },
-		{ name: "ipset", level: "R", text: "capIpset" },
-		{ name: "netfilter", level: "R", text: "capNetfilter" },
-		{ name: "tmpfsx", level: "D\u2192N", text: "capTmpfsx" },
-		{ name: "cgpids", level: "V/D\u2192N", text: "capCgpids" },
-		{ name: "userns", level: "D\u2192N", text: "capUserns" }
-	];
-
-	var outEl = document.getElementById("out");
-	var bridgeEl = document.getElementById("bridge");
-	var capBody = document.getElementById("cap-body");
-	var featureEl = document.getElementById("feature");
-	var profileEl = document.getElementById("profile");
-	var langButtons = document.querySelectorAll("button[data-lang]");
-	var cmdButtons = document.querySelectorAll("button[data-cmd]");
-	var clearButton = document.getElementById("clear");
 
 	var lang = "en";
 	var busy = false;
 	var runStarted = false;
+	var pollTimer = null;
+	var lastState = null;
+
+	var el = {
+		out: document.getElementById("out"),
+		outMeta: document.getElementById("out-meta"),
+		bridge: document.getElementById("bridge"),
+		list: document.getElementById("module-list"),
+		empty: document.getElementById("module-empty"),
+		kmi: document.getElementById("kmi-line"),
+		kpiLoaded: document.getElementById("kpi-loaded"),
+		kpiTotal: document.getElementById("kpi-total"),
+		kpiUnloadable: document.getElementById("kpi-unloadable"),
+		sheet: document.getElementById("sheet"),
+		backdrop: document.getElementById("sheet-backdrop"),
+		close: document.getElementById("sheet-close"),
+		startAll: document.getElementById("start-all"),
+		stopAll: document.getElementById("stop-all"),
+		refresh: document.getElementById("refresh"),
+		confirm: document.getElementById("confirm"),
+		confirmBackdrop: document.getElementById("confirm-backdrop"),
+		confirmText: document.getElementById("confirm-text"),
+		confirmOk: document.getElementById("confirm-ok"),
+		confirmCancel: document.getElementById("confirm-cancel")
+	};
 
 	function t(key) {
 		var table = I18N[lang] || I18N.en;
 		return Object.prototype.hasOwnProperty.call(table, key) ? table[key] : key;
 	}
 
-	function hasBridge() {
-		return typeof window.ksu !== "undefined" && window.ksu !== null &&
-			typeof window.ksu.exec === "function";
+	/* ---------------- KSU bridge ---------------- */
+
+	function bridge() {
+		if (typeof window.ksu === "undefined" || window.ksu === null) {
+			return null;
+		}
+		if (typeof window.ksu.exec !== "function") {
+			return null;
+		}
+		return window.ksu;
 	}
 
-	function describeError(err) {
-		if (err && typeof err.message === "string" && err.message !== "") {
-			return err.message;
-		}
-		return String(err);
-	}
+	var callbackSeq = 0;
 
-	function writeOut(text) {
-		outEl.textContent = text;
-		outEl.scrollTop = 0;
-	}
+	/*
+	 * exec runs `command` through the manager and resolves with the real
+	 * {errno, stdout, stderr}.  The manager reports results by invoking a
+	 * global function whose name we hand it, so the promise is settled from
+	 * that callback (or rejected on a timeout if the bridge never answers).
+	 */
+	function exec(command, options) {
+		return new Promise(function (resolve, reject) {
+			var api = bridge();
+			if (!api) {
+				reject(new Error(t("noBridge")));
+				return;
+			}
+			callbackSeq += 1;
+			var name = "__dnsk_exec_" + Date.now() + "_" + callbackSeq;
+			var settled = false;
 
-	function renderCapTable() {
-		if (!capBody) {
-			return;
-		}
-		while (capBody.firstChild) {
-			capBody.removeChild(capBody.firstChild);
-		}
-		CAPS.forEach(function (cap) {
-			var tr = document.createElement("tr");
-			var name = document.createElement("td");
-			var level = document.createElement("td");
-			var notes = document.createElement("td");
-			name.textContent = cap.name;
-			level.className = "level";
-			level.textContent = cap.level;
-			notes.textContent = t(cap.text);
-			tr.appendChild(name);
-			tr.appendChild(level);
-			tr.appendChild(notes);
-			capBody.appendChild(tr);
+			function cleanup() {
+				try {
+					delete window[name];
+				} catch (err) {
+					window[name] = undefined;
+				}
+			}
+
+			window[name] = function (errno, stdout, stderr) {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				cleanup();
+				resolve({
+					errno: typeof errno === "number" ? errno : Number(errno),
+					stdout: typeof stdout === "string" ? stdout : (stdout == null ? "" : String(stdout)),
+					stderr: typeof stderr === "string" ? stderr : (stderr == null ? "" : String(stderr))
+				});
+			};
+
+			try {
+				api.exec(command, JSON.stringify(options || {}), name);
+			} catch (err) {
+				settled = true;
+				cleanup();
+				reject(err);
+				return;
+			}
+
+			/* A silent bridge must not leave the UI stuck on "running". */
+			setTimeout(function () {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				cleanup();
+				reject(new Error(t("monitorFailed") + " (bridge timeout)"));
+			}, 60000);
 		});
 	}
+
+	function hasBridge() {
+		return bridge() !== null;
+	}
+
+	function setBridgeState(available) {
+		if (available) {
+			el.bridge.className = "banner banner-ok";
+			el.bridge.textContent = t("bridgeOk");
+		} else {
+			el.bridge.className = "banner banner-warn";
+			el.bridge.textContent = t("bridgeMissing");
+		}
+		syncControls();
+	}
+
+	function syncControls() {
+		var ok = hasBridge() && !busy;
+		[el.startAll, el.stopAll, el.refresh].forEach(function (node) {
+			if (node) {
+				node.disabled = !ok;
+			}
+		});
+		Array.prototype.forEach.call(
+			document.querySelectorAll("[data-cmd]"),
+			function (node) {
+				node.disabled = !ok;
+			}
+		);
+		renderList(lastState);
+	}
+
+	/* ---------------- in-page confirm ----------------
+	 *
+	 * window.confirm() is unreliable inside an Android WebView: unless the host
+	 * activity implements onJsConfirm the dialog never appears and the call
+	 * returns false, which would make the button look dead.  Both destructive
+	 * actions therefore ask through the page itself.
+	 */
+
+	var confirmState = null;
+
+	function askConfirm(message) {
+		return new Promise(function (resolve) {
+			confirmState = resolve;
+			el.confirmText.textContent = message;
+			el.confirm.hidden = false;
+			el.confirmBackdrop.hidden = false;
+			el.confirmOk.focus();
+		});
+	}
+
+	function settleConfirm(value) {
+		if (!confirmState) {
+			return;
+		}
+		var resolve = confirmState;
+		confirmState = null;
+		el.confirm.hidden = true;
+		el.confirmBackdrop.hidden = true;
+		resolve(value);
+	}
+
+	function openSheet() {
+		el.sheet.hidden = false;
+		el.backdrop.hidden = false;
+		document.body.classList.add("sheet-open");
+	}
+
+	function closeSheet() {
+		el.sheet.hidden = true;
+		el.backdrop.hidden = true;
+		document.body.classList.remove("sheet-open");
+	}
+
+	function writeOutput(header, text) {
+		el.outMeta.textContent = header;
+		el.out.textContent = text;
+		el.out.scrollTop = 0;
+	}
+
+	function showCommandResult(command, res) {
+		var code = res && typeof res.errno === "number" && isFinite(res.errno) ?
+			String(res.errno) : t("exitUnknown");
+		var parts = [];
+		if (res && res.stdout) {
+			parts.push(res.stdout.replace(/\s+$/, ""));
+		}
+		if (res && res.stderr) {
+			parts.push("[stderr]\n" + res.stderr.replace(/\s+$/, ""));
+		}
+		writeOutput("$ " + command + "\n" + t("done") + ": " + code,
+			parts.length ? parts.join("\n") : "—");
+		openSheet();
+	}
+
+	function run(command, options) {
+		if (busy) {
+			writeOutput("$ " + command, t("busy"));
+			openSheet();
+			return Promise.resolve(null);
+		}
+		if (!hasBridge()) {
+			writeOutput("$ " + command, t("noBridge"));
+			openSheet();
+			setBridgeState(false);
+			return Promise.resolve(null);
+		}
+		busy = true;
+		runStarted = true;
+		writeOutput("$ " + command, t("running"));
+		openSheet();
+		syncControls();
+
+		return exec(command, options).then(function (res) {
+			showCommandResult(command, res);
+			return res;
+		}, function (err) {
+			var message = err && err.message ? err.message : String(err);
+			writeOutput("$ " + command, message);
+			openSheet();
+			return null;
+		}).then(function (res) {
+			busy = false;
+			syncControls();
+			return res;
+		});
+	}
+
+	/* ---------------- state polling ---------------- */
+
+	function parseMonitor(res) {
+		if (!res || typeof res.stdout !== "string" || res.stdout === "") {
+			return null;
+		}
+		var line = res.stdout.trim().split("\n").pop();
+		try {
+			return JSON.parse(line);
+		} catch (err) {
+			return null;
+		}
+	}
+
+	function moduleState(state, name) {
+		if (!state || !state.modules || !state.modules[name]) {
+			return null;
+		}
+		return state.modules[name];
+	}
+
+	/* A module can be dropped by rmmod only when nothing else references it
+	 * and no live namespace keeps calling into it. */
+	function isUnloadable(entry) {
+		if (!entry || entry.state !== "loaded") {
+			return false;
+		}
+		var refs = String(entry.refcnt);
+		if (refs === "-" || refs === "") {
+			return false;
+		}
+		if (Number(refs) !== 0) {
+			return false;
+		}
+		return !entry.holders;
+	}
+
+	function renderList(state) {
+		if (!el.list) {
+			return;
+		}
+		while (el.list.firstChild) {
+			el.list.removeChild(el.list.firstChild);
+		}
+		var any = false;
+		MODULES.forEach(function (name) {
+			var entry = moduleState(state, name);
+			if (!entry) {
+				return;
+			}
+			any = true;
+			el.list.appendChild(buildRow(name, entry));
+		});
+		if (el.empty) {
+			el.empty.hidden = any;
+		}
+	}
+
+	function buildRow(name, entry) {
+		var li = document.createElement("li");
+		li.className = "module-item";
+
+		var main = document.createElement("div");
+		main.className = "module-main";
+
+		var title = document.createElement("div");
+		title.className = "module-name";
+		var code = document.createElement("code");
+		code.textContent = name;
+		title.appendChild(code);
+		title.appendChild(badgeFor(entry));
+		main.appendChild(title);
+
+		var meta = document.createElement("p");
+		meta.className = "module-meta";
+		meta.textContent = metaText(entry);
+		main.appendChild(meta);
+
+		li.appendChild(main);
+
+		var action = document.createElement("button");
+		action.type = "button";
+		action.className = "module-action";
+		var loaded = entry.state === "loaded";
+		action.textContent = loaded ? t("unload") : t("load");
+		/* A pinned module is still offered: dnskctl refuses with the real
+		 * reason instead of the UI silently hiding the action. */
+		action.disabled = busy || !hasBridge();
+		action.addEventListener("click", function () {
+			if (!loaded) {
+				run(TOOL + " load " + name, { cwd: MODDIR }).then(refreshState);
+				return;
+			}
+			askConfirm(t("unloadConfirm")).then(function (ok) {
+				if (ok) {
+					run(TOOL + " unload " + name, { cwd: MODDIR }).then(refreshState);
+				}
+			});
+		});
+		li.appendChild(action);
+		return li;
+	}
+
+	function badgeFor(entry) {
+		var span = document.createElement("span");
+		if (entry.state !== "loaded") {
+			span.className = "badge badge-idle";
+			span.textContent = t("absent");
+			return span;
+		}
+		if (isUnloadable(entry)) {
+			span.className = "badge badge-ok";
+			span.textContent = t("unloadable");
+			return span;
+		}
+		span.className = "badge badge-lock";
+		span.textContent = t("locked");
+		return span;
+	}
+
+	function metaText(entry) {
+		var bits = [];
+		if (entry.refcnt !== undefined && entry.refcnt !== null) {
+			bits.push(t("refcnt") + " " + entry.refcnt);
+		}
+		if (entry.holders) {
+			bits.push(t("holders") + " " + entry.holders.replace(/\s+$/, ""));
+		}
+		return bits.join(" · ");
+	}
+
+	function refreshState() {
+		if (!hasBridge()) {
+			return Promise.resolve(null);
+		}
+		return exec(TOOL + " monitor --json", { cwd: MODDIR }).then(function (res) {
+			var state = parseMonitor(res);
+			if (!state) {
+				return null;
+			}
+			lastState = state;
+			applyState(state);
+			return state;
+		}, function () {
+			return null;
+		});
+	}
+
+	function applyState(state) {
+		var total = 0;
+		var loaded = 0;
+		var unloadable = 0;
+		MODULES.forEach(function (name) {
+			var entry = moduleState(state, name);
+			if (!entry) {
+				return;
+			}
+			total += 1;
+			if (entry.state === "loaded") {
+				loaded += 1;
+				if (isUnloadable(entry)) {
+					unloadable += 1;
+				}
+			}
+		});
+		el.kpiLoaded.textContent = String(loaded);
+		el.kpiTotal.textContent = String(total);
+		el.kpiUnloadable.textContent = String(unloadable);
+		el.kmi.textContent = (state.kmi || "—") +
+			(state.core_loaded ? " · core" : "");
+		renderList(state);
+	}
+
+	function schedulePoll() {
+		if (pollTimer) {
+			window.clearTimeout(pollTimer);
+		}
+		pollTimer = window.setTimeout(function () {
+			refreshState().then(schedulePoll, schedulePoll);
+		}, POLL_MS);
+	}
+
+	/* ---------------- language ---------------- */
 
 	function applyLang(next) {
 		lang = next === "zh" ? "zh" : "en";
 		document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
-		Array.prototype.forEach.call(document.querySelectorAll("[data-i18n]"), function (el) {
-			var key = el.getAttribute("data-i18n");
-			if (key) {
-				el.textContent = t(key);
+		Array.prototype.forEach.call(
+			document.querySelectorAll("[data-i18n]"),
+			function (node) {
+				var key = node.getAttribute("data-i18n");
+				if (key) {
+					node.textContent = t(key);
+				}
 			}
-		});
-		Array.prototype.forEach.call(document.querySelectorAll("[data-i18n-label]"), function (el) {
-			var key = el.getAttribute("data-i18n-label");
-			if (key) {
-				el.setAttribute("aria-label", t(key));
+		);
+		Array.prototype.forEach.call(
+			document.querySelectorAll("[data-i18n-label]"),
+			function (node) {
+				var key = node.getAttribute("data-i18n-label");
+				if (key) {
+					node.setAttribute("aria-label", t(key));
+				}
 			}
-		});
-		Array.prototype.forEach.call(langButtons, function (btn) {
-			btn.setAttribute("aria-pressed", btn.getAttribute("data-lang") === lang ? "true" : "false");
-		});
-		renderCapTable();
+		);
+		Array.prototype.forEach.call(
+			document.querySelectorAll("[data-lang]"),
+			function (btn) {
+				btn.setAttribute("aria-pressed",
+					btn.getAttribute("data-lang") === lang ? "true" : "false");
+			}
+		);
 		setBridgeState(hasBridge());
-		if (outEl.textContent === "" || !runStarted) {
-			outEl.textContent = t("prompt");
+		if (lastState) {
+			applyState(lastState);
+		}
+		if (!runStarted) {
+			writeOutput(t("outputTitle"), "—");
 		}
 		try {
 			window.localStorage.setItem(LANG_KEY, lang);
-		} catch (e) {
-			/* storage can be unavailable inside the WebView sandbox */
-		}
-	}
-
-
-	function setBridgeState(available) {
-		if (!available) {
-			bridgeEl.className = "banner warn";
-			bridgeEl.textContent = t("bridgeMissing");
-		} else {
-			bridgeEl.className = "banner ok";
-			bridgeEl.textContent = t("bridgeOk");
-		}
-		Array.prototype.forEach.call(cmdButtons, function (btn) {
-			btn.disabled = !available || busy;
-		});
-		if (clearButton) {
-			clearButton.disabled = false;
-		}
-	}
-
-	function normalizeResult(res) {
-		var normal = { stdout: "", stderr: "", code: null };
-		if (typeof res === "string") {
-			normal.stdout = res;
-			return normal;
-		}
-		if (res && typeof res === "object") {
-			if (typeof res.stdout === "string") {
-				normal.stdout = res.stdout;
-			}
-			if (typeof res.stderr === "string") {
-				normal.stderr = res.stderr;
-			}
-			if (typeof res.errno === "number") {
-				normal.code = res.errno;
-			} else if (typeof res.code === "number") {
-				normal.code = res.code;
-			} else if (typeof res.errno === "string" && res.errno !== "") {
-				var parsed = Number(res.errno);
-				if (isFinite(parsed)) {
-					normal.code = parsed;
-				}
-			}
-			if (!("stdout" in res) && !("stderr" in res)) {
-				try {
-					normal.stdout = JSON.stringify(res);
-				} catch (e) {
-					normal.stdout = String(res);
-				}
-			}
-			return normal;
-		}
-		if (typeof res !== "undefined" && res !== null) {
-			normal.stdout = String(res);
-		}
-		return normal;
-	}
-
-	function formatResult(cmd, res) {
-		var r = normalizeResult(res);
-		var lines = [];
-		lines.push("$ " + cmd);
-		lines.push(t("exitCode") + ": " + (r.code === null ? t("unknown") : String(r.code)));
-		lines.push("--- " + t("stdoutLabel") + " ---");
-		lines.push(r.stdout === "" ? t("empty") : r.stdout);
-		lines.push("--- " + t("stderrLabel") + " ---");
-		lines.push(r.stderr === "" ? t("empty") : r.stderr);
-		return lines.join("\n");
-	}
-
-	function runCommand(sub) {
-		if (busy) {
-			writeOut(t("busy"));
-			return;
-		}
-		if (!hasBridge()) {
-			writeOut(t("bridgeDenied"));
-			setBridgeState(false);
-			return;
-		}
-		var cmd = TOOL + " " + sub;
-		runStarted = true;
-		writeOut("$ " + cmd + "\n" + t("running"));
-		busy = true;
-		setBridgeState(true);
-
-		var pending;
-		try {
-			pending = Promise.resolve(window.ksu.exec(cmd, { cwd: MODDIR }));
 		} catch (err) {
-			busy = false;
-			setBridgeState(true);
-			writeOut("$ " + cmd + "\n" + t("execFailed") + ": " + describeError(err));
+			/* storage may be unavailable inside the WebView sandbox */
+		}
+	}
+
+	/* ---------------- wiring ---------------- */
+
+	Array.prototype.forEach.call(
+		document.querySelectorAll("[data-lang]"),
+		function (btn) {
+			btn.addEventListener("click", function () {
+				applyLang(btn.getAttribute("data-lang"));
+			});
+		}
+	);
+
+	Array.prototype.forEach.call(
+		document.querySelectorAll("[data-cmd]"),
+		function (btn) {
+			btn.addEventListener("click", function () {
+				run(TOOL + " " + btn.getAttribute("data-cmd"), { cwd: MODDIR });
+			});
+		}
+	);
+
+	if (el.startAll) {
+		el.startAll.addEventListener("click", function () {
+			run(TOOL + " start-all", { cwd: MODDIR })
+				.then(refreshState);
+		});
+	}
+
+	if (el.stopAll) {
+		el.stopAll.addEventListener("click", function () {
+			askConfirm(t("stopAllConfirm")).then(function (ok) {
+				if (ok) {
+					run(TOOL + " stop-all", { cwd: MODDIR })
+						.then(refreshState);
+				}
+			});
+		});
+	}
+
+	if (el.refresh) {
+		el.refresh.addEventListener("click", function () {
+			refreshState();
+		});
+	}
+
+	if (el.close) {
+		el.close.addEventListener("click", closeSheet);
+	}
+	if (el.backdrop) {
+		el.backdrop.addEventListener("click", closeSheet);
+	}
+	if (el.confirmOk) {
+		el.confirmOk.addEventListener("click", function () {
+			settleConfirm(true);
+		});
+	}
+	if (el.confirmCancel) {
+		el.confirmCancel.addEventListener("click", function () {
+			settleConfirm(false);
+		});
+	}
+	/* A stray tap outside the dialog cancels instead of silently proceeding:
+	 * destructive actions must never start from an accidental touch. */
+	if (el.confirmBackdrop) {
+		el.confirmBackdrop.addEventListener("click", function () {
+			settleConfirm(false);
+		});
+	}
+
+	document.addEventListener("visibilitychange", function () {
+		if (document.hidden) {
+			if (pollTimer) {
+				window.clearTimeout(pollTimer);
+				pollTimer = null;
+			}
 			return;
 		}
-		pending.then(function (res) {
-			writeOut(formatResult(cmd, res));
-		}, function (err) {
-			writeOut("$ " + cmd + "\n" + t("execFailed") + ": " + describeError(err));
-		}).then(function () {
-			busy = false;
-			setBridgeState(hasBridge());
-		});
-	}
-
-	function commandFor(button) {
-		var base = button.getAttribute("data-cmd");
-		if (base === "load" || base === "unload") {
-			return base + " " + featureEl.value;
-		}
-		if (base === "profile") {
-			return base + " " + profileEl.value;
-		}
-		return base;
-	}
-
-	Array.prototype.forEach.call(cmdButtons, function (btn) {
-		btn.addEventListener("click", function () {
-			runCommand(commandFor(btn));
-		});
+		refreshState().then(schedulePoll, schedulePoll);
 	});
-
-	Array.prototype.forEach.call(langButtons, function (btn) {
-		btn.addEventListener("click", function () {
-			applyLang(btn.getAttribute("data-lang"));
-		});
-	});
-
-	if (clearButton) {
-		clearButton.addEventListener("click", function () {
-			runStarted = false;
-			writeOut(t("prompt"));
-		});
-	}
 
 	var saved = null;
 	try {
 		saved = window.localStorage.getItem(LANG_KEY);
-	} catch (e) {
+	} catch (err) {
 		saved = null;
 	}
 	if (saved === "zh" || saved === "en") {
 		lang = saved;
 	} else {
-		var navLang = (navigator.language || "").toLowerCase();
-		lang = navLang.indexOf("zh") === 0 ? "zh" : "en";
+		lang = (navigator.language || "").toLowerCase().indexOf("zh") === 0 ?
+			"zh" : "en";
 	}
 	applyLang(lang);
+	closeSheet();
+	refreshState().then(schedulePoll, schedulePoll);
 })();
