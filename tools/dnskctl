@@ -345,11 +345,23 @@ module_refcnt() {
 
 # module_holders lists the modules that currently reference the given module.
 module_holders() {
-	for d in /sys/module/*/holders/*; do
-		[ -e "$d" ] || continue
-		if [ "$(basename -- "$d")" = "$1" ]; then
-			basename -- "$(dirname -- "$d")"
-		fi
+	#
+	# /sys/module/X/holders/ lists the modules that reference X -- the ones
+	# that make X's refcnt non-zero.  Confirmed on this kernel with a known
+	# case: 6lowpan has refcnt=8 and its holders/ lists ieee802154_6lowpan,
+	# nhc_dest, ... while those modules have refcnt=0 and empty holders/.
+	#
+	# So "what keeps $1 loaded" is simply the contents of $1/holders/, plus any
+	# live object that took a reference without registering a module (which is
+	# why the refcount is also checked separately).
+	#
+	# An empty holders directory must read as empty: busybox sh can leave an
+	# unmatched glob literal, and basename() on that yields "*".
+	d=/sys/module/$1/holders
+	[ -d "$d" ] || return 0
+	for entry in "$d"/*; do
+		[ -e "$entry" ] || continue
+		basename -- "$entry"
 	done
 }
 

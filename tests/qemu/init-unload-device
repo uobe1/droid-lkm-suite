@@ -29,6 +29,11 @@ if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
 fi
 "$BB" mount -t tmpfs tmpfs /tmp && "$BB" chmod 1777 /tmp
 
+# The emulated pids controller is a cgroup v2 subsystem: without cgroup2 mounted
+# it has nothing to attach to and its own checks would be meaningless.
+"$BB" mkdir -p /sys/fs/cgroup
+"$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup 2>/dev/null || true
+
 fail() {
 	echo "DNSK_QEMU_FAIL $*"
 	"$BB" dmesg 2>/dev/null | tail -30
@@ -92,6 +97,25 @@ echo "== unload =="
 # have exited can take a moment to be freed.  Poll the real refcount instead of
 # guessing a sleep -- unloading too early would report a refcount that is
 # simply not yet drained.
+#
+# cgpids differs: it holds its own reference on purpose (this kernel's
+# cgroup_subsys has no owner field for cgroup core to reference us through), so
+# its refcount will never reach zero on its own.  It has to be asked to hand the
+# slot back first, which is exactly what `dnskctl unload cgpids` does.  Waiting
+# for it to drain unaided would just report a timeout on correct behaviour.
+if [ "$FEATURE" = "cgpids" ]; then
+	if [ -w /sys/module/dnsk_cgpids/parameters/quiesce ]; then
+		if printf '1\n' > /sys/module/dnsk_cgpids/parameters/quiesce 2>/tmp/quiesce.err; then
+			echo "DNSK_CGPIDS_QUIESCED"
+		else
+			cat /tmp/quiesce.err
+			fail cgpids_quiesce_refused
+		fi
+	else
+		fail cgpids_quiesce_missing
+	fi
+fi
+
 i=0
 while [ "$i" -lt 30 ]; do
 	refs=$(dnskctl monitor 2>/dev/null | sed -n "s/^$FEATURE loaded refcnt=//p")
@@ -136,28 +160,62 @@ echo "DNSK_SYSFS_CLEAN_OK"
 # that hooked them is gone.  A dangling pointer shows up here.
 "$BB" sleep 3
 /bin/sh -c 'exit 0' || fail exec_after
-# PID/IPC namespaces were supplied by the module too.  After unload they must
-# be unavailable again, which is the stock behaviour of this GKI kernel.
-"$BB" unshare -p -f /bin/true 2>/dev/null
-[ $? -eq 0 ] && fail pidns_still_live
-echo "DNSK_POST_PIDNS_RESTORED"
+echo "DNSK_POST_EXEC_OK"
 
-# USER_NS is gone with the module, so the kernel must be back to its stock
-# CONFIG_USER_NS=n behaviour: creating a user namespace fails with EINVAL
-# instead of entering the emulated path.  This is the positive proof that
-# unloading restored the original kernel rather than leaving a half-lived
-# implementation behind.
-# `unshare -u` alone does not touch userns on this kernel (-f just forks), so
-# the probe must actually exercise the namespace: -r writes a uid map, which
-# requires create_user_ns().  That is the operation the module supplies.
-"$BB" unshare -u -r /bin/sh -c 'cat /proc/self/uid_map' 2>/tmp/unshare_after.err
-userns_rc=$?
-echo "DNSK_POST_USERNS_RC=$userns_rc"
-sed -n '1,3p' /tmp/unshare_after.err 2>/dev/null
-if [ "$userns_rc" -eq 0 ]; then
-	echo "user namespace still emulated after unload"
-	fail userns_still_live
-fi
+# Each module restores a different piece of stock kernel behaviour.  Asserting
+# the wrong one for a module would either pass vacuously or fail for a reason
+# that has nothing to do with unload safety, so the probe is per feature.
+case "$FEATURE" in
+ns)
+	# PID/IPC/USER namespaces were supplied by the module.  After unload this
+	# GKI kernel must behave as built: none of them can be created.
+	#
+	# `unshare -u -f` is not a valid probe here: -f only forks and succeeds even
+	# with CONFIG_USER_NS=n.  -r writes a uid map, which actually reaches
+	# create_user_ns().
+	"$BB" unshare -p -f /bin/true 2>/dev/null
+	[ $? -eq 0 ] && fail pidns_still_live
+	echo "DNSK_POST_PIDNS_RESTORED"
+	"$BB" unshare -u -r /bin/sh -c 'cat /proc/self/uid_map' 2>/tmp/unshare_after.err
+	userns_rc=$?
+	echo "DNSK_POST_USERNS_RC=$userns_rc"
+	sed -n '1,3p' /tmp/unshare_after.err 2>/dev/null
+	[ "$userns_rc" -eq 0 ] && fail userns_still_live
+	echo "DNSK_POST_USERNS_RESTORED"
+	;;
+devtmpfs)
+	# The module registered a private "devtmpfs" filesystem type.  If the
+	# unregister did not happen (or happened before the mount was dropped), the
+	# type is still there and a later mount would resolve into freed code.
+	[ -r /proc/filesystems ] || fail filesystems_unreadable
+	"$BB" grep -q "devtmpfs" /proc/filesystems && fail devtmpfs_still_registered
+	echo "DNSK_POST_DEVTMPFS_UNREGISTERED"
+	;;
+cgpids)
+	# The emulated controller injected itself into the net_prio slot.  After
+	# unload the slot must read net_prio again and pids must be gone.
+	if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
+		controllers=$("$BB" cat /sys/fs/cgroup/cgroup.controllers)
+		echo "DNSK_POST_CONTROLLERS=$controllers"
+		case " $controllers " in
+		*" pids "*) fail pids_still_registered ;;
+		esac
+	fi
+	[ -d /sys/fs/cgroup/pids ] && fail pids_files_left
+	echo "DNSK_POST_CGPIDS_REMOVED"
+	;;
+tmpfsx)
+	# The module wired s_xattr into every tmpfs superblock.  After unload a
+	# fresh tmpfs mount must go back to stock: user.* xattrs are refused.
+	"$BB" mount -t tmpfs tmpfs /tmp/xattrprobe >/dev/null 2>&1 || fail tmpfs_mount
+	if "$BB" setfattr -n user.probe -v 1 /tmp/xattrprobe 2>/dev/null; then
+		"$BB" umount /tmp/xattrprobe 2>/dev/null
+		fail tmpfsx_still_wired
+	fi
+	"$BB" umount /tmp/xattrprobe 2>/dev/null
+	echo "DNSK_POST_TMPFSX_UNWIRED"
+	;;
+esac
 echo "DNSK_POST_USERNS_RESTORED"
 
 "$BB" mount -t tmpfs tmpfs /tmp/post >/dev/null 2>&1

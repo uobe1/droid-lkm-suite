@@ -138,15 +138,24 @@ void dnsk_pids_destroy(struct cgroup *cgrp)
 	call_rcu(&st->rcu, dnsk_pids_free_rcu);
 }
 
+/*
+ * The virtual controller (native=0) keeps its accounting in per-cgroup state
+ * with RCU callbacks that live in this module.  It therefore takes one module
+ * reference on the first state creation and never releases it: this path is
+ * deliberately NOT unloadable, unlike the native slot-7 backend, which has a
+ * defined quiesce and hands the slot back.
+ *
+ * The distinction is stated here so it is not discovered as a surprise: a
+ * module loaded with native=0 will refuse rmmod (EAGAIN) by design, and
+ * `dnskctl unload cgpids` reports that instead of pretending otherwise.
+ */
 void dnsk_pids_activate(struct dnsk_pids_state *st)
 {
-	/* The module is pinned once on the first state creation. */
 	(void)st;
 }
 
 void dnsk_pids_deactivate(struct dnsk_pids_state *st)
 {
-	/* Pinned until reboot; see README. */
 	(void)st;
 }
 
