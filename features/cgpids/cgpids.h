@@ -74,7 +74,7 @@ void dnsk_cgpids_migration_exit(void);
 
 struct dnsk_core_api;
 int dnsk_cgpids_native_init(struct dnsk_core_api *api);
-void dnsk_cgpids_native_exit(void);
+int dnsk_cgpids_native_exit(void);
 bool dnsk_cgpids_native_active(void);
 /*
  * Hand the slot back and drop the module's self reference so rmmod can proceed.

@@ -55,7 +55,7 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 	return -EOPNOTSUPP;
 }
 
-void dnsk_cgpids_native_exit(void)
+int dnsk_cgpids_native_exit(void)
 {
 }
 
@@ -108,7 +108,7 @@ struct dnsk_pids_css {
 };
 
 static u8 dnsk_ss[DNSK_CGROUP_SUBSYS_LAYOUT] __aligned(8);
-void dnsk_cgpids_native_exit(void);
+int dnsk_cgpids_native_exit(void);
 
 static struct dnsk_core_api *dnsk_native_api;
 static struct cgroup_subsys **dnsk_subsys_array;
@@ -676,22 +676,32 @@ out_put:
 	return ret;
 }
 
-void dnsk_cgpids_native_exit(void)
+int dnsk_cgpids_native_exit(void)
 {
 	s64 live;
 	int ret;
 
 	if (!dnsk_native_ready)
-		return;
+		return 0;
 
 	/* The root css counts every task still attached to the emulated
 	 * controller.  Read it from the object we installed, never from the slot:
 	 * the slot can already have been handed back to the previous subsystem. */
 	live = dnsk_own_root_css ?
 		atomic64_read(&DNSK_PIDS(dnsk_own_root_css)->counter) : 0;
-	if (live)
-		pr_warn("dnsk_cgpids: releasing slot %d with %lld live pids\n",
-			DNSK_CGROUP_SUBSYS_SLOT, live);
+	/*
+	 * Refuse to hand the slot back while tasks are still accounted to it.
+	 * cgroup core would keep calling our css_free/release callbacks after this
+	 * returns, and once the module is unloaded those entry points are gone --
+	 * that is precisely the dangling-pointer case this whole exercise is about.
+	 * The caller must drain its cgroups first; the error is reported, not
+	 * papered over.
+	 */
+	if (live) {
+		pr_err("dnsk_cgpids: refusing to release slot %d with %lld live pids\n",
+		       DNSK_CGROUP_SUBSYS_SLOT, live);
+		return -EBUSY;
+	}
 
 	mutex_lock(dnsk_cgroup_mutex);
 	WRITE_ONCE(*dnsk_have_canfork, dnsk_saved_have_canfork);
@@ -719,6 +729,7 @@ void dnsk_cgpids_native_exit(void)
 	}
 	pr_info("dnsk_cgpids: native pids released slot %d\n",
 		DNSK_CGROUP_SUBSYS_SLOT);
+	return 0;
 }
 
 /*
@@ -738,8 +749,7 @@ int dnsk_cgpids_native_quiesce(void)
 	 * ours no longer: dropping it first would let rmmod free this text while
 	 * cgroup core could still call into it.
 	 */
-	dnsk_cgpids_native_exit();
-	return 0;
+	return dnsk_cgpids_native_exit();
 }
 
 bool dnsk_cgpids_native_active(void)

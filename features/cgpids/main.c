@@ -285,9 +285,15 @@ MODULE_PARM_DESC(native, "register a real pids subsys in the profile slot (defau
  */
 static int dnsk_quiesce_set(const char *val, const struct kernel_param *kp)
 {
+	int ret;
+
 	(void)val;
 	(void)kp;
-	return dnsk_cgpids_native_quiesce();
+	ret = dnsk_cgpids_native_quiesce();
+	if (ret == -EBUSY)
+		pr_err("dnsk_cgpids: cannot quiesce while pids are still accounted to "
+		       "the emulated controller; drain its cgroups first\n");
+	return ret;
 }
 static const struct kernel_param_ops dnsk_quiesce_ops = {
 	.set = dnsk_quiesce_set,
@@ -383,7 +389,15 @@ static void __exit dnsk_cgpids_exit(void)
 	bool native = dnsk_cgpids_native_active();
 
 	if (native) {
-		dnsk_cgpids_native_exit();
+		/*
+		 * module_exit() cannot fail: by the time it runs the module is being
+		 * removed.  If the subsystem is still live this is unrecoverable, so the
+		 * only honest thing is to say so loudly -- the gate that must refuse the
+		 * unload is the `quiesce` parameter, which returns -EBUSY to the caller
+		 * before rmmod is ever attempted.
+		 */
+		if (dnsk_cgpids_native_exit())
+			pr_err("dnsk_cgpids: unloaded while pids were still live\n");
 		if (dnsk_api)
 			dnsk_api->feature_del("cgpids");
 	} else {
