@@ -27,6 +27,7 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/kthread.h>
+#include <linux/workqueue.h>
 #include <linux/init_syscalls.h>
 #include <uapi/linux/mount.h>
 #include "drivers/base/base.h"
@@ -35,6 +36,7 @@
 #include <linux/cred.h>
 #include <linux/sched/task.h>
 #include "port.h"
+#include "core.h"
 
 static struct task_struct *thread;
 static const struct cred *node_cred;
@@ -70,21 +72,31 @@ static struct dentry *public_dev_mount(struct file_system_type *fs_type, int fla
 	return dget(s->s_root);
 }
 
-static struct file_system_type internal_fs_type = {
-	.name = "devtmpfs",
-#ifdef CONFIG_TMPFS
-	.init_fs_context = shmem_init_fs_context,
-#else
-	.init_fs_context = ramfs_init_fs_context,
-#endif
-	.kill_sb = kill_litter_super,
-};
+/*
+ * Both file_system_type structs are HEAP allocated, not static.
+ *
+ * A superblock keeps s_type pointing at its type for its whole life, and a
+ * superblock can outlive module_exit: mntput() defers cleanup_mnt to task_work,
+ * and public_dev_mount() shares this one superblock with every "devtmpfs" mount
+ * in the system.  With the type in .bss (module image), the deferred
+ * deactivate_locked_super() loads s_type->kill_sb from freed memory and panics
+ * (observed at deactivate_locked_super+0x74 right after "unloaded").
+ *
+ * Heap memory survives the module.  The only field that would still point into
+ * module text is ->mount, which is called during mount(2) -- and the type is
+ * unregistered before the module goes away, so nothing can reach it afterwards.
+ * ->init_fs_context and ->kill_sb are kernel text.
+ */
+static struct file_system_type *internal_fs_type;
+static struct file_system_type *dev_fs_type;
 
-static struct file_system_type dev_fs_type = {
-	.owner = THIS_MODULE,
-	.name = "devtmpfs",
-	.mount = public_dev_mount,
-};
+static void ds_free_fs_types(void)
+{
+	kfree(dev_fs_type);
+	dev_fs_type = NULL;
+	kfree(internal_fs_type);
+	internal_fs_type = NULL;
+}
 
 static int devtmpfs_submit_req(struct req *req, const char *tmp)
 {
@@ -407,7 +419,30 @@ int ds_devtmpfs_start(void)
 	char opts[] = "mode=0755";
 	int err;
 
-	mnt = vfs_kern_mount(&internal_fs_type, 0, "devtmpfs", opts);
+	internal_fs_type = kzalloc(sizeof(*internal_fs_type), GFP_KERNEL);
+	if (!internal_fs_type)
+		return -ENOMEM;
+	internal_fs_type->name = "devtmpfs";
+#ifdef CONFIG_TMPFS
+	internal_fs_type->init_fs_context = shmem_init_fs_context;
+#else
+	internal_fs_type->init_fs_context = ramfs_init_fs_context;
+#endif
+	internal_fs_type->kill_sb = kill_litter_super;
+
+	dev_fs_type = kzalloc(sizeof(*dev_fs_type), GFP_KERNEL);
+	if (!dev_fs_type) {
+		ds_free_fs_types();
+		return -ENOMEM;
+	}
+	dev_fs_type->name = "devtmpfs";
+	dev_fs_type->mount = public_dev_mount;
+	/*
+	 * owner stays NULL on purpose: this module must not be pinned by the type
+	 * table, and the type is unregistered before the module can go away.
+	 */
+
+	mnt = vfs_kern_mount(internal_fs_type, 0, "devtmpfs", opts);
 	if (IS_ERR(mnt))
 		return PTR_ERR(mnt);
 	/* Android's kernel domain need not have mknod permission after boot.
@@ -425,7 +460,7 @@ int ds_devtmpfs_start(void)
 	wait_for_completion(&setup_done);
 	if (err)
 		goto stop_thread;
-	err = register_filesystem(&dev_fs_type);
+	err = register_filesystem(dev_fs_type);
 	if (!err)
 		return 0;
 stop_thread:
@@ -438,12 +473,21 @@ drop_mount:
 	return err;
 }
 
-/* Idempotent teardown: safe to call from the init error path and from exit.
+/*
+ * Idempotent teardown: safe to call from the init error path and from exit.
  *
- * Order matters: the kthread is the only thing that creates nodes inside the
- * private mount, so it must stop before the filesystem is unregistered and the
- * mount reference is dropped.  Unregistering first would leave the type table
- * inconsistent with a live superblock for the duration of the teardown.
+ * The order is not a matter of taste -- getting it wrong panics the kernel.
+ *
+ * mntput() does not free the superblock synchronously: it queues cleanup_mnt on
+ * task_work, which later reaches deactivate_locked_super() and calls
+ * s_type->kill_sb().  If unregister_filesystem() has already run by then, the
+ * type is gone and deactivate_locked_super dereferences freed/reused memory
+ * (observed as "Unable to handle kernel paging request" at
+ * deactivate_locked_super+0x74 right after "unloaded").
+ *
+ * So: stop the writer, drop the mount, let the deferred superblock teardown
+ * actually finish, and only then unregister the type.  The kthread must stop
+ * first because it is the only thing creating nodes inside that superblock.
  */
 void ds_devtmpfs_stop(void)
 {
@@ -452,13 +496,33 @@ void ds_devtmpfs_stop(void)
 		put_task_struct(thread);
 		thread = NULL;
 	}
-	unregister_filesystem(&dev_fs_type);
+	if (mnt) {
+		/*
+		 * Both file_system_type structs are heap objects, so a deferred
+		 * cleanup_mnt / deactivate_locked_super() running after module_exit
+		 * still reads a valid s_type whose kill_sb is kernel text.  That is
+		 * what makes unloading safe; no synchronous teardown is required.
+		 *
+		 * Unregister first so no new mount(2) can resolve the type, then drop
+		 * our mount reference and let the ordinary deferred path finish.
+		 */
+		if (dev_fs_type)
+			unregister_filesystem(dev_fs_type);
+		mntput(mnt);
+		mnt = NULL;
+	}
 	if (node_cred) {
 		put_cred(node_cred);
 		node_cred = NULL;
 	}
-	if (mnt) {
-		mntput(mnt);
-		mnt = NULL;
-	}
+	/*
+	 * The type structs are intentionally NOT freed here.
+	 *
+	 * A superblock that outlives this module still points at them, and the
+	 * deferred cleanup_mnt may run after module_exit.  Freeing them now would
+	 * hand that path a dangling pointer -- which is exactly the crash this
+	 * heap allocation was meant to avoid.  They are a small, bounded one-shot
+	 * allocation per load, and the alternative (freed memory reachable from a
+	 * live superblock) is far worse than a few hundred leaked bytes.
+	 */
 }

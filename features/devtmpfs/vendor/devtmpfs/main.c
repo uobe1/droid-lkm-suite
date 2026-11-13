@@ -150,6 +150,12 @@ static int __init ds_init(void)
 	if (ret) return ret;
 	ret = ds_devtmpfs_start();
 	if (ret) return ret;
+	/*
+	 * No self reference: the type structs are heap objects whose callbacks are
+	 * kernel text (see ds_devtmpfs_start), so a superblock that outlives the
+	 * module still tears down through valid code.  That is what makes this
+	 * module unloadable rather than permanently pinned.
+	 */
 	ret = ds_hooks_install();
 	if (ret) {
 		ds_devtmpfs_stop();
@@ -165,8 +171,16 @@ module_init(ds_init);
 
 static void __exit ds_exit(void)
 {
-	/* Restore device_add/device_del before the module text goes away, then
-	 * drop the private mount and the kthread that feeds it. */
+	/*
+	 * Reached only if something forcibly removes the module.  Restore the
+	 * device hooks first so no live caller is left branching into freed text,
+	 * then drop the kthread.
+	 *
+	 * The private mount is deliberately not torn down here: its superblock is
+	 * shared with every "devtmpfs" mount in the system, and a synchronous
+	 * teardown from module_exit cannot make those go away.  The self reference
+	 * taken at init is what normally prevents this path from running at all.
+	 */
 	if (ds_hooks_uninstall())
 		pr_err("hook teardown failed; device hooks may still be installed\n");
 	ds_devtmpfs_stop();
