@@ -1,0 +1,38 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Native oracle side of the semantic differential.
+#
+# This kernel was built from the Android common kernel with every feature the
+# suite re-implements compiled IN: CONFIG_USER_NS, PID_NS, IPC_NS, CGROUP_PIDS,
+# TMPFS_XATTR, TMPFS_POSIX_ACL, SYSVIPC, POSIX_MQUEUE.  Whatever it does here is
+# the reference the module has to match.
+#
+# The output is the raw probe result file; the comparison happens on the host.
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	for n in "console 5 1" "null 1 3" "zero 1 5" "urandom 1 9" "tty 5 0"; do
+		set -- $n
+		"$BB" mknod "/dev/$1" c "$2" "$3"
+	done
+fi
+"$BB" mkdir -p /tmp && "$BB" mount -t tmpfs tmpfs /tmp && "$BB" chmod 1777 /tmp
+
+# cgroup v2, so the pids controller is observable at all.
+"$BB" mkdir -p /sys/fs/cgroup
+"$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup 2>/dev/null
+
+# The probe needs a writable /dev/null for shell redirection.
+[ -c /dev/null ] || "$BB" mknod /dev/null c 1 3
+
+echo "DIFF_BEGIN oracle"
+sh /diff_probe.sh oracle 2>&1
+echo "DIFF_END oracle"
+
+"$BB" poweroff -f
