@@ -80,6 +80,20 @@ type registration and node creation path"
 usually means the module is not loaded in this run, not a semantic gap; confirm \
 which side is under test before classifying"
 		;;
+	NS_LINK_*|STATUS_*|SYSVIPC_*|FS_*|CGROUPS_PIDS|SUBTREE)
+		echo "B $key oracle=[$o] lkm=[$l] -- kernel-side state differs while \
+userspace may already agree: the module restored the syscall result without \
+restoring the kernel's own bookkeeping.  Matching this needs the kernel path to \
+run natively, not a better returning stub"
+		;;
+	ACL_*)
+		echo "A $key oracle=[$o] lkm=[$l] -- ACL values (inherited entries, mask, \
+chmod effect) are the contract; a different value is a fixable semantic gap"
+		;;
+	XT_*|IPSET_*|IPTABLES)
+		echo "A $key oracle=[$o] lkm=[$l] -- rule match/target decisions must agree; \
+check registration and the xt table layout"
+		;;
 	XATTR_PROBE_RC|ACL_TEST_RC)
 		echo "C $key oracle=[$o] lkm=[$l] -- needs the probe's own output to judge; a \
 bare exit code hides whether the failure is the same failure"

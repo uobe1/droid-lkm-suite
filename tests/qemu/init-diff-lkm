@@ -53,7 +53,13 @@ dnskctl() { "$BB" sh "$CTL" "$@"; }
 
 # Load every module whose semantics are under test.
 dnskctl load core || fail load_core
-for f in ns devtmpfs cgpids tmpfsx; do
+#
+# netfilter and ipset are part of the differential too: the device kernel has
+# none of CONFIG_NETFILTER_XT_MATCH_ADDRTYPE / XT_TARGET_REJECT / XT_MATCH_RECENT
+# / IP_SET / NF_TABLES, so their behaviour only exists while the modules are
+# loaded.  Omitting them would compare "absent" against "native" and call it a
+# module defect.
+for f in ns devtmpfs cgpids tmpfsx netfilter ipset; do
 	[ -f "$MODDIR/kmi/"*/"dnsk_$f.ko" ] || continue
 	dnskctl load "$f" || echo "DNSK_LOAD_FAIL $f"
 done

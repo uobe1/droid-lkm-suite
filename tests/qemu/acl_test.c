@@ -109,6 +109,20 @@ static int test_inherit(const char *target, const struct acl_blob *acl)
 	n = getxattr(sub, "system.posix_acl_default", buf, sizeof(buf));
 	if (n < 0)
 		return fail("subdir default acl missing");
+
+	/*
+	 * Emit the observable values, not just "ok".  The differential compares two
+	 * kernels, and "both printed OK" hides the interesting case: both pass, but
+	 * with a different mask or a different inherited entry.  These are the
+	 * numbers POSIX ACL semantics actually consist of.
+	 */
+	printf("ACL_INHERIT_NAMED_USER=%d\n", acl_perm(buf, n, ACL_USER));
+	printf("ACL_INHERIT_MASK=%d\n", acl_perm(buf, n, ACL_MASK));
+	{
+		int m = getxattr(file, "system.posix_acl_access", buf, sizeof(buf));
+		if (m >= 0)
+			printf("ACL_AFTER_CHMOD_MASK=%d\n", acl_perm(buf, m, ACL_MASK));
+	}
 	printf("ACL_INHERIT_OK\n");
 	return 0;
 }
@@ -185,6 +199,13 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	{
+		int m = getxattr(path, "system.posix_acl_access", buf, sizeof(buf));
+		if (m >= 0) {
+			printf("ACL_PLAIN_USER=%d\n", acl_perm(buf, m, ACL_USER));
+			printf("ACL_PLAIN_MASK=%d\n", acl_perm(buf, m, ACL_MASK));
+		}
+	}
 	printf("ACL_TEST_OK\n");
 	return 0;
 }
