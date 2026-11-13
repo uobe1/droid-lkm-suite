@@ -1,7 +1,7 @@
 # Doxyfile for userspace tools and public headers.
 PROJECT_NAME           = "droid-lkm-suite userspace"
 PROJECT_BRIEF          = "dnskctl, dnsk-preflight, packaging and host tools"
-OUTPUT_DIRECTORY       = build/doxygen-userspace
+OUTPUT_DIRECTORY       = build/docs/doxygen-userspace
 INPUT                  = tools core/include
 RECURSIVE              = YES
 FILE_PATTERNS          = *.c *.h
