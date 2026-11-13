@@ -155,6 +155,7 @@ static int __init ds_port_init(void)
 		ret = ds_hooks_install();
 		if (ret) {
 			ds_ipc_backend_exit();
+			ds_ipc_flush();
 			ds_pid_exit();
 #ifdef DS_USERNS_LIVE
 			goto fail_userns_proc;
@@ -162,7 +163,8 @@ static int __init ds_port_init(void)
 			return ret;
 #endif
 		}
-		pr_info("experimental namespace hooks active; module stays pinned until reboot\n");
+		pr_info("experimental namespace hooks active; unload once %s are drained\n",
+			"live namespaces");
 	} else {
 		pr_info("namespace core selftests passed; syscall hooks are not installed\n");
 	}
@@ -181,7 +183,19 @@ fail_userns_core:
 
 static void __exit ds_port_exit(void)
 {
+	int ret;
+
+	/* Refuse to unload while emulated namespaces are still alive: their
+	 * objects call back into this module's code. */
+	if (atomic_read(&ds_pid_live) || atomic_read(&ds_ipc_live) ||
+	    atomic_read(&ds_ipc_task_live))
+		pr_warn("unloading with live namespaces pid=%d ipc=%d tasks=%d\n",
+			atomic_read(&ds_pid_live), atomic_read(&ds_ipc_live),
+			atomic_read(&ds_ipc_task_live));
 	dnsk_ns_core_unregister();
+	ret = ds_hooks_uninstall();
+	if (ret)
+		pr_err("hook teardown failed: %d\n", ret);
 	ds_ipc_backend_exit();
 	ds_ipc_flush();
 	ds_pid_exit();

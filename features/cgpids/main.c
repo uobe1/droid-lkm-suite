@@ -357,21 +357,32 @@ out_api:
 
 static void __exit dnsk_cgpids_exit(void)
 {
-	if (dnsk_cgpids_native_active()) {
+	bool native = dnsk_cgpids_native_active();
+
+	if (native) {
 		dnsk_cgpids_native_exit();
-		return;
+		if (dnsk_api)
+			dnsk_api->feature_del("cgpids");
+	} else {
+		if (dnsk_feature_ready)
+			dnsk_api->feature_del("cgpids");
+		if (dnsk_hook_ready)
+			dnsk_api->hook_del(DNSK_MIGRATE_KEY);
+		if (dnsk_sysops_ready)
+			dnsk_cgpids_restore_sysops();
+		if (dnsk_files_ready)
+			dnsk_cgpids_files_exit();
+		dnsk_unpatch_slots();
 	}
-	if (dnsk_feature_ready)
-		dnsk_api->feature_del("cgpids");
-	if (dnsk_hook_ready)
-		dnsk_api->hook_del(DNSK_MIGRATE_KEY);
-	if (dnsk_sysops_ready)
-		dnsk_cgpids_restore_sysops();
-	if (dnsk_files_ready)
-		dnsk_cgpids_files_exit();
-	dnsk_unpatch_slots();
-	module_put(dnsk_api->owner);
-	dnsk_api = NULL;
+	/*
+	 * The core reference must be dropped on every path: the native branch
+	 * used to return early, which leaked the owner ref and kept dnsk_core
+	 * from ever being unloadable.
+	 */
+	if (dnsk_api) {
+		module_put(dnsk_api->owner);
+		dnsk_api = NULL;
+	}
 	pr_info("dnsk_cgpids: unloaded\n");
 }
 

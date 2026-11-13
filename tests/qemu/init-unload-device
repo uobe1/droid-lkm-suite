@@ -1,0 +1,178 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Narrow unload-safety iteration for the Codespace QEMU loop.
+#
+# Scope is deliberately one pair (core + ns) so a round stays inside the
+# 1-2 minute TCG budget instead of loading the whole suite.  It answers exactly
+# one question: after the modules are removed, is the kernel healthy and are
+# the hooks really gone?
+#
+# The beryl Image is used, exactly like the final gate.
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin:/data/adb/modules/droid_lkm_suite/bin
+export ANDROID_ROOT=/system ANDROID_DATA=/data
+
+MODDIR=/data/adb/modules/droid_lkm_suite
+CTL=$MODDIR/bin/dnskctl
+FEATURE=${DNSK_FEATURE:-ns}
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	for n in "console 5 1" "null 1 3" "zero 1 5" "random 1 8" "urandom 1 9" "tty 5 0" "kmsg 1 11"; do
+		set -- $n
+		"$BB" mknod "/dev/$1" c "$2" "$3"
+	done
+fi
+"$BB" mount -t tmpfs tmpfs /tmp && "$BB" chmod 1777 /tmp
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg 2>/dev/null | tail -30
+	"$BB" poweroff -f
+}
+
+cursor() { "$BB" dmesg 2>/dev/null | "$BB" wc -l; }
+
+# Judge only the window that starts at $2.
+alarm_since() {
+	"$BB" dmesg 2>/dev/null | "$BB" tail -n +"$1" |
+		"$BB" grep -E 'BUG:|WARNING: CPU|refcount_t:|Oops|Unable to handle' |
+		"$BB" grep -E 'ds_|dnsk_|droidspaces'
+}
+
+if [ -x /selinux_load ] && [ -f /policy.gz ]; then
+	"$BB" mkdir -p /sys/fs/selinux
+	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
+	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
+	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+fi
+
+export LD_LIBRARY_PATH=/system/lib64
+"$BB" mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules "$MODDIR"
+/insmod_force /modules/selpermissive.ko || fail selpermissive_insmod
+/ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
+echo "DNSK_KSUD_LATE_LOAD_OK"
+
+"$BB" sleep 10
+echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+echo "DNSK_SELINUX_AFTER_KSU=permissive"
+
+[ -x "$CTL" ] || fail cli_missing
+# dnskctl declares an Android shebang (#!/system/bin/sh), which is present on a
+# device but not in a minimal initramfs rootfs.  Invoke it through busybox sh so
+# the harness tests the CLI logic, not a missing interpreter.
+dnskctl() { "$BB" sh "$CTL" "$@"; }
+[ -d "$MODDIR/kmi" ] || fail module_layout_missing
+
+echo "== load =="
+dnskctl load core || fail load_core
+echo "DNSK_LOAD_CORE_OK"
+if [ "$FEATURE" != "core" ]; then
+	dnskctl load "$FEATURE" || fail "load_$FEATURE"
+	echo "DNSK_LOAD_$FEATURE OK"
+fi
+
+dnskctl monitor || fail monitor_load
+echo "DNSK_MONITOR_LOADED"
+
+# Make an object that outlives the module's useful state, then let it exit.
+if [ "$FEATURE" = "ns" ]; then
+	unshare -p -i -u -f /bin/sh -c 'echo "DNSK_NS_LIVE=$$"' || fail ns_unshare
+	echo "DNSK_NS_UNSHARE_OK"
+fi
+
+echo "== unload =="
+# Namespace objects are released through RCU: the module reference taken at
+# creation time only drops after the grace period, and a namespace whose tasks
+# have exited can take a moment to be freed.  Poll the real refcount instead of
+# guessing a sleep -- unloading too early would report a refcount that is
+# simply not yet drained.
+i=0
+while [ "$i" -lt 30 ]; do
+	refs=$(dnskctl monitor 2>/dev/null | sed -n "s/^$FEATURE loaded refcnt=//p")
+	[ "$refs" = "0" ] && break
+	"$BB" sleep 1
+	i=$((i + 1))
+done
+echo "DNSK_DRAIN_WAIT=$i refs=${refs:-none}"
+# A namespace that never drains means a namespace object outlived its task and
+# kept the module pinned; that is a real defect, not slowness.
+if [ "${refs:-1}" != "0" ]; then
+	dnskctl monitor
+	fail drain_timeout_$FEATURE
+fi
+
+mark=$(cursor)
+dnskctl unload "$FEATURE"
+rc=$?
+echo "DNSK_UNLOAD_RC=$rc"
+[ "$rc" -eq 0 ] || fail "unload_$FEATURE"
+
+if [ "$FEATURE" != "core" ]; then
+	mark2=$(cursor)
+	dnskctl unload core
+	rc=$?
+	echo "DNSK_UNLOAD_CORE_RC=$rc"
+	[ "$rc" -eq 0 ] || fail unload_core
+	mark=$mark2
+fi
+
+echo "== verify =="
+dnskctl monitor || fail monitor_unload
+if "$BB" lsmod | "$BB" grep -q '^dnsk_'; then
+	"$BB" lsmod | "$BB" grep '^dnsk_'
+	fail lsmod_residue
+fi
+echo "DNSK_LSMOD_CLEAN_OK"
+[ -d /sys/module/dnsk_core ] && fail sysfs_residue
+echo "DNSK_SYSFS_CLEAN_OK"
+
+# The decisive part: run through the paths that were hooked, after the code
+# that hooked them is gone.  A dangling pointer shows up here.
+"$BB" sleep 3
+/bin/sh -c 'exit 0' || fail exec_after
+# PID/IPC namespaces were supplied by the module too.  After unload they must
+# be unavailable again, which is the stock behaviour of this GKI kernel.
+"$BB" unshare -p -f /bin/true 2>/dev/null
+[ $? -eq 0 ] && fail pidns_still_live
+echo "DNSK_POST_PIDNS_RESTORED"
+
+# USER_NS is gone with the module, so the kernel must be back to its stock
+# CONFIG_USER_NS=n behaviour: creating a user namespace fails with EINVAL
+# instead of entering the emulated path.  This is the positive proof that
+# unloading restored the original kernel rather than leaving a half-lived
+# implementation behind.
+# `unshare -u` alone does not touch userns on this kernel (-f just forks), so
+# the probe must actually exercise the namespace: -r writes a uid map, which
+# requires create_user_ns().  That is the operation the module supplies.
+"$BB" unshare -u -r /bin/sh -c 'cat /proc/self/uid_map' 2>/tmp/unshare_after.err
+userns_rc=$?
+echo "DNSK_POST_USERNS_RC=$userns_rc"
+sed -n '1,3p' /tmp/unshare_after.err 2>/dev/null
+if [ "$userns_rc" -eq 0 ]; then
+	echo "user namespace still emulated after unload"
+	fail userns_still_live
+fi
+echo "DNSK_POST_USERNS_RESTORED"
+
+"$BB" mount -t tmpfs tmpfs /tmp/post >/dev/null 2>&1
+"$BB" umount /tmp/post 2>/dev/null
+echo "DNSK_POST_SYSCALLS_OK"
+
+"$BB" sleep 3
+hits=$(alarm_since "$mark")
+if [ -n "$hits" ]; then
+	echo "DNSK_UNLOAD_ALARMS"
+	printf '%s\n' "$hits" | tail -15
+	fail unload_alarms
+fi
+echo "DNSK_UNLOAD_CLEAN $FEATURE"
+
+echo "DNSK_UNLOAD_OK $FEATURE"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f

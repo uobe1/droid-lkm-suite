@@ -129,7 +129,41 @@ int ds_hooks_prepare(void)
 	return 0;
 }
 
+/* Set once install succeeds; teardown keys off it so a failed install never
+ * unpaches kernel text that this module did not write. */
+bool ds_hooks_active;
+
 int ds_hooks_install(void)
 {
-	return stop_machine(install_stopped, NULL, cpu_online_mask);
+	int ret = stop_machine(install_stopped, NULL, cpu_online_mask);
+
+	if (!ret)
+		WRITE_ONCE(ds_hooks_active, true);
+	return ret;
+}
+
+static int uninstall_stopped(void *unused)
+{
+	unsigned int i;
+	int ret;
+
+	for (i = 0; i < ARRAY_SIZE(hooks); i++) {
+		ret = write_hook(&hooks[i], true);
+		if (ret)
+			panic("droidspaces_devtmpfs: uninstall restore failed at index %u: %d\n",
+			      i, ret);
+	}
+	return 0;
+}
+
+int ds_hooks_uninstall(void)
+{
+	int ret;
+
+	if (!READ_ONCE(ds_hooks_active))
+		return 0;
+	ret = stop_machine(uninstall_stopped, NULL, cpu_online_mask);
+	if (!ret)
+		WRITE_ONCE(ds_hooks_active, false);
+	return ret;
 }

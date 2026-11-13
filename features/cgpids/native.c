@@ -122,6 +122,17 @@ static void (*dnsk_static_key_enable)(struct static_key *key);
 static void (*dnsk_static_key_disable)(struct static_key *key);
 static void (*dnsk_cgroup_file_notify)(struct cgroup_file *cfile);
 static bool dnsk_native_ready;
+/* Saved at init so teardown can hand slot 7 back to net_prio unchallenged. */
+static struct cgroup_subsys *dnsk_saved_ss;
+static struct cgroup_subsys_state *dnsk_saved_root_css;
+/* The root css this module installed.  Teardown must inspect *this* object:
+ * after a failed or partial handback the slot may already hold the previous
+ * subsystem again, and container_of()ing that pointer would read garbage. */
+static struct cgroup_subsys_state *dnsk_own_root_css;
+static u16 dnsk_saved_inhibit;
+static bool dnsk_saved_key_was_enabled;
+static u16 dnsk_saved_have_canfork;
+static u16 dnsk_saved_have_release;
 
 #define DNSK_SS_PTR(ss, off) (*(void **)((char *)(ss) + (off)))
 #define DNSK_SS_SET(off, v) (*(void **)(dnsk_ss + (off)) = (void *)(v))
@@ -541,6 +552,12 @@ dnsk_make_root_css(void)
 	return css;
 }
 
+/*
+ * Hand the slot back everywhere it was written.  dnsk_cset_set_slot() replaced
+ * the pointer in *every* css_set, so restoring only the root and init_css_set
+ * would leave all other sets pointing at a cs object that is about to be freed
+ * together with this module -- a dangling pointer reachable from any task.
+ */
 static void dnsk_restore_root_css(struct cgroup_subsys_state *old)
 {
 	rcu_assign_pointer(dnsk_root->cgrp.subsys[DNSK_CGROUP_SUBSYS_SLOT],
@@ -616,6 +633,15 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 		   *dnsk_have_release | BIT(DNSK_CGROUP_SUBSYS_SLOT));
 	mutex_unlock(dnsk_cgroup_mutex);
 
+	dnsk_saved_ss = old_ss;
+	dnsk_saved_root_css = old_root_css;
+	dnsk_own_root_css = css;
+	dnsk_saved_inhibit = old_inhibit;
+	dnsk_saved_key_was_enabled = key_was_enabled;
+	dnsk_saved_have_canfork =
+		*dnsk_have_canfork & ~BIT(DNSK_CGROUP_SUBSYS_SLOT);
+	dnsk_saved_have_release =
+		*dnsk_have_release & ~BIT(DNSK_CGROUP_SUBSYS_SLOT);
 	dnsk_native_ready = true;
 	pr_info("dnsk_cgpids: native pids registered in slot %d\n",
 		DNSK_CGROUP_SUBSYS_SLOT);
@@ -633,9 +659,39 @@ out_put:
 
 void dnsk_cgpids_native_exit(void)
 {
+	s64 live;
+	int ret;
+
 	if (!dnsk_native_ready)
 		return;
-	pr_info("dnsk_cgpids: native pids is fixed until reboot\n");
+
+	/* The root css counts every task still attached to the emulated
+	 * controller.  Read it from the object we installed, never from the slot:
+	 * the slot can already have been handed back to the previous subsystem. */
+	live = dnsk_own_root_css ?
+		atomic64_read(&DNSK_PIDS(dnsk_own_root_css)->counter) : 0;
+	if (live)
+		pr_warn("dnsk_cgpids: releasing slot %d with %lld live pids\n",
+			DNSK_CGROUP_SUBSYS_SLOT, live);
+
+	mutex_lock(dnsk_cgroup_mutex);
+	WRITE_ONCE(*dnsk_have_canfork, dnsk_saved_have_canfork);
+	WRITE_ONCE(*dnsk_have_release, dnsk_saved_have_release);
+	ret = dnsk_native_api->patch_pointer(
+		&dnsk_subsys_array[DNSK_CGROUP_SUBSYS_SLOT], dnsk_saved_ss);
+	if (ret)
+		pr_err("dnsk_cgpids: slot restore failed: %d\n", ret);
+	dnsk_restore_root_css(dnsk_saved_root_css);
+	WRITE_ONCE(*dnsk_inhibit_mask, dnsk_saved_inhibit);
+	if (!dnsk_saved_key_was_enabled)
+		dnsk_call_skey_disable(dnsk_on_dfl_key);
+	mutex_unlock(dnsk_cgroup_mutex);
+
+	dnsk_own_root_css = NULL;
+	dnsk_native_ready = false;
+	module_put(THIS_MODULE);
+	pr_info("dnsk_cgpids: native pids released slot %d\n",
+		DNSK_CGROUP_SUBSYS_SLOT);
 }
 
 bool dnsk_cgpids_native_active(void)

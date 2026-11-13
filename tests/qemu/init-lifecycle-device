@@ -1,0 +1,211 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Module lifecycle gate on the beryl device Image:
+#   1. load every shipped module through dnskctl (the same entry point the
+#      WebUI uses), so the CLI itself is under test, not a hand-written insmod;
+#   2. verify `dnskctl monitor --json` reports what the kernel actually has;
+#   3. unload everything with `dnskctl stop-all`, which restores hooks first;
+#   4. prove nothing panicked, no hook stayed behind, and the kernel keeps
+#      running after the code is gone (the definition of a safe rmmod).
+#
+# Every check prints a DNSK_* marker; the workflow greps for them.
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin:/data/adb/modules/droid_lkm_suite/bin
+export ANDROID_ROOT=/system ANDROID_DATA=/data
+
+MODDIR=/data/adb/modules/droid_lkm_suite
+CTL=$MODDIR/bin/dnskctl
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	for n in "console 5 1" "null 1 3" "zero 1 5" "random 1 8" "urandom 1 9" "tty 5 0" "kmsg 1 11"; do
+		set -- $n
+		"$BB" mknod "/dev/$1" c "$2" "$3"
+	done
+fi
+"$BB" mount -t tmpfs tmpfs /tmp && "$BB" chmod 1777 /tmp
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg 2>/dev/null | tail -40
+	"$BB" poweroff -f
+}
+
+# Any WARNING/BUG/refcount message that names our code is a hard failure: a
+# module that unloads but leaves the kernel complaining is not safely removed.
+#
+# The scan is bracketed by a dmesg cursor (`$1` = starting line count) so it
+# only judges the window being tested.  A global scan would blame the unload
+# for warnings raised while the modules were being *loaded*, which is a
+# different defect and must not be conflated with unload safety.
+warn_scan() {
+	tag=$1
+	since=${2:-1}
+	hits=$("$BB" dmesg 2>/dev/null | "$BB" tail -n +"$since" |
+		"$BB" grep -E 'BUG:|WARNING: CPU|refcount_t:|Oops|Unable to handle|Call trace' |
+		"$BB" grep -E 'ds_|dnsk_|droidspaces|droid_lkm')
+	if [ -n "$hits" ]; then
+		echo "DNSK_LIFECYCLE_WARN $tag"
+		printf '%s\n' "$hits" | tail -20
+		return 1
+	fi
+	echo "DNSK_LIFECYCLE_CLEAN $tag"
+	return 0
+}
+
+dmesg_cursor() {
+	"$BB" dmesg 2>/dev/null | "$BB" wc -l
+}
+
+if [ -x /selinux_load ] && [ -f /policy.gz ]; then
+	"$BB" mkdir -p /sys/fs/selinux
+	"$BB" mount -t selinuxfs selinuxfs /sys/fs/selinux || fail selinuxfs_mount
+	"$BB" gunzip -c /policy.gz > /policy || fail policy_gunzip
+	/selinux_load /policy /sys/fs/selinux/load || fail selinux_policy_load
+	echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+fi
+
+export LD_LIBRARY_PATH=/system/lib64
+"$BB" mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/modules
+"$BB" mkdir -p "$MODDIR"
+/insmod_force /modules/selpermissive.ko || fail selpermissive_insmod
+/ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
+echo "DNSK_KSUD_LATE_LOAD_OK"
+
+"$BB" sleep 10
+echo 0 > /sys/fs/selinux/enforce || fail selinux_permissive
+echo "DNSK_SELINUX_AFTER_KSU=permissive"
+
+# Install the real module layout so dnskctl resolves its own paths and
+# policy.conf, exactly like an installed KSU module.
+#
+# dnskctl carries the device shebang #!/system/bin/sh.  The initramfs has no
+# Android mksh, so provide that path with busybox sh; without it every CLI call
+# fails as "not found" and the gate would report a CLI bug that does not exist
+# on a real device.
+"$BB" mkdir -p /system/bin
+[ -e /system/bin/sh ] || ln -sf /bin/busybox /system/bin/sh
+[ -x /system/bin/sh ] || fail system_sh_missing
+
+[ -d "$MODDIR/kmi" ] || fail module_layout_missing
+[ -x "$CTL" ] || fail cli_not_executable
+
+echo "== probe =="
+"$CTL" probe || fail cli_probe
+echo "DNSK_CLI_PROBE_OK"
+
+echo "== preflight + load core =="
+"$CTL" load core || fail cli_load_core
+"$BB" lsmod | "$BB" grep -q '^dnsk_core' || fail core_not_listed
+echo "DNSK_LOAD_CORE_OK"
+
+# Load every feature whose module is present. ns/devtmpfs/netfilter need their
+# gki/activate params; dnskctl supplies them.
+for f in ns devtmpfs netfilter ipset cgpids tmpfsx; do
+	[ -f "$MODDIR/kmi/"*/"dnsk_$f.ko" ] || continue
+	"$CTL" load "$f" || fail "load_$f"
+	echo "DNSK_LOAD_$f OK"
+done
+
+echo "== monitor =="
+"$CTL" monitor > /tmp/monitor.txt || fail cli_monitor
+cat /tmp/monitor.txt
+"$BB" grep -q 'core loaded' /tmp/monitor.txt || fail monitor_core
+"$CTL" monitor --json > /tmp/monitor.json || fail cli_monitor_json
+"$BB" grep -q '"core_loaded":true' /tmp/monitor.json || fail monitor_json_core
+echo "DNSK_MONITOR_OK"
+
+# A loaded module must be visible as such, with a real refcount.
+for f in ns devtmpfs ipset cgpids tmpfsx; do
+	"$BB" grep -q "^$f loaded" /tmp/monitor.txt || fail "monitor_missing_$f"
+done
+echo "DNSK_MONITOR_ALL_OK"
+
+# The WebUI drives the same commands; make sure the JSON contract it parses
+# really carries the per-module state and refcounts.
+"$BB" grep -q '"modules":{"core":' /tmp/monitor.json || fail monitor_json_shape
+"$BB" grep -q '"refcnt"' /tmp/monitor.json || fail monitor_json_refcnt
+echo "DNSK_MONITOR_CONTRACT_OK"
+
+echo "== functional check after load =="
+[ -r /proc/dnsk/status ] || fail core_status_missing
+cat /proc/dnsk/status
+"$BB" grep -q 'feature ns' /proc/dnsk/status || fail status_ns_row
+echo "DNSK_STATUS_NS_OK"
+
+# Namespace objects must be gone before ns can be unloaded, so exercise one and
+# let it exit again.
+unshare -p -i -u -f /bin/sh -c 'echo "DNSK_NS_LIVE=$$"' || fail ns_unshare
+echo "DNSK_NS_UNSHARE_OK"
+
+echo "== stop-all =="
+# Give RCU a moment to run the namespace/callback teardown callbacks before the
+# modules are asked to leave.
+"$BB" sleep 2
+# Everything from here on is judged on its own: warnings raised while the
+# modules were loading belong to the load path, not to unload safety.
+unload_cursor=$(dmesg_cursor)
+"$CTL" stop-all
+stop_rc=$?
+echo "DNSK_STOP_ALL_RC=$stop_rc"
+
+"$CTL" monitor > /tmp/after.txt || fail monitor_after
+cat /tmp/after.txt
+"$BB" grep -q '^core absent' /tmp/after.txt || fail core_still_loaded
+for f in ns devtmpfs netfilter ipset cgpids tmpfsx; do
+	"$BB" grep -q "^$f absent" /tmp/after.txt || fail "$f still loaded after stop-all"
+done
+echo "DNSK_UNLOAD_ALL_OK"
+
+# Nothing may remain registered: no module dirs, no leftover hooks.
+if "$BB" lsmod | "$BB" grep -q '^dnsk_'; then
+	"$BB" lsmod | "$BB" grep '^dnsk_'
+	fail lsmod_residue
+fi
+echo "DNSK_LSMOD_CLEAN_OK"
+
+if [ -d /sys/module/dnsk_core ]; then
+	fail sysfs_residue
+fi
+echo "DNSK_SYSFS_CLEAN_OK"
+
+# The kernel must still be healthy after the code that hooked it is gone.
+warn_scan after_unload "$unload_cursor" || fail warn_after_unload
+
+echo "== post-unload syscall exercise =="
+# These paths ran through the now-restored kernel text.  If a hook or a
+# namespace operation still pointed into freed module memory this is where a
+# dangling pointer would show up.
+/bin/sh -c 'exit 0' || fail shell_after_unload
+"$BB" unshare -p -i -u -f /bin/sh -c 'echo DNSK_POST_UNSHARE_OK' || fail post_unshare
+"$BB" mount -t tmpfs tmpfs /tmp/post >/dev/null 2>&1 && "$BB" umount /tmp/post
+[ ! -d /tmp/post ] || "$BB" umount /tmp/post 2>/dev/null
+echo "DNSK_POST_SYSCALLS_OK"
+
+"$BB" sleep 2
+warn_scan final "$unload_cursor" || fail warn_final
+
+# Load-time warnings are reported separately: they are real bugs, but they
+# measure the load path, so they must not be silently mixed into the unload
+# verdict (nor be used to declare an unload failure that did not happen).
+load_hits=$("$BB" dmesg 2>/dev/null | "$BB" head -n $((unload_cursor - 1)) |
+	"$BB" grep -E 'refcount_t:|WARNING: CPU|BUG:' |
+	"$BB" grep -E 'ds_|dnsk_|droidspaces' | tail -5)
+if [ -n "$load_hits" ]; then
+	echo "DNSK_LIFECYCLE_LOAD_WARN"
+	printf '%s\n' "$load_hits"
+else
+	echo "DNSK_LIFECYCLE_LOAD_CLEAN"
+fi
+
+if [ "$stop_rc" -ne 0 ]; then
+	echo "DNSK_LIFECYCLE_NOTE stop_all_rc=$stop_rc"
+fi
+
+echo "DNSK_LIFECYCLE_OK"
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f

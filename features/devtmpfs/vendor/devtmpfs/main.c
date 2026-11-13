@@ -150,25 +150,27 @@ static int __init ds_init(void)
 	if (ret) return ret;
 	ret = ds_devtmpfs_start();
 	if (ret) return ret;
-	__module_get(THIS_MODULE);
 	ret = ds_hooks_install();
 	if (ret) {
-		module_put(THIS_MODULE);
 		ds_devtmpfs_stop();
 		return ret;
 	}
-	/* Hooks are permanent; initialization failures after this point stay visible. */
 	ret = populate_existing();
 	if (ret) { errors++; pr_err("initial device enumeration failed: %d\n", ret); }
 	ready = !ret && !errors;
-	pr_info("device lifecycle active, ready=%u errors=%u; pinned until reboot\n", ready, errors);
+	pr_info("device lifecycle active, ready=%u errors=%u\n", ready, errors);
 	return 0;
 }
 module_init(ds_init);
 
 static void __exit ds_exit(void)
 {
-	/* Active mode is pinned by __module_get(); inactive mode has no state. */
+	/* Restore device_add/device_del before the module text goes away, then
+	 * drop the private mount and the kthread that feeds it. */
+	if (ds_hooks_uninstall())
+		pr_err("hook teardown failed; device hooks may still be installed\n");
+	ds_devtmpfs_stop();
+	pr_info("unloaded\n");
 }
 
 module_exit(ds_exit);

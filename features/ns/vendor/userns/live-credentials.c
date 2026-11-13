@@ -148,6 +148,13 @@ void ds_userns_key_change_session_keyring(struct callback_head *twork)
 	new->fsgid	= old->fsgid;
 	new->user	= get_uid(old->user);
 	new->ucounts	= old->ucounts;
+	/*
+	 * `new` already owns a reference to its current user namespace from
+	 * prepare_creds(); replacing the pointer without dropping it leaks one
+	 * reference per keyring replacement, which is what eventually saturated
+	 * the namespace counter.  Drop the old reference, then take the parent's.
+	 */
+	put_user_ns(new->user_ns);
 	new->user_ns	= get_user_ns(old->user_ns);
 	new->group_info	= get_group_info(old->group_info);
 

@@ -372,6 +372,10 @@ static struct ds_hook hooks[] = {
 
 static struct ds_hook proc_hooks[2];
 
+/* Set once the install has succeeded; teardown keys off it so a failed or
+ * never-run install cannot unpatch unrelated kernel text. */
+bool ds_hooks_active;
+
 static bool movable_prologue(u32 op)
 {
 	/* NOP/PACIASP; SCS push; stack allocation/frame pointer; stack stores, no PC operands. */
@@ -661,10 +665,63 @@ int ds_hooks_install(void)
 
 	if (ret)
 		return ret;
-	/* Objects in procfs can retain operation pointers after all tasks exit. */
-	__module_get(THIS_MODULE);
 	ret = stop_machine(install_stopped, NULL, NULL);
-	if (ret)
-		module_put(THIS_MODULE);
+	if (!ret)
+		WRITE_ONCE(ds_hooks_active, true);
+	return ret;
+}
+
+/*
+ * Teardown runs in the reverse order of the install so no window exists where a
+ * callback or namespace operation still points into this module after its code
+ * is gone.  Everything that install_stopped() wrote is restored from `saved`.
+ */
+static int uninstall_stopped(void *unused)
+{
+	unsigned int i;
+	int ret;
+
+	WRITE_ONCE(ds_ipc_active, false);
+#ifdef DS_USERNS_LIVE
+	WRITE_ONCE(init_user_ns.ns.ops, NULL);
+#endif
+	WRITE_ONCE(init_pid_ns.ns.ops, NULL);
+
+	for (i = 0; i < ARRAY_SIZE(callback_hooks); i++) {
+		ret = write_pointer(callback_hooks[i].slot, callback_hooks[i].saved);
+		if (ret)
+			goto fail;
+	}
+	for (i = 0; i < ARRAY_SIZE(ipc_syscalls); i++) {
+		ret = write_syscall(&ipc_syscalls[i], true);
+		if (ret)
+			goto fail;
+	}
+	for (i = 0; i < ARRAY_SIZE(hooks); i++) {
+		ret = write_hook(&hooks[i], true);
+		if (ret)
+			goto fail;
+	}
+	for (i = 0; i < ARRAY_SIZE(proc_hooks); i++) {
+		ret = write_hook(&proc_hooks[i], true);
+		if (ret)
+			goto fail;
+	}
+	return 0;
+
+fail:
+	/* A partial restore would leave live callers branching into freed code. */
+	panic("droidspaces_ns: uninstall restore failed at index %u: %d\n", i, ret);
+}
+
+int ds_hooks_uninstall(void)
+{
+	int ret;
+
+	if (!READ_ONCE(ds_hooks_active))
+		return 0;
+	ret = stop_machine(uninstall_stopped, NULL, NULL);
+	if (!ret)
+		WRITE_ONCE(ds_hooks_active, false);
 	return ret;
 }

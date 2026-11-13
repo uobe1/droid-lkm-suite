@@ -34,18 +34,49 @@ struct ds_mm_ref {
 static struct hlist_head ds_mm_refs[1 << DS_MM_HASH_BITS];
 static DEFINE_SPINLOCK(ds_mm_refs_lock);
 
-static bool ds_mm_track(struct mm_struct *mm)
+/* Caller holds ds_mm_refs_lock. */
+static bool ds_mm_find_locked(struct mm_struct *mm)
+{
+	struct ds_mm_ref *ref;
+
+	hlist_for_each_entry(ref, &ds_mm_refs[hash_ptr(mm, DS_MM_HASH_BITS)],
+			     node) {
+		if (ref->mm == mm)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * Tracking outcome.  "Already" must be distinguished from "no memory": an
+ * already tracked mm still needs its user_ns repaired (the inlined !USER_NS
+ * stub overwrote it) but must not take a second reference, because
+ * __mmdrop() releases exactly one.
+ */
+enum ds_mm_track_result {
+	DS_MM_TRACK_NEW = 0,
+	DS_MM_TRACK_ALREADY = 1,
+	DS_MM_TRACK_NOMEM = -1,
+};
+
+static enum ds_mm_track_result ds_mm_track(struct mm_struct *mm)
 {
 	struct ds_mm_ref *ref = kmalloc(sizeof(*ref), GFP_ATOMIC);
 	unsigned long flags;
+	enum ds_mm_track_result result = DS_MM_TRACK_ALREADY;
 
 	if (!ref)
-		return false;
+		return DS_MM_TRACK_NOMEM;
 	ref->mm = mm;
 	spin_lock_irqsave(&ds_mm_refs_lock, flags);
-	hlist_add_head(&ref->node, &ds_mm_refs[hash_ptr(mm, DS_MM_HASH_BITS)]);
+	if (!ds_mm_find_locked(mm)) {
+		hlist_add_head(&ref->node, &ds_mm_refs[hash_ptr(mm, DS_MM_HASH_BITS)]);
+		result = DS_MM_TRACK_NEW;
+	}
 	spin_unlock_irqrestore(&ds_mm_refs_lock, flags);
-	return true;
+	if (result != DS_MM_TRACK_NEW)
+		kfree(ref);
+	return result;
 }
 
 static bool ds_mm_untrack(struct mm_struct *mm)
@@ -71,7 +102,13 @@ struct mm_struct *ds_userns_mm_alloc(void)
 {
 	struct mm_struct *mm = ds_userns_mm_alloc_original();
 
-	if (mm && ds_mm_track(mm))
+	/*
+	 * mm_init() is inlined on this build, so the USER_NS reference for a new
+	 * mm is taken here and released in __mmdrop().  No-memory means the mm
+	 * stays untracked: leaving user_ns as the stub set it is consistent with
+	 * never dropping a reference for it.
+	 */
+	if (mm && ds_mm_track(mm) == DS_MM_TRACK_NEW)
 		mm->user_ns = get_user_ns(current_user_ns());
 	return mm;
 }
@@ -84,11 +121,27 @@ void ds_userns_wake_up_new_task(struct task_struct *p)
 	/*
 	 * A fresh mm (fork without CLONE_VM) had its user_ns overwritten by
 	 * the inlined !USER_NS get_user_ns() stub.  Restore the creator's
-	 * namespace and take the reference that __mmdrop will drop.  The task
-	 * is not runnable yet, so this cannot race with its exit.
+	 * namespace; take a reference only when this call is what starts
+	 * tracking the mm, because __mmdrop() releases exactly one.
+	 * The task is not runnable yet, so this cannot race with its exit.
 	 */
-	if (p->mm && p->mm != current->mm && ds_mm_track(p->mm))
+	if (!p->mm || p->mm == current->mm)
+		goto done;
+	switch (ds_mm_track(p->mm)) {
+	case DS_MM_TRACK_NEW:
 		p->mm->user_ns = get_user_ns(ns);
+		break;
+	case DS_MM_TRACK_ALREADY:
+		/*
+		 * mm_alloc() already took the reference and set the namespace,
+		 * so this mm is consistent.  Assigning here would either drop
+		 * the existing reference or add an unbalanced one.
+		 */
+		break;
+	case DS_MM_TRACK_NOMEM:
+		break;
+	}
+done:
 	ds_userns_wake_up_new_task_original(p);
 }
 #define free_mm(mm) kmem_cache_free(mm_cachep, (mm))

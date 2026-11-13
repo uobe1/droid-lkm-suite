@@ -438,13 +438,27 @@ drop_mount:
 	return err;
 }
 
-/* Called only before device hooks become reachable. */
+/* Idempotent teardown: safe to call from the init error path and from exit.
+ *
+ * Order matters: the kthread is the only thing that creates nodes inside the
+ * private mount, so it must stop before the filesystem is unregistered and the
+ * mount reference is dropped.  Unregistering first would leave the type table
+ * inconsistent with a live superblock for the duration of the teardown.
+ */
 void ds_devtmpfs_stop(void)
 {
+	if (thread) {
+		kthread_stop(thread);
+		put_task_struct(thread);
+		thread = NULL;
+	}
 	unregister_filesystem(&dev_fs_type);
-	kthread_stop(thread);
-	put_task_struct(thread);
-	put_cred(node_cred);
-	thread = NULL;
-	mntput(mnt);
+	if (node_cred) {
+		put_cred(node_cred);
+		node_cred = NULL;
+	}
+	if (mnt) {
+		mntput(mnt);
+		mnt = NULL;
+	}
 }

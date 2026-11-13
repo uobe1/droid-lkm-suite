@@ -13,6 +13,7 @@
 #include <linux/kprobes.h>
 #include <linux/magic.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/ptrace.h>
 #include <linux/string.h>
 #include <linux/version.h>
@@ -42,6 +43,12 @@ static bool dnsk_acl_ready;
 static bool dnsk_keep_native;
 static struct dnsk_acl_orig dnsk_acl_slots;
 
+/*
+ * A tmpfs superblock keeps s_xattr pointing into this module after we wire it.
+ * Teardown therefore walks every superblock and drops the pointer, which is
+ * safe without a side table: iterate_supers() holds a live reference for the
+ * duration of the callback, so nothing can be freed underneath us.
+ */
 static void dnsk_wire_sb(struct super_block *sb, void *arg)
 {
 	if (sb->s_magic != TMPFS_MAGIC)
@@ -50,6 +57,10 @@ static void dnsk_wire_sb(struct super_block *sb, void *arg)
 		if (!READ_ONCE(sb->s_xattr))
 			WRITE_ONCE(sb->s_xattr, dnsk_tmpfsx_handlers);
 	} else if (READ_ONCE(sb->s_xattr) == dnsk_tmpfsx_handlers) {
+		/*
+		 * GKI tmpfs has no native xattr table (CONFIG_TMPFS_XATTR=n), so
+		 * NULL is exactly what was there before we wired the handlers.
+		 */
 		WRITE_ONCE(sb->s_xattr, NULL);
 	}
 }
@@ -450,10 +461,10 @@ static int __init dnsk_tmpfsx_init(void)
 	dnsk_feature_ready = true;
 
 	/*
-	 * Superblocks keep a pointer into this module; refuse unload for the
-	 * lifetime of the boot rather than leaving dangling handler arrays.
+	 * Live tmpfs superblocks keep s_xattr pointing at this module's handler
+	 * array; exit() unwires every one of them under the s_umount walk in
+	 * dnsk_wire_sb(sb, NULL), so unloading is safe once the array is gone.
 	 */
-	try_module_get(THIS_MODULE);
 	pr_info("dnsk_tmpfsx: tmpfs xattr handlers installed (spike)\n");
 	return 0;
 
