@@ -207,11 +207,28 @@ cgpids)
 tmpfsx)
 	# The module wired s_xattr into every tmpfs superblock.  After unload a
 	# fresh tmpfs mount must go back to stock: user.* xattrs are refused.
+	"$BB" mkdir -p /tmp/xattrprobe
 	"$BB" mount -t tmpfs tmpfs /tmp/xattrprobe >/dev/null 2>&1 || fail tmpfs_mount
-	if "$BB" setfattr -n user.probe -v 1 /tmp/xattrprobe 2>/dev/null; then
-		"$BB" umount /tmp/xattrprobe 2>/dev/null
-		fail tmpfsx_still_wired
+	# Stock GKI tmpfs has no xattr table at all, so setting user.* must fail.
+	# If the module left the handler wired, it would succeed.
+	#
+	# setfattr may not exist in this image; a missing tool must not be read as a
+	# pass, so absence of every mechanism is itself a failure.
+	# /xattr_probe is built for this gate (tests/qemu/xattr_probe.c): the
+	# minimal initramfs has neither setfattr nor python.
+	if [ ! -x /xattr_probe ]; then
+		echo "DNSK_TMPFSX_PROBE_UNAVAILABLE"
+		fail tmpfsx_probe_missing
 	fi
+	/xattr_probe /tmp/xattrprobe
+	probe_rc=$?
+	case $probe_rc in
+	0)	"$BB" umount /tmp/xattrprobe 2>/dev/null
+		fail tmpfsx_still_wired ;;
+	1)	echo "DNSK_POST_TMPFSX_STOCK" ;;
+	*)	"$BB" umount /tmp/xattrprobe 2>/dev/null
+		fail tmpfsx_probe_error ;;
+	esac
 	"$BB" umount /tmp/xattrprobe 2>/dev/null
 	echo "DNSK_POST_TMPFSX_UNWIRED"
 	;;
