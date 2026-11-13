@@ -2,6 +2,7 @@
 #define pr_fmt(fmt) "droidspaces_devtmpfs: " fmt
 #include <linux/module.h>
 #include <linux/kallsyms.h>
+#include <linux/rcupdate.h>
 #include <linux/stop_machine.h>
 #include <asm/patching.h>
 #include "core.h"
@@ -162,8 +163,18 @@ int ds_hooks_uninstall(void)
 
 	if (!READ_ONCE(ds_hooks_active))
 		return 0;
+	/*
+	 * stop_machine() guarantees no CPU is inside the hook *while* the entry
+	 * points are restored, but it does not guarantee that a CPU which entered
+	 * just before the restore has finished executing this module's trampoline.
+	 * The trampoline lives in module memory that disappears with the module,
+	 * so wait for every pre-existing execution context to drain before the
+	 * caller is allowed to unload.
+	 */
 	ret = stop_machine(uninstall_stopped, NULL, cpu_online_mask);
-	if (!ret)
-		WRITE_ONCE(ds_hooks_active, false);
-	return ret;
+	if (ret)
+		return ret;
+	synchronize_rcu();
+	WRITE_ONCE(ds_hooks_active, false);
+	return 0;
 }

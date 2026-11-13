@@ -59,6 +59,11 @@ void dnsk_cgpids_native_exit(void)
 {
 }
 
+int dnsk_cgpids_native_quiesce(void)
+{
+	return 0;
+}
+
 bool dnsk_cgpids_native_active(void)
 {
 	return false;
@@ -103,6 +108,8 @@ struct dnsk_pids_css {
 };
 
 static u8 dnsk_ss[DNSK_CGROUP_SUBSYS_LAYOUT] __aligned(8);
+void dnsk_cgpids_native_exit(void);
+
 static struct dnsk_core_api *dnsk_native_api;
 static struct cgroup_subsys **dnsk_subsys_array;
 static struct cgroup_root *dnsk_root;
@@ -122,6 +129,8 @@ static void (*dnsk_static_key_enable)(struct static_key *key);
 static void (*dnsk_static_key_disable)(struct static_key *key);
 static void (*dnsk_cgroup_file_notify)(struct cgroup_file *cfile);
 static bool dnsk_native_ready;
+/* True while this module holds its own reference (see dnsk_cgpids_native_init). */
+static bool dnsk_self_ref;
 /* Saved at init so teardown can hand slot 7 back to net_prio unchallenged. */
 static struct cgroup_subsys *dnsk_saved_ss;
 static struct cgroup_subsys_state *dnsk_saved_root_css;
@@ -643,6 +652,16 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 	dnsk_saved_have_release =
 		*dnsk_have_release & ~BIT(DNSK_CGROUP_SUBSYS_SLOT);
 	dnsk_native_ready = true;
+	/*
+	 * This kernel's cgroup_subsys has no `owner` field (verified against the
+	 * device BTF: 32 members, ending at depends_on), so cgroup core cannot hold
+	 * a reference on our behalf.  The reference taken above is therefore the
+	 * only thing keeping this module resident -- and it is exactly what stops
+	 * rmmod from ever reaching module_exit, a self-inflicted deadlock.  It is
+	 * dropped by dnsk_cgpids_native_quiesce() after the slot has been handed
+	 * back, so unloading becomes possible while nothing runs our code.
+	 */
+	dnsk_self_ref = true;
 	pr_info("dnsk_cgpids: native pids registered in slot %d\n",
 		DNSK_CGROUP_SUBSYS_SLOT);
 	return 0;
@@ -689,9 +708,38 @@ void dnsk_cgpids_native_exit(void)
 
 	dnsk_own_root_css = NULL;
 	dnsk_native_ready = false;
-	module_put(THIS_MODULE);
+	/*
+	 * Drop exactly the reference init took.  If quiesce() already ran, this is
+	 * what finally lets rmmod proceed; if it did not, this is the reference that
+	 * would otherwise keep the module resident forever.
+	 */
+	if (dnsk_self_ref) {
+		dnsk_self_ref = false;
+		module_put(THIS_MODULE);
+	}
 	pr_info("dnsk_cgpids: native pids released slot %d\n",
 		DNSK_CGROUP_SUBSYS_SLOT);
+}
+
+/*
+ * Hand the slot back and drop the self reference, without unloading.
+ *
+ * rmmod cannot run module_exit while the module holds a reference to itself, so
+ * teardown happens in two steps: this call restores the slot, switches the
+ * static key off and swaps the root css back, and only then does the module
+ * reference drop, letting a subsequent rmmod reach module_exit.  Idempotent.
+ */
+int dnsk_cgpids_native_quiesce(void)
+{
+	if (!dnsk_native_ready)
+		return 0;
+	/*
+	 * The module reference taken by init must survive until the slot is really
+	 * ours no longer: dropping it first would let rmmod free this text while
+	 * cgroup core could still call into it.
+	 */
+	dnsk_cgpids_native_exit();
+	return 0;
 }
 
 bool dnsk_cgpids_native_active(void)

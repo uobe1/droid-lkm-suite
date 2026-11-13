@@ -76,5 +76,11 @@ struct dnsk_core_api;
 int dnsk_cgpids_native_init(struct dnsk_core_api *api);
 void dnsk_cgpids_native_exit(void);
 bool dnsk_cgpids_native_active(void);
+/*
+ * Hand the slot back and drop the module's self reference so rmmod can proceed.
+ * Required before unloading because this kernel's cgroup_subsys has no owner
+ * field, so the module must hold its own reference while it is live.
+ */
+int dnsk_cgpids_native_quiesce(void);
 
 #endif /* _DNSK_CGPIDS_H */

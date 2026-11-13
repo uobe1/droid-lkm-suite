@@ -391,6 +391,18 @@ do_unload() {
 		fi
 	fi
 
+	# A module that holds a reference to itself can never be unloaded: rmmod
+	# refuses with EAGAIN and module_exit never runs.  cgpids is such a module,
+	# because this kernel's cgroup_subsys has no owner field for cgroup core to
+	# take a reference on.  Ask it to hand the slot back first; that drops the
+	# self reference, and only then is rmmod able to proceed.  The kernel refuses
+	# the write if the subsystem is still live, which is the answer we want.
+	if [ "$feature" = "cgpids" ] && [ -w "/sys/module/$name/parameters/quiesce" ]; then
+		if ! printf '1\n' > "/sys/module/$name/parameters/quiesce" 2>/dev/null; then
+			echo "dnskctl: cgpids refused to quiesce; leaving it loaded" >&2
+		fi
+	fi
+
 	refs=$(module_refcnt "$name")
 	mark=$(dmesg_mark)
 	set +e

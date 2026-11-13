@@ -721,7 +721,16 @@ int ds_hooks_uninstall(void)
 	if (!READ_ONCE(ds_hooks_active))
 		return 0;
 	ret = stop_machine(uninstall_stopped, NULL, NULL);
-	if (!ret)
-		WRITE_ONCE(ds_hooks_active, false);
-	return ret;
+	if (ret)
+		return ret;
+	/*
+	 * stop_machine() only guarantees nobody is in the hook *during* the
+	 * restore.  A CPU that entered the trampoline just before it can still be
+	 * inside, and the trampoline is module memory that the caller is about to
+	 * free.  Drain those contexts before returning, or the unload races with
+	 * live callers that branch into freed text.
+	 */
+	synchronize_rcu();
+	WRITE_ONCE(ds_hooks_active, false);
+	return 0;
 }

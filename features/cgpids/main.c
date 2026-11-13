@@ -272,6 +272,29 @@ static bool dnsk_native = true;
 module_param_named(native, dnsk_native, bool, 0444);
 MODULE_PARM_DESC(native, "register a real pids subsys in the profile slot (default); 0 keeps the virtual controller");
 
+/*
+ * Write anything to this parameter to hand the net_prio slot back and drop the
+ * module's self reference, so a following rmmod can reach module_exit.
+ *
+ * It exists because this kernel's cgroup_subsys has no owner field (BTF: 32
+ * members, ending at depends_on), which means cgroup core holds no reference on
+ * our behalf.  The module therefore has to hold one itself while the slot is
+ * live -- and a module that references itself can never be unloaded.  A
+ * user-initiated quiesce breaks that cycle in a defined order: slot first,
+ * reference second.
+ */
+static int dnsk_quiesce_set(const char *val, const struct kernel_param *kp)
+{
+	(void)val;
+	(void)kp;
+	return dnsk_cgpids_native_quiesce();
+}
+static const struct kernel_param_ops dnsk_quiesce_ops = {
+	.set = dnsk_quiesce_set,
+};
+module_param_cb(quiesce, &dnsk_quiesce_ops, NULL, 0200);
+MODULE_PARM_DESC(quiesce, "hand the cgroup slot back and drop the self reference before rmmod");
+
 static int __init dnsk_cgpids_init(void)
 {
 	struct dnsk_hook_req hook = {
