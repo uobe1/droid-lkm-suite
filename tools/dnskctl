@@ -93,6 +93,17 @@ find_ksud() {
 	command -v ksud 2>/dev/null || return 1
 }
 
+find_lkmctl() {
+	if [ -n "${DNSK_LKMCTL:-}" ] && [ -x "$DNSK_LKMCTL" ]; then
+		printf '%s\n' "$DNSK_LKMCTL"
+		return 0
+	fi
+	for p in "$MODDIR/bin/lkmctl" /data/adb/lkmins/lkmctl; do
+		[ -x "$p" ] && { printf '%s\n' "$p"; return 0; }
+	done
+	command -v lkmctl 2>/dev/null || return 1
+}
+
 find_busybox() {
 	if [ -x "$BUSYBOX" ]; then printf '%s\n' "$BUSYBOX"; return 0; fi
 	command -v busybox 2>/dev/null || true
@@ -299,8 +310,20 @@ do_preflight() {
 			;;
 		esac
 		set -- "$@" --feature "$feature"
-		DNSK_KSUD=$(find_ksud 2>/dev/null || true)
-		export DNSK_KSUD
+		#
+		# The preflight binary treats a missing ksud as a failed check, because
+		# that is true for the default loader.  When droid-lkm-ins does the
+		# loading, ksud is not part of the path at all, so telling the checker it
+		# is missing would refuse a perfectly loadable module.  Report the loader
+		# actually in use instead of a path that will never be used.
+		if [ "${DNSK_LOADER:-ksud}" = "lkmins" ]; then
+			DNSK_KSUD=
+			DNSK_LOADER_BACKEND=lkmins
+		else
+			DNSK_KSUD=$(find_ksud 2>/dev/null || true)
+			DNSK_LOADER_BACKEND=ksud
+		fi
+		export DNSK_KSUD DNSK_LOADER_BACKEND
 		set +e
 		"$MODDIR/bin/dnsk-preflight" "$@"
 		rc=$?
@@ -324,6 +347,44 @@ do_load() {
 	if ! do_preflight "$feature"; then
 		die "preflight failed: $feature (refusing to insmod)"
 	fi
+	#
+	# Two loaders are supported.
+	#
+	#   ksud     (default) KernelSU's, which resolves unexported imports through
+	#            the KernelSU driver as well as /proc/kallsyms.
+	#   lkmins   droid-lkm-ins' head-only loader: it binds undefined symbols from
+	#            /proc/kallsyms and calls init_module(2) itself.
+	#
+	# Both end up in the same kernel path; the difference is only who patches the
+	# symbol table.  The default stays ksud so existing devices keep working, and
+	# because a kernel that hides symbols from /proc/kallsyms needs the driver.
+	case "${DNSK_LOADER:-ksud}" in
+	ksud) : ;;
+	lkmins)
+		lkmctl=$(find_lkmctl) || \
+			die "DNSK_LOADER=lkmins but no lkmctl found (set DNSK_LKMCTL)"
+		# Build the parameter list explicitly; an empty placeholder argument
+		# would be passed to the module as "".
+		params=
+		case "$feature" in
+			ns|devtmpfs|netfilter) params="gki=1 activate=1" ;;
+			cgpids)
+				case "${DNSK_CGPIDS_NATIVE:-1}" in
+				0) params="native=0" ;;
+				1) params= ;;
+				*) die "DNSK_CGPIDS_NATIVE must be 0 or 1" ;;
+				esac
+				;;
+		esac
+		# shellcheck disable=SC2086  # params is a deliberate word-split list
+		"$lkmctl" insmod "$ko" $params || die "lkmctl insmod failed: $feature"
+		return 0
+		;;
+	*)
+		die "DNSK_LOADER must be ksud or lkmins"
+		;;
+	esac
+
 	ksud=$(find_ksud) || die "ksud not found (set DNSK_KSUD)"
 	set -- "$ko"
 	case "$feature" in

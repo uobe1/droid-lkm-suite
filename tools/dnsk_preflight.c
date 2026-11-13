@@ -1106,7 +1106,20 @@ int main(int argc, char **argv)
 				   ARRAY_SIZE(tmpfsx_required));
 	seq_ok = !check_cgpids ||
 		 (seq_expected >= 0 && layout.seq_private == seq_expected);
-	ok = page_size == 4096 && btf && layout_ok && boundary_ok && ksud &&
+	/*
+	 * ksud is only a requirement when ksud is the loader.
+	 *
+	 * The default loader is KernelSU's ksud, which needs to exist; but an
+	 * alternate loader (droid-lkm-ins) binds symbols from /proc/kallsyms and
+	 * calls init_module itself, so demanding ksud there would refuse a module
+	 * that loads perfectly well.  The value is still reported, never hidden.
+	 */
+	{
+		const char *backend = getenv("DNSK_LOADER_BACKEND");
+		int ksud_required = !backend || strcmp(backend, "lkmins") != 0;
+
+		ok = page_size == 4096 && btf && layout_ok && boundary_ok &&
+		     (!ksud_required || ksud) &&
 	     supported && kmi[0] && required[SYM_SYS_CALL_TABLE].found &&
 	     required[SYM_INIT_MM].found &&
 	     required[SYM_PANIC_NOTIFIER_LIST].found &&
@@ -1115,6 +1128,7 @@ int main(int argc, char **argv)
 	     nf_ok && (!check_nf || nf_symbols) && seq_ok &&
 	     (!check_cgpids || cgpids_symbols) &&
 	     (!check_tmpfsx || tmpfsx_symbols);
+	}
 
 	printf("{\"ok\":%s,\"feature\":\"%s\",\"release\":\"%s\","
 	       "\"kmi\":\"%s\",\"supported\":%s,\"page_size\":%lu,"
