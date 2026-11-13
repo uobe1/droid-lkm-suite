@@ -78,7 +78,10 @@ echo "== load =="
 dnskctl load core || fail load_core
 echo "DNSK_LOAD_CORE_OK"
 if [ "$FEATURE" != "core" ]; then
-	dnskctl load "$FEATURE" || fail "load_$FEATURE"
+	# DNSK_CGPIDS_NATIVE=0 exercises the virtual (V) backend, which is a
+	# different implementation with its own teardown.
+	DNSK_CGPIDS_NATIVE=${DNSK_CGPIDS_NATIVE:-1} \
+		dnskctl load "$FEATURE" || fail "load_$FEATURE"
 	echo "DNSK_LOAD_$FEATURE OK"
 fi
 

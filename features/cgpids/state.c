@@ -15,36 +15,10 @@
 DEFINE_XARRAY(dnsk_pids_xa);
 DEFINE_SPINLOCK(dnsk_pids_lock);
 rwlock_t *dnsk_tasklist_lock;
-static bool dnsk_pids_pinned;
 
 struct dnsk_pids_state *dnsk_pids_lookup(struct cgroup *cgrp)
 {
 	return xa_load(&dnsk_pids_xa, (unsigned long)cgrp);
-}
-
-static void dnsk_pids_free_rcu(struct rcu_head *rcu)
-{
-	struct dnsk_pids_state *st = container_of(rcu, struct dnsk_pids_state,
-						  rcu);
-
-	kfree(st);
-}
-
-static bool dnsk_pids_pin_module(void)
-{
-	unsigned long flags;
-	bool ok;
-
-	spin_lock_irqsave(&dnsk_pids_lock, flags);
-	if (dnsk_pids_pinned) {
-		ok = true;
-	} else {
-		ok = try_module_get(THIS_MODULE);
-		if (ok)
-			dnsk_pids_pinned = true;
-	}
-	spin_unlock_irqrestore(&dnsk_pids_lock, flags);
-	return ok;
 }
 
 /*
@@ -89,10 +63,11 @@ struct dnsk_pids_state *dnsk_pids_ensure(struct cgroup *cgrp)
 		return NULL;
 	st->cgrp = cgrp;
 	atomic64_set(&st->limit, DNSK_PIDS_MAX);
-	if (!dnsk_pids_pin_module()) {
-		kfree(st);
-		return NULL;
-	}
+	/*
+	 * No self reference is taken.  Every code path that can still run after
+	 * module_exit now lands on kernel text: the RCU free above, and the cgroup
+	 * file callbacks are removed before the module goes (see virtual.c exit).
+	 */
 
 	spin_lock_irqsave(&dnsk_pids_lock, flags);
 	rcu_read_lock();
@@ -135,19 +110,26 @@ void dnsk_pids_destroy(struct cgroup *cgrp)
 	spin_unlock_irqrestore(&dnsk_pids_lock, flags);
 	if (!st)
 		return;
-	call_rcu(&st->rcu, dnsk_pids_free_rcu);
+	/*
+	 * kfree_rcu, not call_rcu: the free then happens in kernel-resident code,
+	 * so a grace period that ends after module_exit can still run safely.  This
+	 * is what allows the virtual controller to be unloaded at all.
+	 */
+	kfree_rcu(st, rcu);
 }
 
 /*
- * The virtual controller (native=0) keeps its accounting in per-cgroup state
- * with RCU callbacks that live in this module.  It therefore takes one module
- * reference on the first state creation and never releases it: this path is
- * deliberately NOT unloadable, unlike the native slot-7 backend, which has a
- * defined quiesce and hands the slot back.
+ * The virtual controller no longer pins the module.
  *
- * The distinction is stated here so it is not discovered as a surprise: a
- * module loaded with native=0 will refuse rmmod (EAGAIN) by design, and
- * `dnskctl unload cgpids` reports that instead of pretending otherwise.
+ * It used to, because its per-cgroup state was freed by a call_rcu() callback
+ * that lived in this module -- a grace period could end after module_exit and
+ * branch into freed text.  That reason is gone: the state is now freed with
+ * kfree_rcu(), whose callback is kernel-resident, so the object can outlive the
+ * module safely.
+ *
+ * The remaining requirement is that no cgroup file callback is still reachable
+ * when the module goes.  virtual.c enforces it by removing the files before
+ * returning from its exit path, in that order.
  */
 void dnsk_pids_activate(struct dnsk_pids_state *st)
 {

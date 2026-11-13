@@ -19,7 +19,18 @@ enum dnsk_pids_event {
 	DNSK_PIDS_EVENT_COUNT,
 };
 
+/*
+ * The rcu_head is deliberately FIRST.
+ *
+ * kfree_rcu() can only be used when the head sits at offset 0 (the kernel picks
+ * a fast path from `offsetof(struct, member)`), and using it is what lets this
+ * object be freed by kernel-resident code instead of by a callback living in
+ * this module.  That is the difference between "the virtual controller pins the
+ * module forever" and "the virtual controller can be unloaded": a queued
+ * call_rcu() may run after module_exit, and it must not branch into freed text.
+ */
 struct dnsk_pids_state {
+	struct rcu_head rcu;	/* MUST be first: kfree_rcu() contract */
 	struct cgroup *cgrp;
 	atomic64_t counter;
 	atomic64_t limit;
@@ -28,7 +39,6 @@ struct dnsk_pids_state {
 	atomic64_t events_local[DNSK_PIDS_EVENT_COUNT];
 	bool enabled;
 	bool files_added;
-	struct rcu_head rcu;
 };
 
 extern struct xarray dnsk_pids_xa;

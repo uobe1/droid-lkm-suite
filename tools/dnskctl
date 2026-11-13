@@ -330,6 +330,16 @@ do_load() {
 		ns) set -- "$@" gki=1 activate=1 ;;
 		devtmpfs) set -- "$@" gki=1 activate=1 ;;
 		netfilter) set -- "$@" gki=1 activate=1 ;;
+		# cgpids defaults to the native backend; DNSK_CGPIDS_NATIVE=0 selects the
+		# virtual (V) controller, which is a different implementation and is
+		# loaded as such rather than silently.
+		cgpids)
+			case "${DNSK_CGPIDS_NATIVE:-1}" in
+			0) set -- "$@" native=0 ;;
+			1) ;;
+			*) die "DNSK_CGPIDS_NATIVE must be 0 or 1" ;;
+			esac
+			;;
 	esac
 	"$ksud" insmod "$@"
 }
