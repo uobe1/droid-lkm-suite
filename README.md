@@ -1,53 +1,81 @@
 # droid-lkm-suite
 
-Android GKI 容器子系统补全的 LKM 套件：在不写 boot 分区、不重编内核的前提下，为已 Root 的 KernelSU 设备按需加载 `.ko`。
+为已 Root 的 KernelSU 设备补全 Android GKI 缺失的容器内核能力：按需加载 `.ko`，
+不写 boot 分区、不重编内核。
 
-本项目以“**Native 或 Real，无 STUB/FAKE_SUCCESS**”为硬约束。当前处于 **M1 开发阶段**（仅 android16-6.12）：USER_NS（含 idmapped/overlay/FUSE/selftests）、TMPFS xattr/POSIX ACL、CGROUP_PIDS（native slot 注入）已按 Native 实现并在设备 Image 与 AOSP oracle 上通过差分门控；netfilter/ipset、devtmpfs 等按 R 线落地。真机 `ksud insmod` 本地加载与快速测试已跑通（含 SELinux enforcing）。其余功能仍未通过完整 R/D 验收，不得创建 tag。
+## 这是什么
 
-## 范围
+一台 Android GKI 设备的内核配置里常常关掉了容器需要的功能（`CONFIG_USER_NS`、
+`CONFIG_PID_NS`、`CONFIG_CGROUP_PIDS`、`CONFIG_TMPFS_XATTR` 等）。
+这个项目把这些功能以可加载模块的形式补回去，让 Docker、Droidspaces 一类的容器
+能在原厂内核上跑起来。
 
-- 目标：Android GKI arm64、4 KiB 页、KMI `android12-5.10` 至 `android17-6.18`。
-- 设备验证基线：`android16-6.12`；首 tag 需全部 8 个 KMI 与全部目标功能通过，未完成不打 tag。
-- 运行方式：`dnsk_core.ko` 常驻，feature `.ko` 由 `dnskctl`/KSU WebUI 通过 `ksud insmod` 按需加载。
-- 禁止：写 `/boot`、`vendor_boot`、`dtbo`、`system`、`vendor_dlkm`、`system_dlkm`；使用 `/system/bin/insmod`；伪造 controller、文件或“成功”状态。
+加载后，**内核自己执行这些语义** —— 不是模块在旁路模拟。这一区别是本项目的
+硬约束，也是它区分于"hook 一下看起来能用"的地方。
 
-## 文档与状态
+```sh
+# 典型用法
+dnskctl probe            # 看看这台设备缺什么
+dnskctl load ns          # 加载一个 feature
+dnskctl monitor          # 实时看各模块状态
+dnskctl start-all        # 或者一次全开
+```
 
-- 文档索引：[docs/index.md](docs/index.md)
-- 文档规范：[docs/STYLE.md](docs/STYLE.md)
-- 当前状态：[docs/status.md](docs/status.md)
-- 架构说明：[docs/architecture/overview.md](docs/architecture/overview.md)
-- M0 可行性门控：[docs/feasibility/](docs/feasibility/)
+## 实现分两类
 
-状态等级：
+理解这个项目只需要知道一件事：每个模块要么把内核本来就有的能力补回来，要么自己
+实现一份功能。
 
-| 等级 | 含义 |
+| 类别 | 含义 | 判据 |
+|---|---|---|
+| **O** (Native/Origin) | 模块驱动内核**自己的**代码路径 | 如果把模块换成"重新编译、打开该 config 的内核"，其它东西不需要改 |
+| **V** (Visual/Only-feature) | 模块**自己实现**功能 | 丢掉模块就丢掉功能，内核没有参与 |
+
+当前 `ns`、`devtmpfs`、`tmpfsx`、`cgpids`（native 后端）、`ipset`、`netfilter`
+都是 **O**；只有 `cgpids` 的 `native=0` 虚拟控制器是 **V**（用于无法占用 pids 槽位的内核）。
+
+分类规则与逐项依据见 `docs/notes/On-OV-split.md`。
+
+## 状态
+
+当前为 **android16-6.12 开发阶段**，只产出开发工件，不打 tag。
+
+- 已在真机（beryl，`6.12.30-android16-5`）加载并通过功能测试
+- 已与原生 GKI 内核做过语义差分：用户态与内核态观测一致
+- 每个模块都能安全卸载，卸载后内核行为回到原生态
+
+逐项状态与证据：[docs/status.md](docs/status.md)。
+
+## 文档
+
+| 想了解 | 看这里 |
 |---|---|
-| N | Native：宿主已具备，或在完整验收矩阵内与 AOSP Native oracle 一致 |
-| R | Real source-equivalent：同 KMI 源码移植，源码差异可审计，功能/容器工作负载通过 |
-| D | Differential parity：与 AOSP Native oracle 在定义契约内一致 |
-| V | Virtual controller：真实状态/强制/文件，但非内核原生 `cgroup_subsys` |
-| N/A | 该 KMI 上游不存在此特性，不属于该 KMI 验收项 |
-
-任何未达到 N/D/R 的功能都会在 status 中明确标为 `unsupported` 或 `not-shipped`，不会以空实现或显示层替代。
+| 架构与模块划分 | [docs/architecture/overview.md](docs/architecture/overview.md) |
+| 当前功能状态与证据 | [docs/status.md](docs/status.md) |
+| 构建与真机加载步骤 | [docs/guides/build.md](docs/guides/build.md)、[docs/guides/device.md](docs/guides/device.md) |
+| API 与 ABI | [docs/api/](docs/api/) |
+| 全部文档索引 | [docs/index.md](docs/index.md) |
 
 ## 构建
 
-本仓库不在本地进行大体积内核构建。构建由 GitHub Actions 的标准 x86_64 runner + DDK 完成，QEMU 使用 TCG；本地只做静态检查与最终真机加载/smoke。
+大体积内核构建不在本地做，由 GitHub Actions + DDK 完成；本地只做静态检查与真机
+加载验证。
 
 ```sh
 make KDIR=/path/to/kernel M="$PWD" modules
 ```
 
-CI 与真机命令见 [docs/guides/build.md](docs/guides/build.md) 与 [docs/guides/device.md](docs/guides/device.md)。
-
 ## 许可证
 
-本项目按文件类型分层授权：
+按文件类型分层授权：
 
-- 内核模块与内核适配代码：GPL-2.0-only，见 [LICENSES/GPL-2.0-only.txt](LICENSES/GPL-2.0-only.txt)。
-- 用户态工具、脚本、CI：GPL-3.0-or-later，见 [LICENSES/GPL-3.0-or-later.txt](LICENSES/GPL-3.0-or-later.txt)。
-- 文档：CC-BY-SA-4.0，见 [LICENSES/CC-BY-SA-4.0.txt](LICENSES/CC-BY-SA-4.0.txt)。
-- Vendored 上游代码保留其原始 SPDX 与许可证；不整体 reformat。
+- 内核模块与内核适配代码：GPL-2.0-only，见 [LICENSES/GPL-2.0-only.txt](LICENSES/GPL-2.0-only.txt)
+- 用户态工具、脚本、CI：GPL-3.0-or-later，见 [LICENSES/GPL-3.0-or-later.txt](LICENSES/GPL-3.0-or-later.txt)
+- 文档：CC-BY-SA-4.0，见 [LICENSES/CC-BY-SA-4.0.txt](LICENSES/CC-BY-SA-4.0.txt)
+- Vendored 上游代码保留其原始 SPDX 与许可证
 
 作者：Uobe（uobe1）。
+
+---
+
+维护者须知（范围约束、验收标准、提交规则）见 [CONTRIBUTING.md](CONTRIBUTING.md)。
