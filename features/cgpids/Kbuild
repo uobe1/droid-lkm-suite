@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-only
 obj-m := dnsk_cgpids.o
 
-dnsk_cgpids-y := main.o state.o files.o native.o
+# O and V are separate translation units on purpose: a kernel with a free pids
+# slot must not carry the emulation, and neither half's teardown can reach into
+# the other's state.
+dnsk_cgpids-y := main.o native.o virtual.o state.o files.o
 
 ifneq ($(DNSK_ABI_PROFILE),)
 ccflags-y += -DDNSK_ABI_PROFILE=\"$(DNSK_ABI_PROFILE)\"

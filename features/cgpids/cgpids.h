@@ -73,7 +73,15 @@ int dnsk_cgpids_migration_init(void);
 void dnsk_cgpids_migration_exit(void);
 
 struct dnsk_core_api;
+struct dnsk_feature_desc;
+
+/* O side: a real cgroup_subsys injected into the profile slot. */
 int dnsk_cgpids_native_init(struct dnsk_core_api *api);
+
+/* V side: the module-owned controller.  Compiled only into the virtual build. */
+int dnsk_cgpids_virtual_init(struct dnsk_core_api *api,
+			     const struct dnsk_feature_desc *desc);
+void dnsk_cgpids_virtual_exit(struct dnsk_core_api *api);
 int dnsk_cgpids_native_exit(void);
 bool dnsk_cgpids_native_active(void);
 /*
