@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #define pr_fmt(fmt) "droidspaces_netfilter: " fmt
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/utsname.h>
 #include <generated/utsrelease.h>
@@ -29,10 +30,38 @@ static bool ds_gki_supported(void)
 }
 
 unsigned int ds_nft_state_id;
-static struct pernet_operations ds_nft_state_ops = {
-    .id = &ds_nft_state_id,
-    .size = sizeof(struct netns_nftables),
-};
+
+/*
+ * Heap allocated, not static.
+ *
+ * register_pernet_subsys() publishes this struct to the network namespace
+ * machinery, which keeps using it after unregister (RCU readers, and per-netns
+ * data allocated from ->size).  With the struct in .bss it lives in this
+ * module's image, so the netns layer would dereference freed memory once the
+ * module is gone -- the same failure that had to be fixed in devtmpfs by moving
+ * its file_system_type to the heap.
+ *
+ * A small one-shot allocation per load keeps the struct alive for exactly as
+ * long as anything can reach it.
+ */
+static struct pernet_operations *ds_nft_state_ops_p;
+
+static struct pernet_operations *ds_nft_state_ops_get(void)
+{
+	if (!ds_nft_state_ops_p) {
+		/*
+		 * `id` and `size` are const members, so they cannot be assigned at
+		 * run time.  Copy a template instead of filling field by field.
+		 */
+		static const struct pernet_operations tmpl = {
+			.id = &ds_nft_state_id,
+			.size = sizeof(struct netns_nftables),
+		};
+
+		ds_nft_state_ops_p = kmemdup(&tmpl, sizeof(tmpl), GFP_KERNEL);
+	}
+	return ds_nft_state_ops_p;
+}
 #define DS_NF_UNIT(name) \
     extern int ds_nf_init_##name(void); \
     extern void ds_nf_exit_##name(void);
@@ -57,7 +86,7 @@ static int __init ds_netfilter_init(void)
 		pr_info("inactive: activate=1 and gki=1 are required\n");
 		return 0;
 	}
-	err = register_pernet_subsys(&ds_nft_state_ops);
+	err = register_pernet_subsys(ds_nft_state_ops_get());
     if (err)
         return err;
     for (i = 0; i < ARRAY_SIZE(units); i++) {
@@ -66,7 +95,7 @@ static int __init ds_netfilter_init(void)
             pr_err("%s registration failed: %d\n", units[i].name, err);
             while (i)
                 units[--i].exit();
-            unregister_pernet_subsys(&ds_nft_state_ops);
+            unregister_pernet_subsys(ds_nft_state_ops_get());
             return err;
         }
     }
@@ -84,7 +113,7 @@ static void __exit ds_netfilter_exit(void)
     i = ARRAY_SIZE(units);
     while (i)
         units[--i].exit();
-    unregister_pernet_subsys(&ds_nft_state_ops);
+    unregister_pernet_subsys(ds_nft_state_ops_get());
 }
 module_init(ds_netfilter_init);
 module_exit(ds_netfilter_exit);
