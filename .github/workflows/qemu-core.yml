@@ -292,8 +292,6 @@ jobs:
             aarch64-linux-gnu-gcc -static -O2 -o userns_unpriv_test \
               tests/qemu/userns_unpriv_test.c
             aarch64-linux-gnu-gcc -static -O2 -o fuse_test tests/qemu/fuse_test.c
-          aarch64-linux-gnu-gcc -static -O2 -pthread -o mount_setattr_test \
-            tests/qemu/selftests/mount_setattr/mount_setattr_test.c
             aarch64-linux-gnu-gcc -static -O2 -pthread -o mount_setattr_test \
               tests/qemu/selftests/mount_setattr/mount_setattr_test.c
             cp userns_test userns_unpriv_test fuse_test mount_setattr_test rootfs/
@@ -525,6 +523,8 @@ jobs:
           aarch64-linux-gnu-gcc -static -O2 -o setns_pidfd_probe \
             tests/qemu/setns_pidfd_probe.c
           aarch64-linux-gnu-gcc -static -O2 -o fuse_test tests/qemu/fuse_test.c
+          aarch64-linux-gnu-gcc -static -O2 -pthread -o mount_setattr_test \
+            tests/qemu/selftests/mount_setattr/mount_setattr_test.c
           aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
           aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
           aarch64-linux-gnu-gcc -static -O2 -o dnsk-preflight tools/dnsk_preflight.c

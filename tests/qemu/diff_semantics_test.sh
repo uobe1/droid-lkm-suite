@@ -378,6 +378,20 @@ assert_file_has "workflow builds the ipcns isolation helper" "$WORKFLOW" \
 assert_file_has "workflow builds the pidfd setns helper" "$WORKFLOW" \
 	'setns_pidfd_probe'
 assert_file_has "workflow builds the FUSE helper" "$WORKFLOW" 'fuse_test'
+# Every binary the assemble step copies into the rootfs must be produced by
+# the diff job's own Build step.  A previous run failed exactly here: the
+# compile line existed elsewhere in the workflow, so a global grep passed while
+# the diff job tried to cp a file it never built.
+build_step=$(sed -n '/- name: Build probe binaries/,/- name: Assemble/p' "$WORKFLOW")
+for bin in ipc_probe xattr_probe acl_test userns_test userns_unpriv_test \
+	pids_probe ipcns_leak setns_pidfd_probe fuse_test mount_setattr_test \
+	selinux_load insmod_force dnsk-preflight; do
+	if printf '%s\n' "$build_step" | grep -q -- "-o $bin "; then
+		ok "diff build step produces $bin"
+	else
+		no "diff build step produces $bin" "missing '-o $bin' in Build probe binaries"
+	fi
+done
 assert_file_has "workflow builds the mount_setattr selftest" "$WORKFLOW" \
 	'mount_setattr_test'
 assert_file_has "workflow installs e2fsprogs for the selftest" "$WORKFLOW" \
