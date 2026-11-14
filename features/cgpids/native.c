@@ -268,7 +268,7 @@ static int dnsk_rwprobe_reloc(void)
 		if ((i1 & 0xFF800000) == 0x91000000)
 			buf[1] = (i1 & ~0x00FFFC00u) | (((u32)off & 0xFFF) << 10);
 		else
-			buf[1] = (i1 & ~0x00FFFC00u) |
+			buf[1] = (i1 & ~0x003FFC00u) |
 				 ((((u32)off >> 3) & 0xFFF) << 10);
 		{
 			struct dnsk_rw_req req = { 0 };
