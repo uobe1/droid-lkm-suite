@@ -226,6 +226,89 @@ int dnsk_patch_text(void *dst, const void *src, size_t len, bool flush_icache)
 	return stop_machine(dnsk_patch_cb, &info, cpu_online_mask);
 }
 
+struct dnsk_rmw_info {
+	void *dst;
+	u64 value;
+	u64 expected;
+	u64 old;
+	bool cas;
+	atomic_t cpu_count;
+	int ret;
+};
+
+static int dnsk_rmw_cb(void *arg)
+{
+	struct dnsk_rmw_info *info = arg;
+
+	if (atomic_inc_return(&info->cpu_count) == num_online_cpus()) {
+		u64 cur;
+		int err;
+
+		err = (int)dnsk_copy_nofault_fn(&cur, info->dst, sizeof(cur));
+		if (err) {
+			info->ret = err;
+		} else {
+			info->old = cur;
+			if (info->cas && cur != info->expected) {
+				info->ret = -EAGAIN;
+			} else {
+				info->ret = dnsk_patch_nosync(
+					info->dst, &info->value,
+					sizeof(info->value), false);
+			}
+		}
+		atomic_inc(&info->cpu_count);
+	} else {
+		while (atomic_read(&info->cpu_count) <= num_online_cpus())
+			cpu_relax();
+		isb();
+	}
+	return info->ret;
+}
+
+int dnsk_patch_xchg64(void *dst, u64 value, u64 *old)
+{
+	struct dnsk_rmw_info info = {
+		.dst = dst,
+		.value = value,
+		.cas = false,
+		.cpu_count = ATOMIC_INIT(0),
+		.ret = -EINVAL,
+	};
+	int ret;
+
+	if (!dnsk_patch_ready())
+		return -EOPNOTSUPP;
+	if (!dst)
+		return -EINVAL;
+	ret = stop_machine(dnsk_rmw_cb, &info, cpu_online_mask);
+	if (old)
+		*old = info.old;
+	return ret;
+}
+
+int dnsk_patch_cas64(void *dst, u64 expected, u64 value, u64 *old)
+{
+	struct dnsk_rmw_info info = {
+		.dst = dst,
+		.value = value,
+		.expected = expected,
+		.cas = true,
+		.cpu_count = ATOMIC_INIT(0),
+		.ret = -EINVAL,
+	};
+	int ret;
+
+	if (!dnsk_patch_ready())
+		return -EOPNOTSUPP;
+	if (!dst)
+		return -EINVAL;
+	ret = stop_machine(dnsk_rmw_cb, &info, cpu_online_mask);
+	if (old)
+		*old = info.old;
+	return ret;
+}
+
 int dnsk_patch_pointer(void *target, void *value)
 {
 	unsigned long v = (unsigned long)value;

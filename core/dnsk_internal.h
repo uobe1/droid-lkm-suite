@@ -68,6 +68,8 @@ int dnsk_patch_init(void);
 bool dnsk_patch_ready(void);
 int dnsk_patch_text(void *dst, const void *src, size_t len, bool flush_icache);
 int dnsk_rw_op(struct dnsk_rw_req *req);
+int dnsk_patch_xchg64(void *dst, u64 value, u64 *old);
+int dnsk_patch_cas64(void *dst, u64 expected, u64 value, u64 *old);
 int dnsk_patch_pointer(void *target, void *value);
 int dnsk_virt_to_phys(void *va, unsigned long *pa);
 
