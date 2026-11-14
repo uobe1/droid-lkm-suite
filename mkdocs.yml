@@ -36,6 +36,9 @@ nav:
       - 卸载安全: architecture/unload-safety.md
       - ABI 与 profile: architecture/abi-and-profiles.md
   - 状态: status.md
+  - API:
+      - Kernel API: api/kernel.md
+      - Userspace API: api/userspace.md
   - 指南:
       - 构建: guides/build.md
       - dnskctl 命令手册: guides/dnskctl.md

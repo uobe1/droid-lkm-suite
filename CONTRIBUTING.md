@@ -20,6 +20,10 @@
 - 用户态 C: C11, 4 空格, 100 列, clang-format
 - Shell: POSIX sh, shellcheck + shfmt
 - Python: ruff
+- 本机不安装重工具链时, 用 `make check` 跑纯 Python3 门禁:
+  API 文档漂移, tracked Markdown 风格; 有 clang-format/shellcheck/ruff/
+  markdownlint 时同一命令会自动追加对应检查
+- 新增公开声明必须同时写 kernel-doc 或 Doxygen 注释, 否则 `make check` 报错
 - Vendored 代码保持上游风格与哈希; 适配层按本项目风格
 
 ## 文档

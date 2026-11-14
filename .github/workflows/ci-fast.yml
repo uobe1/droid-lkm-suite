@@ -23,7 +23,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A build must never start before the comment/doc gate is green.  This is
+  # the "check before you run" rule, not a second build.
+  docs-check:
+    uses: ./.github/workflows/docs-check.yml
+
   build:
+    needs: docs-check
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/ylarod/ddk-min:android16-6.12-20260828

@@ -203,29 +203,62 @@ struct dnsk_feature_desc {
 	struct module *owner;
 };
 
+/**
+ * enum dnsk_rw_opcode - operation selected by struct dnsk_rw_req
+ *
+ * READ and WRITE copy bytes; XCHG and CAS are atomic read-modify-write;
+ * PROBE resolves src as a symbol name and stores the address in dst.
+ */
 enum dnsk_rw_opcode {
+	/** @DNSK_RW_READ: copy from req->addr to req->dst. */
 	DNSK_RW_READ = 1,
+	/** @DNSK_RW_WRITE: copy from req->src to req->addr. */
 	DNSK_RW_WRITE,
+	/** @DNSK_RW_XCHG: exchange req->value with the u64 at req->addr. */
 	DNSK_RW_XCHG,
+	/** @DNSK_RW_CAS: compare against req->old before writing req->value. */
 	DNSK_RW_CAS,
+	/** @DNSK_RW_PROBE: resolve the symbol named by req->src into req->dst. */
 	DNSK_RW_PROBE,
 };
 
+/**
+ * enum dnsk_rw_lock_type - lock core takes when DNSK_RW_F_LOCKED is set
+ *
+ * The caller must not already hold that lock; lock-held contexts use the
+ * lockless data path instead.
+ */
 enum dnsk_rw_lock_type {
+	/** @DNSK_RW_LOCK_NONE: no lock is taken. */
 	DNSK_RW_LOCK_NONE = 0,
+	/** @DNSK_RW_LOCK_MUTEX: req->lock points at a struct mutex. */
 	DNSK_RW_LOCK_MUTEX,
+	/** @DNSK_RW_LOCK_SPIN_IRQSAVE: req->lock points at a spinlock_t. */
 	DNSK_RW_LOCK_SPIN_IRQSAVE,
+	/** @DNSK_RW_LOCK_RWSEM_READ: req->lock points at a struct rw_semaphore. */
 	DNSK_RW_LOCK_RWSEM_READ,
 };
 
-/* Perform the operation while holding req->lock.  The caller must not already
- * hold that lock; for lock-held contexts use the lockless data path. */
+/**
+ * define DNSK_RW_F_LOCKED - perform the operation while holding req->lock
+ *
+ * The caller must not already hold that lock; for lock-held contexts use the
+ * lockless data path.
+ */
 #define DNSK_RW_F_LOCKED (1u << 0)
-/* The target is executable text: flush the instruction cache after writing. */
+/**
+ * define DNSK_RW_F_TEXT - the target is executable text
+ *
+ * Flush the instruction cache after writing.
+ */
 #define DNSK_RW_F_TEXT   (1u << 1)
-/* The target may be read-only: force the patch path, which sleeps and must not
- * be used while holding a spinlock.  Without this flag XCHG/CAS/WRITE use
- * hardware atomics or a direct store. */
+/**
+ * define DNSK_RW_F_RO - the target may be read-only
+ *
+ * Force the patch path, which sleeps and must not be used while holding a
+ * spinlock.  Without this flag XCHG/CAS/WRITE use hardware atomics or a
+ * direct store.
+ */
 #define DNSK_RW_F_RO     (1u << 2)
 
 /**
@@ -360,6 +393,17 @@ struct dnsk_core_api {
 	 * when the patching backend is not available.
 	 */
 	int (*patch_pointer)(void *target, void *value);
+	/**
+	 * @rw: dispatch one struct dnsk_rw_req.
+	 *
+	 * @req: the request to execute; req->ret receives the result.
+	 *
+	 * READ/WRITE/XCHG/CAS use a direct copy or hardware atomics and do not
+	 * enter stop_machine, so they are safe in lock-held contexts.  F_TEXT
+	 * and F_RO route through the sleeping patch backend.
+	 *
+	 * Return: %0 on success, negative errno on failure.
+	 */
 	int (*rw)(struct dnsk_rw_req *req);
 	/**
 	 * @owner: the core module, with one reference held for the caller.

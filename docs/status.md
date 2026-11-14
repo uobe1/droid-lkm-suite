@@ -6,7 +6,7 @@
 
 | 功能 | 目标等级 | 当前状态 | 说明 |
 |---|---|---|---|
-| core ABI / symbol / patch / hook / panic | N/A | M0 完成 | ABI 3; 状态桥/生命周期真机验证; stock GKI QEMU core smoke 通过 |
+| core ABI / symbol / patch / hook / panic | N/A | M0 完成 | ABI 5(单入口 `rw`, `patch_pointer`, 四种 hook); 状态桥/生命周期真机验证; stock GKI QEMU core smoke 通过 |
 | PID_NS / IPC_NS / SYSVIPC / POSIX_MQUEUE | R | development | PID/IPC/SysV/mqueue + nested PID + 100 cycles + 嵌套 Debian 容器 smoke 通过; pidfd setns 的 `ipc_ns=NULL` panic 已修复并复测 (EINVAL + ns smoke); full R 待 setns/Docker/容器 reboot |
 | DEVTMPFS | R | development | active 真机通过: ready=Y, 节点挂载, 宿主 /dev 不变, 嵌套容器 /dev smoke; 模块按设计 pin; Docker/droidspaces 工作负载待完成 |
 | xt_addrtype / nft target subset / REJECT / RECENT / IP6 NAT | R | development | active load/unload + netns 内 addrtype/recent/REJECT/ipset/xt_set 规则通过; 原生 REJECT 正确跳过; 内核缺 `IP6_NF_NAT` 时由模块补齐 legacy `nat` 表 (DNAT/MASQUERADE, run 42254952259, 符号由 ksud 解析); UFW/Fail2ban(run 42278237353) 与 Docker 29.7.2 legacy+nft bridge/NAT(run 42293517445) 通过 |

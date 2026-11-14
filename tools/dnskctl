@@ -1,8 +1,35 @@
 #!/system/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# dnskctl is the only supported user-space entry point for loading droid-lkm-
-# suite modules.  It never writes boot partitions and never fakes status.
+# /**
+#  * @brief dnskctl - device-side control CLI for droid-lkm-suite
+#  *
+#  * The only supported user-space entry point for loading, unloading and
+#  * inspecting modules.  It never writes boot partitions and never fakes
+#  * status; every reported value comes from a real system read.
+#  *
+#  * @command probe [--json]            show device/KMI/ksud/cgroup facts
+#  * @command cap [--json]              show core capability/status
+#  * @command status [--json]           show loaded modules and /proc/dnsk/status
+#  * @command monitor [--json]          one machine-readable state snapshot per call
+#  * @command start-all [--json]        load every shipped module in dependency order
+#  * @command stop-all [--json]         unload features then core, verifying each step
+#  * @command preflight [feature]       run device-side preflight (default: core)
+#  * @command load <feature>            ksud insmod a feature module (idempotent)
+#  * @command unload <feature>          rmmod safely: refs, dependants, post-check
+#  * @command profile <name>            load a named profile
+#  * @command enable|disable            allow/skip core auto-load on the next boot
+#  * @command logs [lines]              tail the module state logs
+#  * @command boot-begin|boot-ok|boot-check  manage the boot state marker
+#  * @command doctor [--last-panic]     collect dmesg/pstore/panic evidence
+#  * @command cgroup-prep [--plan]      detect cgroup v1/v2 paths; does not modify them
+#  * @command cgroup-prep --bind <root>  bind existing /dev cgroup dirs into <root>
+#  * @command cgroup-prep --delegate <dir>  enable controllers in subtree_control
+#  * @command storage-loop create <img> <size> [ext4|f2fs]  create a sparse loop image
+#  * @command storage-loop remove <img>  umount (best effort) and delete the image
+#  *
+#  * @note --json prints a single-line JSON object; exit status still reflects errors.
+#  */
 
 set -eu
 

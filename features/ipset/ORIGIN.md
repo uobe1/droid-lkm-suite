@@ -93,7 +93,7 @@ Only build integration, no semantic changes:
 
 ## Upstream SHA-256 (before local adaptation)
 
-```
+```text
 0d3f4a091e4d4d69ef6595bf7e6781f1ba1e0397abef322ac953425a16af0d54  include/linux/netfilter/ipset/ip_set.h
 772a9b280a8ff22d883bf3b4e8aba9d9e3f2097d64e205dffece622892e2c4ca  include/linux/netfilter/ipset/ip_set_bitmap.h
 2d94470ead031062044d41b664d5ad5cacb522ed3a5156f6667f3d8da07bebe7  include/linux/netfilter/ipset/ip_set_getport.h

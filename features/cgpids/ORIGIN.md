@@ -13,7 +13,7 @@ The accounting and file semantics follow upstream Linux 6.12
 
 The module does not copy the native controller as a `cgroup_subsys`; it cannot
 register one at runtime. The virtual controller is documented as `VIRTUAL`,
-not native. See `docs/feasibility/cgpids.md` for the design and the list of
+not native. See `docs/evidence/feasibility-cgpids.md` (local material, not shipped) for the design and the list of
 unsupported v1/threaded/id-enumeration semantics.
 
 SPDX-License-Identifier: GPL-2.0-only

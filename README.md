@@ -54,7 +54,7 @@ dnskctl start-all        # 或者一次全开
 | 架构与模块划分 | [docs/architecture/overview.md](docs/architecture/overview.md) |
 | 当前功能状态与证据 | [docs/status.md](docs/status.md) |
 | 构建与真机加载步骤 | [docs/guides/build.md](docs/guides/build.md), [docs/guides/device.md](docs/guides/device.md) |
-| API 与 ABI | [docs/api/](docs/api/) |
+| API 与 ABI | [Kernel API](docs/api/kernel.md), [Userspace API](docs/api/userspace.md) |
 | 全部文档索引 | [docs/index.md](docs/index.md) |
 
 ## 构建
@@ -63,7 +63,9 @@ dnskctl start-all        # 或者一次全开
 加载验证
 
 ```sh
-make KDIR=/path/to/kernel M="$PWD" modules
+make KDIR=/path/to/kernel M="$PWD" modules   # 云端/Codespace 内核构建
+make check                                   # 本地: API 文档漂移 + Markdown 风格
+make docs                                    # 本地: 从注释重新生成 docs/api/
 ```
 
 ## 许可证

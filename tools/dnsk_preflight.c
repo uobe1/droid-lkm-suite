@@ -1,8 +1,67 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-/*
- * Device-side preflight.  This is intentionally conservative: it checks the
- * facts dnsk_core depends on and refuses to report success when a required
- * symbol or environment fact is missing.
+/**
+ * @brief dnsk-preflight - device-side fact check before a module is loaded
+ *
+ * This is intentionally conservative: it checks the facts dnsk_core depends
+ * on and refuses to report success when a required symbol or environment
+ * fact is missing.  It emits a single-line JSON object on stdout; dnskctl
+ * load refuses to continue when @json ok is false.
+ *
+ * @json ok                 overall result, false when any required check fails
+ * @json feature            feature name being checked (default: core)
+ * @json release            uname(2) release string
+ * @json kmi                derived KMI generation string
+ * @json supported          whether this KMI is in the supported list
+ * @json page_size          kernel page size in bytes
+ * @json btf                whether /sys/kernel/btf/vmlinux is usable
+ * @json ksud               resolved ksud path, empty when absent
+ * @json btf_layout         object: measured BTF structure sizes
+ * @json btf_layout.xt_match_size    sizeof(struct xt_match)
+ * @json btf_layout.xt_target_size   sizeof(struct xt_target)
+ * @json btf_layout.seq_file_private offset of seq_file->private
+ * @json btf_layout.xt_ok            combined xtables layout verdict
+ * @json btf_layout.boundary         object: layout boundary sub-checks
+ * @json btf_layout.boundary.locks   lock field offsets verified
+ * @json btf_layout.boundary.checked_xt  xt boundary check was requested
+ * @json btf_layout.boundary.xt_params   xt per-parameter offsets verified
+ * @json btf_layout.boundary.skb        sk_buff offsets verified
+ * @json btf_layout.boundary.net        net offsets verified
+ * @json btf_layout.boundary.checked_fs fs boundary check was requested
+ * @json btf_layout.boundary.fs         fs offsets verified
+ * @json btf_layout.boundary.checked_ns ns boundary check was requested
+ * @json btf_layout.boundary.ns         ns offsets verified
+ * @json btf_layout.boundary.checked_cgpids cgpids check was requested
+ * @json btf_layout.boundary.cgpids    cgpids offsets verified
+ * @json btf_layout.boundary.checked_tmpfsx tmpfsx check was requested
+ * @json btf_layout.boundary.tmpfsx    tmpfsx offsets verified
+ * @json btf_layout.boundary.ok        combined boundary verdict
+ * @json nf                 object: netfilter ABI sub-checks
+ * @json nf.checked         netfilter check was requested
+ * @json nf.hook_ops        nf_hook_ops layout verified
+ * @json nf.hook_state      nf_hook_state layout verified
+ * @json nf.conn            nf_conn layout verified
+ * @json nf.pernet_ops      pernet_operations layout verified
+ * @json nf.nfnetlink       nfnetlink_subsystem layout verified
+ * @json nf.nfnl_callback   nfnl_callback layout verified
+ * @json nf.nat_hook        nat hook layout verified
+ * @json nf.nat_range2      nf_nat_range2 layout verified
+ * @json nf.rhashtable      rhashtable layout verified
+ * @json nf.ok              combined netfilter verdict
+ * @json symbols            object: required symbol name -> present boolean
+ * @json checks             object: boolean environment facts
+ * @json checks.page_size_4k       page size is 4096
+ * @json checks.btf                BTF available
+ * @json checks.kmi_supported      KMI supported
+ * @json checks.ksud               ksud present
+ * @json checks.dcache             dcache available
+ * @json checks.kallsyms_resolver   kallsyms resolver available
+ * @json checks.xt_layout           xtables layout acceptable
+ * @json checks.boundary            boundary checks acceptable
+ * @json checks.nf_abi             netfilter ABI acceptable
+ * @json checks.nf_symbols         netfilter symbols present
+ * @json checks.cgpids_symbols     cgpids symbols present
+ * @json checks.tmpfsx_symbols     tmpfsx symbols present
+ * @json checks.seq_private        seq_file private offset acceptable
  */
 
 #include <errno.h>

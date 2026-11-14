@@ -61,11 +61,15 @@
 
 ## 生成文档
 
-- API 文档必须由工具生成, 不手写
-- 内核 API: kernel-doc(`scripts/kernel-doc`) 生成 rST, 再由 `scripts/gen-kernel-api.py` 转 HTML
-- 用户态 C API: Doxygen 生成 HTML
-- 生成物不手工编辑; 注释是唯一 API 文档来源
-- 生成页面提交到仓库, 让读者不必自行构建; CI 校验其与头文件一致
+- API 文档必须由脚本生成, 不手写
+- 唯一来源: `core/include/*.h` 的 kernel-doc 注释与 `tools/dnskctl` /
+  `tools/dnsk_preflight.c` 的 Doxygen 注释
+- `scripts/gen-api-docs.py` 只解析注释, 不读实现, 格式串或 `usage()` here-doc
+- 生成物为 `docs/api/kernel.md` 与 `docs/api/userspace.md`, 提交到仓库
+- `make docs` 重新生成; `make docs-check` 或 `make check` 校验漂移
+- 本机没有 kernel-doc / doxygen / markdownlint 且不允许本地安装, 故生成器与
+  风格检查均为纯 Python3; 工具缺失时门禁必须报错, 不得静默通过
+- 生成物不手工编辑; 公开声明缺注释时生成器报错, 不得静默跳过
 
 ## 许可证
 

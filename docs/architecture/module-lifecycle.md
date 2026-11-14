@@ -79,7 +79,7 @@ core **不在这两个 owner 上取模块引用**.两个必须理解的结果:
 
 ## `module_init` / `module_exit` 的固定顺序
 
-```
+```text
 static int __init x_init(void)
 {
         api = dnsk_core_get(DNSK_CORE_ABI, sizeof(*api));
