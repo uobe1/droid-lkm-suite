@@ -162,6 +162,45 @@ static void dnsk_rwprobe_probe(const char *name)
 		pr_info("dnsk_rwprobe: %s=%px\n", name, addr);
 }
 
+static void dnsk_rwprobe_scan_refs(void *target)
+{
+	u64 addr = (u64)target;
+	u64 pg, tgt, pc;
+	s64 imm;
+	u32 i0, i1, *p;
+	int adrp_add = 0, adrp_ldr = 0;
+	void *stext = dnsk_native_api->resolve("_stext");
+	void *etext = dnsk_native_api->resolve("_etext");
+
+	if (!stext || !etext || etext <= stext)
+		return;
+	for (p = stext; (void *)(p + 2) <= etext; p++) {
+		i0 = READ_ONCE(p[0]);
+		i1 = READ_ONCE(p[1]);
+		if ((i0 & 0x9F000000) != 0x90000000)
+			continue;
+		pc = (u64)p;
+		imm = ((s64)(((i0 >> 5) & 0x7FFFF) << 2) |
+		       ((i0 >> 29) & 3));
+		if (imm & (1 << 20))
+			imm |= ~((1 << 21) - 1);
+		pg = (pc & ~0xFFFUL) + ((u64)imm << 12);
+		if ((i1 & 0xFF800000) == 0x91000000) {
+			tgt = pg + (((i1 >> 10) & 0xFFF) <<
+				    (((i1 >> 22) & 3) == 1 ? 12 : 0));
+			if (tgt >= addr && tgt < addr + 64)
+				adrp_add++;
+		}
+		if ((i1 & 0xFFC00000) == 0xF9400000) {
+			tgt = pg + (((i1 >> 10) & 0xFFF) * 8);
+			if (tgt >= addr && tgt < addr + 64)
+				adrp_ldr++;
+		}
+	}
+	pr_info("dnsk_rwprobe: refs add=%d ldr=%d range=%px-%px\n",
+		adrp_add, adrp_ldr, stext, etext);
+}
+
 static void dnsk_rwprobe_run(void)
 {
 	struct dnsk_rw_req req = { 0 };
@@ -220,6 +259,7 @@ static void dnsk_rwprobe_run(void)
 			pr_info("dnsk_rwprobe: slot %d ss=%px name=%s\n",
 				i, ss, name);
 	}
+	dnsk_rwprobe_scan_refs(arr);
 }
 
 #define DNSK_SS_PTR(ss, off) (*(void **)((char *)(ss) + (off)))
