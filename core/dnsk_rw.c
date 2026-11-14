@@ -36,6 +36,7 @@
 #include <linux/pfn.h>
 #include <linux/proc_fs.h>
 #include <linux/slab.h>
+#include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/uaccess.h>
 #include <linux/user_namespace.h>
@@ -225,6 +226,119 @@ static int dnsk_rw_do_write(u64 addr, const u8 *data, size_t len, bool phys)
 				    (unsigned int)(slot - dnsk_rw_slots), len,
 				    ktime_get_ns() - t0);
 	return 0;
+}
+
+static int dnsk_rw_kmem_read(void *dst, const void *src, size_t len)
+{
+	unsigned long a;
+
+	if (!dst || !src || !len || len > DNSK_RW_MAX)
+		return -EINVAL;
+	a = (unsigned long)src;
+	if ((a & ~PAGE_MASK) + len > PAGE_SIZE)
+		return -EINVAL;
+	if (!dnsk_rw_read_fn)
+		return -EOPNOTSUPP;
+	return (int)dnsk_rw_read_fn(dst, src, len);
+}
+
+static int dnsk_rw_kmem_write(void *dst, const void *src, size_t len)
+{
+	unsigned long a;
+
+	if (!dst || !src || !len || len > DNSK_RW_MAX)
+		return -EINVAL;
+	a = (unsigned long)dst;
+	if ((a & ~PAGE_MASK) + len > PAGE_SIZE)
+		return -EINVAL;
+	if (!dnsk_patch_ready())
+		return -EOPNOTSUPP;
+	return dnsk_patch_text(dst, src, len, false);
+}
+
+static int dnsk_rw_do_op(struct dnsk_rw_req *req)
+{
+	u64 old;
+	int ret;
+
+	switch (req->opcode) {
+	case DNSK_RW_READ:
+		return dnsk_rw_kmem_read(req->dst, req->addr, req->len);
+	case DNSK_RW_WRITE:
+		return dnsk_rw_kmem_write(req->addr, req->src, req->len);
+	case DNSK_RW_XCHG:
+		ret = dnsk_rw_kmem_read(&old, req->addr, sizeof(old));
+		if (ret)
+			return ret;
+		ret = dnsk_rw_kmem_write(req->addr, &req->value,
+					 sizeof(req->value));
+		if (ret)
+			return ret;
+		req->old = old;
+		return 0;
+	case DNSK_RW_CAS:
+		ret = dnsk_rw_kmem_read(&old, req->addr, sizeof(old));
+		if (ret)
+			return ret;
+		if (old != req->old)
+			return -EAGAIN;
+		return dnsk_rw_kmem_write(req->addr, &req->value,
+					  sizeof(req->value));
+	case DNSK_RW_PROBE: {
+		void *va = req->src ? dnsk_resolve_symbol(req->src) : NULL;
+
+		if (!va)
+			return -ENOENT;
+		if (!req->dst)
+			return -EINVAL;
+		*(void **)req->dst = va;
+		return 0;
+	}
+	default:
+		return -EINVAL;
+	}
+}
+
+struct dnsk_rw_lock_ctx {
+	struct dnsk_rw_req *req;
+};
+
+static void dnsk_rw_lock_call(void *arg)
+{
+	struct dnsk_rw_lock_ctx *ctx = arg;
+
+	ctx->req->ret = dnsk_rw_do_op(ctx->req);
+}
+
+int dnsk_rw_op(struct dnsk_rw_req *req)
+{
+	struct dnsk_rw_lock_ctx ctx;
+	unsigned long flags;
+
+	if (!req)
+		return -EINVAL;
+	req->ret = -EINVAL;
+	if (!(req->flags & DNSK_RW_F_LOCKED)) {
+		req->ret = dnsk_rw_do_op(req);
+		return req->ret;
+	}
+	if (!req->lock)
+		return -EINVAL;
+	ctx.req = req;
+	switch (req->lock_type) {
+	case DNSK_RW_LOCK_MUTEX:
+		mutex_lock((struct mutex *)req->lock);
+		dnsk_rw_lock_call(&ctx);
+		mutex_unlock((struct mutex *)req->lock);
+		return req->ret;
+	case DNSK_RW_LOCK_SPIN_IRQSAVE:
+		spin_lock_irqsave((spinlock_t *)req->lock, flags);
+		dnsk_rw_lock_call(&ctx);
+		spin_unlock_irqrestore((spinlock_t *)req->lock, flags);
+		return req->ret;
+	default:
+		return -EINVAL;
+	}
 }
 
 static int dnsk_rw_do_revert(unsigned long slot)

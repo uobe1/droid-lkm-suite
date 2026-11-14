@@ -46,6 +46,11 @@ static int dnsk_api_patch_pointer(void *target, void *value)
 	return dnsk_patch_pointer(target, value);
 }
 
+static int dnsk_api_rw(struct dnsk_rw_req *req)
+{
+	return dnsk_rw_op(req);
+}
+
 static void dnsk_api_log(int level, const char *fmt, ...)
 {
 	char buf[256];
@@ -70,6 +75,7 @@ static struct dnsk_core_api dnsk_api = {
 	.feature_del = dnsk_api_feature_del,
 	.log = dnsk_api_log,
 	.patch_pointer = dnsk_api_patch_pointer,
+	.rw = dnsk_api_rw,
 	.owner = THIS_MODULE,
 };
 

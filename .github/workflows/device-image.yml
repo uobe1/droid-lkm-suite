@@ -19,6 +19,7 @@ on:
           - userns
           - netfilter
           - apps
+          - lifecycle
         default: baseline
       module_run_id:
         description: CI run id with core-android16-6.12 artifact (all device modes)
@@ -343,6 +344,32 @@ jobs:
               --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/community \
               add ufw fail2ban iptables-legacy
             cp tests/qemu/init-apps-device rootfs/init
+          elif [ "${{ inputs.mode }}" = "lifecycle" ]; then
+            # Install a real module layout so dnskctl resolves kmi/policy.conf
+            # exactly as an installed KSU module does, then load and unload
+            # every module through the CLI the WebUI drives.
+            MODROOT=rootfs/data/adb/modules/droid_lkm_suite
+            mkdir -p "$MODROOT/kmi/android16-6.12" "$MODROOT/bin"
+            cp ksu/policy.conf ksu/supported_kmis.txt "$MODROOT/"
+            cp tools/dnskctl "$MODROOT/bin/dnskctl"
+            cp ksu/bin/panic_decode.sh "$MODROOT/bin/panic_decode.sh"
+            chmod 0755 "$MODROOT/bin/dnskctl" "$MODROOT/bin/panic_decode.sh"
+            cp modules/*.ko "$MODROOT/kmi/android16-6.12/"
+            aarch64-linux-gnu-gcc -static -O2 -o "$MODROOT/bin/dnsk-preflight" \
+              tools/dnsk_preflight.c
+            chmod 0755 "$MODROOT/bin/dnsk-preflight"
+            cp "$MODROOT/kmi/android16-6.12/dnsk_core.ko" rootfs/modules/ 2>/dev/null || true
+            cp modules/selpermissive.ko rootfs/modules/
+            cp tests/qemu/assets/ksud rootfs/ksud
+            chmod 0755 rootfs/ksud
+            cp -a tests/qemu/assets/android/. rootfs/
+            chmod 0755 rootfs/system/bin/linker64
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
+            aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+            cp selinux_load rootfs/selinux_load
+            cp tests/qemu/assets/selinux-precompiled-sepolicy.gz rootfs/policy.gz
+            cp tests/qemu/init-lifecycle-device rootfs/init
           elif [ "${{ inputs.mode }}" = "userns" ]; then
             cp modules/dnsk_core.ko modules/dnsk_ns.ko modules/dnsk_tmpfsx.ko rootfs/modules/
             cp tests/qemu/assets/ksud rootfs/ksud
@@ -441,7 +468,7 @@ jobs:
           fi
           APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
           case "$MODE" in
-            ksud-ns|ksud-docker|tmpfsx|userns|netfilter|apps) APPEND="$APPEND enforcing=0" ;;
+            ksud-ns|ksud-docker|tmpfsx|userns|netfilter|apps|lifecycle) APPEND="$APPEND enforcing=0" ;;
             *) APPEND="$APPEND selinux=0" ;;
           esac
           if [ "$MODE" = "ksud-ns" ] || [ "$MODE" = "ksud-docker" ]; then
@@ -509,6 +536,26 @@ jobs:
             grep -q 'DNSK_UFW_OK' qemu.log
             grep -q 'DNSK_FAIL2BAN_OK' qemu.log
             grep -q 'DNSK_APPS_OK' qemu.log
+          elif [ "$MODE" = "lifecycle" ]; then
+            # Every module loads through dnskctl, is visible in monitor, and is
+            # then removed again without leaving hooks, refs or kernel alarms.
+            grep -q 'DNSK_KSUD_LATE_LOAD_OK' qemu.log
+            grep -q 'DNSK_CLI_PROBE_OK' qemu.log
+            grep -q 'DNSK_LOAD_CORE_OK' qemu.log
+            grep -q 'DNSK_MONITOR_OK' qemu.log
+            grep -q 'DNSK_MONITOR_ALL_OK' qemu.log
+            grep -q 'DNSK_MONITOR_CONTRACT_OK' qemu.log
+            grep -q 'DNSK_UNLOAD_ALL_OK' qemu.log
+            grep -q 'DNSK_LSMOD_CLEAN_OK' qemu.log
+            grep -q 'DNSK_SYSFS_CLEAN_OK' qemu.log
+            grep -q 'DNSK_POST_SYSCALLS_OK' qemu.log
+            grep -q 'DNSK_LIFECYCLE_CLEAN' qemu.log
+            grep -q 'DNSK_LIFECYCLE_OK' qemu.log
+            # A pinned module must fail the gate, not pass with a warning.
+            if grep -q 'DNSK_LIFECYCLE_WARN' qemu.log; then
+              echo "kernel logged warnings while unloading modules" >&2
+              exit 1
+            fi
           else
             grep -q 'DNSK_DEVICE_KERNEL_OK' qemu.log
           fi

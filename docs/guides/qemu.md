@@ -8,7 +8,7 @@
 1. 从 AOSP 同 KMI 源码构建 feature-off 内核 `Image`
 2. 构建带 `/init` 的 arm64 initramfs; `/init` 通过 9p 挂载 hostshare, 执行
  `insmod /mnt/dnsk_core.ko`, 读取 `/proc/dnsk/status`, 成功打印
- `DSNK_QEMU_OK`
+ `DNSK_QEMU_OK`
 3. 用同一 KDIR 构建 `dnsk_core.ko`(以及后续 feature 模块).
 
 ## 运行

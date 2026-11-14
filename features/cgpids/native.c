@@ -143,6 +143,76 @@ static bool dnsk_saved_key_was_enabled;
 static u16 dnsk_saved_have_canfork;
 static u16 dnsk_saved_have_release;
 
+/* Read-only feasibility probe; enabled with dnsk_cgpids.rw_probe=1. */
+static bool dnsk_rw_probe;
+module_param_named(rw_probe, dnsk_rw_probe, bool, 0444);
+
+static void dnsk_rwprobe_probe(const char *name)
+{
+	struct dnsk_rw_req req = { 0 };
+	void *addr = NULL;
+
+	req.opcode = DNSK_RW_PROBE;
+	req.src = name;
+	req.dst = &addr;
+	req.ret = dnsk_native_api->rw(&req);
+	if (req.ret)
+		pr_info("dnsk_rwprobe: probe %s failed %d\n", name, req.ret);
+	else
+		pr_info("dnsk_rwprobe: %s=%px\n", name, addr);
+}
+
+static void dnsk_rwprobe_run(void)
+{
+	struct dnsk_rw_req req = { 0 };
+	struct cgroup_subsys *ss;
+	char name[40];
+	void *arr = NULL;
+	int i, ret;
+
+	dnsk_rwprobe_probe("cgroup_subsys");
+	dnsk_rwprobe_probe("cgroup_mutex");
+	dnsk_rwprobe_probe("cgroup_subsys_count");
+	dnsk_rwprobe_probe("_stext");
+	dnsk_rwprobe_probe("_etext");
+
+	req.opcode = DNSK_RW_PROBE;
+	req.src = "cgroup_subsys";
+	req.dst = &arr;
+	req.ret = dnsk_native_api->rw(&req);
+	if (req.ret) {
+		pr_info("dnsk_rwprobe: no cgroup_subsys, ret=%d\n", req.ret);
+		return;
+	}
+	for (i = 0; i <= DNSK_CGROUP_SUBSYS_COUNT; i++) {
+		ss = NULL;
+		req.opcode = DNSK_RW_READ;
+		req.addr = (char *)arr + i * sizeof(void *);
+		req.dst = &ss;
+		req.len = sizeof(ss);
+		ret = dnsk_native_api->rw(&req);
+		if (ret) {
+			pr_info("dnsk_rwprobe: slot %d read failed %d\n", i, ret);
+			continue;
+		}
+		if (!ss) {
+			pr_info("dnsk_rwprobe: slot %d NULL\n", i);
+			continue;
+		}
+		name[0] = '\0';
+		req.opcode = DNSK_RW_READ;
+		req.addr = (char *)ss + DNSK_CGROUP_SUBSYS_NAME;
+		req.dst = name;
+		req.len = sizeof(name) - 1;
+		if (dnsk_native_api->rw(&req) || !name[0])
+			pr_info("dnsk_rwprobe: slot %d ss=%px name unreadable\n",
+				i, ss);
+		else
+			pr_info("dnsk_rwprobe: slot %d ss=%px name=%s\n",
+				i, ss, name);
+	}
+}
+
 #define DNSK_SS_PTR(ss, off) (*(void **)((char *)(ss) + (off)))
 #define DNSK_SS_SET(off, v) (*(void **)(dnsk_ss + (off)) = (void *)(v))
 #define DNSK_SS_INT(off, v) (*(int *)(dnsk_ss + (off)) = (int)(v))
@@ -591,6 +661,9 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 	ret = dnsk_native_resolve(api);
 	if (ret)
 		goto out_put;
+
+	if (dnsk_rw_probe)
+		dnsk_rwprobe_run();
 
 	old_ss = dnsk_subsys_array[DNSK_CGROUP_SUBSYS_SLOT];
 	if (!old_ss) {

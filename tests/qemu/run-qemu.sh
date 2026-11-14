@@ -20,7 +20,7 @@ LOG=${LOG:-qemu-core.log}
 command -v "$QEMU" >/dev/null 2>&1 || { echo "QEMU not found: $QEMU" >&2; exit 2; }
 
 # The initramfs is expected to run /init, which loads the module and prints
-# DSNK_QEMU_OK / DSNK_QEMU_FAIL.  The module is exposed through virtio-9p.
+# DNSK_QEMU_OK / DNSK_QEMU_FAIL.  The module is exposed through virtio-9p.
 timeout "$TIMEOUT" "$QEMU" \
 	-M virt -cpu max -m 2048 -smp 4 -nographic \
 	-kernel "$KERNEL" -initrd "$INITRD" \
@@ -28,8 +28,8 @@ timeout "$TIMEOUT" "$QEMU" \
 	-virtfs local,path="$(dirname "$MODULE")",mount_tag=hostshare,security_model=none,readonly=on \
 	2>&1 | tee "$LOG"
 
-grep -q 'DSNK_QEMU_OK' "$LOG" || {
-	echo "QEMU smoke did not report DSNK_QEMU_OK" >&2
+grep -q 'DNSK_QEMU_OK' "$LOG" || {
+	echo "QEMU smoke did not report DNSK_QEMU_OK" >&2
 	exit 1
 }
 if grep -Eq 'Kernel panic|Oops|BUG:|CFI failure|refcount_t|Unknown symbol' "$LOG"; then

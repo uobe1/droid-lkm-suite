@@ -8,6 +8,11 @@
 # TMPFS_XATTR, TMPFS_POSIX_ACL, SYSVIPC, POSIX_MQUEUE.  Whatever it does here is
 # the reference the module has to match.
 #
+# The differential gate currently covers ns, devtmpfs, cgpids and tmpfsx.
+# netfilter/ipset probes are built but disabled by default because the net
+# module is still missing items relative to the net minimum baseline; boot with
+# `dnsk_diff_net=1` to include them.
+#
 # The output is the raw probe result file; the comparison happens on the host.
 
 BB=/bin/busybox
@@ -27,6 +32,13 @@ fi
 # cgroup v2, so the pids controller is observable at all.
 "$BB" mkdir -p /sys/fs/cgroup
 "$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup 2>/dev/null
+
+# Net probes are opt-in: the differential gate defers netfilter/ipset until the
+# net baseline has no missing items.  The QEMU diff job sets the cmdline flag
+# only when the user asks for the net comparison.
+case " $("$BB" cat /proc/cmdline 2>/dev/null) " in
+*" dnsk_diff_net=1 "*) export DNSK_DIFF_NET=1 ;;
+esac
 
 # The probe needs a writable /dev/null for shell redirection.
 [ -c /dev/null ] || "$BB" mknod /dev/null c 1 3

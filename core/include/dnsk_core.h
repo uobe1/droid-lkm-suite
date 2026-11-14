@@ -20,7 +20,7 @@
  * request unless the caller's value matches exactly; the value changes
  * whenever the layout or semantics of the API change.
  */
-#define DNSK_CORE_ABI 3
+#define DNSK_CORE_ABI 5
 
 struct module;
 
@@ -203,6 +203,60 @@ struct dnsk_feature_desc {
 	struct module *owner;
 };
 
+enum dnsk_rw_opcode {
+	DNSK_RW_READ = 1,
+	DNSK_RW_WRITE,
+	DNSK_RW_XCHG,
+	DNSK_RW_CAS,
+	DNSK_RW_PROBE,
+};
+
+enum dnsk_rw_lock_type {
+	DNSK_RW_LOCK_NONE = 0,
+	DNSK_RW_LOCK_MUTEX,
+	DNSK_RW_LOCK_SPIN_IRQSAVE,
+};
+
+/* Perform the operation while holding req->lock. */
+#define DNSK_RW_F_LOCKED (1u << 0)
+
+/**
+ * struct dnsk_rw_req - one kernel read, write, exchange or probe
+ *
+ * One request describes one operation.  The common case has no extra cost:
+ * READ and WRITE go straight to the copy or patch path, and no global lock is
+ * taken unless DNSK_RW_F_LOCKED is set.  @ret receives the result so callers
+ * can batch several requests through one dispatch.
+ *
+ * Addresses are discovered with DNSK_RW_PROBE, which resolves @src as a symbol
+ * name and stores the address in @dst.  Code must not hard-code per-device
+ * addresses.
+ */
+struct dnsk_rw_req {
+	/** @opcode: one of &enum dnsk_rw_opcode. */
+	u16 opcode;
+	/** @flags: DNSK_RW_F_LOCKED or 0. */
+	u16 flags;
+	/** @lock_type: one of &enum dnsk_rw_lock_type. */
+	u32 lock_type;
+	/** @addr: kernel address for READ/WRITE/XCHG/CAS. */
+	void *addr;
+	/** @src: source buffer, or the symbol name for PROBE. */
+	const void *src;
+	/** @dst: destination buffer, or `void **` for PROBE. */
+	void *dst;
+	/** @lock: mutex or spinlock address when DNSK_RW_F_LOCKED is set. */
+	void *lock;
+	/** @len: byte count, at most 256 and within one page. */
+	size_t len;
+	/** @value: new value for XCHG/CAS. */
+	u64 value;
+	/** @old: previous value read by XCHG, or expected value for CAS. */
+	u64 old;
+	/** @ret: result of the operation. */
+	int ret;
+};
+
 /**
  * struct dnsk_core_api - function table returned by dnsk_core_get()
  *
@@ -298,6 +352,7 @@ struct dnsk_core_api {
 	 * when the patching backend is not available.
 	 */
 	int (*patch_pointer)(void *target, void *value);
+	int (*rw)(struct dnsk_rw_req *req);
 	/**
 	 * @owner: the core module, with one reference held for the caller.
 	 *

@@ -16,6 +16,7 @@ on:
           - tmpfsx
           - userns
           - docker
+          - diff
         default: baseline
       kernel:
         description: stock DDK kernel or Native oracle with container configs
@@ -26,7 +27,12 @@ on:
           - oracle-nopids
         default: stock
       image_run_id:
-        description: reuse qemu-6.12 artifact from this run id (empty = build)
+        description: reuse qemu-6.12 artifact from this run id (empty = build); diff mode uses the device-image run id providing device-boot instead
+        required: false
+        type: string
+        default: ""
+      oracle_image_run_id:
+        description: diff mode only - qemu-core run id providing the oracle qemu-6.12 Image (empty = error; kernel input is ignored)
         required: false
         type: string
         default: ""
@@ -35,10 +41,19 @@ on:
         type: boolean
         default: false
       module_run_id:
-        description: ci-fast run id providing selpermissive.ko for the enforcing pass
+        description: ci-fast run id (userns=true, xt104 profile) providing selpermissive.ko for the enforcing pass and every feature module for diff mode
         required: false
         type: string
         default: ""
+      module_layout_crc:
+        description: diff mode only - device module_layout CRC used by the vermagic patch
+        required: false
+        type: string
+        default: "0xe976b219"
+      include_net:
+        description: diff mode only - include netfilter/ipset probes (temporarily off until the net baseline is complete)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,7 +61,9 @@ permissions:
 
 jobs:
   image:
-    if: ${{ inputs.image_run_id == '' }}
+    # diff mode reuses two prebuilt Images; it must never build the qemu-6.12
+    # artifact from image_run_id, which in that mode names a device-image run.
+    if: ${{ inputs.mode != 'diff' && inputs.image_run_id == '' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/ylarod/ddk-min:android16-6.12-20260828
@@ -205,7 +222,7 @@ jobs:
 
   boot:
     needs: image
-    if: ${{ always() && (needs.image.result == 'success' || inputs.image_run_id != '') }}
+    if: ${{ inputs.mode != 'diff' && always() && (needs.image.result == 'success' || inputs.image_run_id != '') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -375,4 +392,236 @@ jobs:
         with:
           name: qemu-core-log-${{ inputs.mode }}
           path: qemu.log
+          if-no-files-found: warn
+
+  # Semantic differential: boot the device kernel with the suite loaded and the
+  # native oracle built with the same configs, then compare the probe output.
+  # Both Images are inputs and are never built here: image_run_id names a
+  # device-image run (device-boot artifact) and oracle_image_run_id names a
+  # qemu-core run (qemu-6.12 artifact), so the two expensive Images are reused
+  # independently.  Feature modules come from a ci-fast run.
+  diff:
+    if: ${{ inputs.mode == 'diff' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Require both Image run ids and the module run
+        env:
+          DEVICE_RUN: ${{ inputs.image_run_id }}
+          ORACLE_RUN: ${{ inputs.oracle_image_run_id }}
+          MODULE_RUN: ${{ inputs.module_run_id }}
+        run: |
+          set -euo pipefail
+          : "${DEVICE_RUN:?image_run_id must name the device-image run providing device-boot}"
+          : "${ORACLE_RUN:?oracle_image_run_id must name the qemu-core run providing qemu-6.12}"
+          : "${MODULE_RUN:?module_run_id must name the ci-fast run providing the modules}"
+      - uses: actions/checkout@v4
+      - name: Download the device Image
+        uses: actions/download-artifact@v4
+        with:
+          name: device-boot
+          path: device
+          run-id: ${{ inputs.image_run_id }}
+          github-token: ${{ github.token }}
+      - name: Download the oracle Image
+        uses: actions/download-artifact@v4
+        with:
+          name: qemu-6.12
+          path: oracle
+          run-id: ${{ inputs.oracle_image_run_id }}
+          github-token: ${{ github.token }}
+      - name: Download the feature modules
+        uses: actions/download-artifact@v4
+        with:
+          name: core-android16-6.12
+          path: modules
+          run-id: ${{ inputs.module_run_id }}
+          github-token: ${{ github.token }}
+      - name: Validate the downloaded Images
+        run: |
+          set -euxo pipefail
+          test -s device/Image
+          test -s oracle/Image
+          # Refuse a stock or oracle-nopids artifact: the differential's oracle
+          # must have every feature compiled in, CGROUP_PIDS included.  Passing
+          # the wrong run id would otherwise compare "feature absent" against
+          # "feature absent" and look green.
+          for c in USER_NS PID_NS IPC_NS CGROUP_PIDS DEVTMPFS CGROUPS \
+                   TMPFS_XATTR TMPFS_POSIX_ACL SYSVIPC POSIX_MQUEUE; do
+            grep -q "^CONFIG_${c}=y" oracle/kernel.config || {
+              echo "oracle artifact is not a full native oracle (CONFIG_${c} is not y)" >&2
+              exit 1
+            }
+          done
+      - name: Install QEMU and toolchain
+        run: |
+          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
+          PKGS="qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu
+            ipxe-qemu-256k-compat-efi-roms qemu-efi-aarch64 cpio
+            gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu kmod"
+          sudo timeout 900 apt-get $APT_OPTS update
+          sudo timeout 900 apt-get $APT_OPTS install -y --no-install-recommends $PKGS
+      - name: Patch module vermagic for the device Image
+        env:
+          MODULE_LAYOUT_CRC: ${{ inputs.module_layout_crc }}
+        run: |
+          set -euxo pipefail
+          RELEASE=$(awk '{print $1}' device/release.txt 2>/dev/null || true)
+          test -n "$RELEASE"
+          VERMAGIC="$RELEASE SMP preempt mod_unload modversions aarch64"
+          echo "target vermagic: $VERMAGIC"
+          for ko in modules/*.ko; do
+            aarch64-linux-gnu-objcopy --dump-section .modinfo=modinfo.bin "$ko"
+            python3 - "$VERMAGIC" <<'PY'
+          import sys
+          magic = sys.argv[1].encode()
+          data = open('modinfo.bin', 'rb').read()
+          out = []
+          found = False
+          for entry in data.split(b'\0'):
+              if entry.startswith(b'vermagic='):
+                  out.append(b'vermagic=' + magic)
+                  found = True
+              elif entry:
+                  out.append(entry)
+          if not found:
+              out.append(b'vermagic=' + magic)
+          open('modinfo.new', 'wb').write(b'\0'.join(out) + b'\0')
+          PY
+            aarch64-linux-gnu-objcopy --update-section .modinfo=modinfo.new "$ko"
+            modinfo -F vermagic "$ko"
+            aarch64-linux-gnu-objcopy --dump-section __versions=versions.bin "$ko"
+            python3 - "$MODULE_LAYOUT_CRC" <<'PY'
+          import struct, sys
+          crc = int(sys.argv[1], 16)
+          data = bytearray(open('versions.bin', 'rb').read())
+          found = False
+          for i in range(0, len(data) - 64 + 1, 64):
+              if data[i + 8:i + 64].split(b'\0')[0] == b'module_layout':
+                  struct.pack_into('<Q', data, i, crc)
+                  found = True
+                  break
+          if not found:
+              data += struct.pack('<Q', crc) + b'module_layout'
+              data += b'\0' * (64 - 8 - len(b'module_layout'))
+          print('module_layout entry', 'updated' if found else 'added', hex(crc))
+          open('versions.new', 'wb').write(data)
+          PY
+            aarch64-linux-gnu-objcopy --update-section __versions=versions.new "$ko"
+          done
+      - name: Build probe binaries
+        run: |
+          set -euxo pipefail
+          aarch64-linux-gnu-gcc -static -O2 -o ipc_probe tests/qemu/ipc_probe.c
+          aarch64-linux-gnu-gcc -static -O2 -o xattr_probe tests/qemu/xattr_probe.c
+          aarch64-linux-gnu-gcc -static -O2 -o acl_test tests/qemu/acl_test.c
+          aarch64-linux-gnu-gcc -static -O2 -o userns_test tests/qemu/userns_test.c
+          aarch64-linux-gnu-gcc -static -O2 -o userns_unpriv_test \
+            tests/qemu/userns_unpriv_test.c
+          aarch64-linux-gnu-gcc -static -O2 -o pids_probe tests/qemu/pids_probe.c
+          aarch64-linux-gnu-gcc -static -O2 -o ipcns_leak tests/qemu/ipcns_leak.c
+          aarch64-linux-gnu-gcc -static -O2 -o setns_pidfd_probe \
+            tests/qemu/setns_pidfd_probe.c
+          aarch64-linux-gnu-gcc -static -O2 -o fuse_test tests/qemu/fuse_test.c
+          aarch64-linux-gnu-gcc -static -O2 -o selinux_load tests/qemu/selinux_load.c
+          aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+          aarch64-linux-gnu-gcc -static -O2 -o dnsk-preflight tools/dnsk_preflight.c
+      - name: Assemble oracle and LKM initramfs
+        env:
+          INCLUDE_NET: ${{ inputs.include_net }}
+        run: |
+          set -euxo pipefail
+          curl -fsSL -o alpine.tar.gz \
+            https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.3-aarch64.tar.gz
+          build_rootfs() {
+            rm -rf "$1"
+            mkdir -p "$1"
+            tar -xzf alpine.tar.gz -C "$1"
+            mkdir -p "$1/proc" "$1/sys" "$1/dev" "$1/tmp" "$1/modules"
+            chmod 1777 "$1/tmp"
+          }
+          build_rootfs oracle-rootfs
+          cp ipc_probe xattr_probe acl_test userns_test userns_unpriv_test \
+            pids_probe ipcns_leak setns_pidfd_probe fuse_test oracle-rootfs/
+          cp tests/qemu/diff_probe.sh tests/qemu/init-diff-oracle oracle-rootfs/
+          chmod 0755 oracle-rootfs/init oracle-rootfs/diff_probe.sh
+
+          build_rootfs lkm-rootfs
+          MODROOT=lkm-rootfs/data/adb/modules/droid_lkm_suite
+          mkdir -p "$MODROOT/kmi/android16-6.12" "$MODROOT/bin"
+          cp ksu/policy.conf ksu/supported_kmis.txt "$MODROOT/"
+          cp tools/dnskctl "$MODROOT/bin/dnskctl"
+          cp dnsk-preflight "$MODROOT/bin/dnsk-preflight"
+          chmod 0755 "$MODROOT/bin/dnskctl" "$MODROOT/bin/dnsk-preflight"
+          cp modules/*.ko "$MODROOT/kmi/android16-6.12/"
+          cp modules/selpermissive.ko lkm-rootfs/modules/
+          cp ipc_probe xattr_probe acl_test userns_test userns_unpriv_test \
+            pids_probe ipcns_leak setns_pidfd_probe fuse_test lkm-rootfs/
+          cp selinux_load insmod_force lkm-rootfs/
+          cp tests/qemu/diff_probe.sh tests/qemu/init-diff-lkm lkm-rootfs/
+          chmod 0755 lkm-rootfs/init lkm-rootfs/diff_probe.sh
+          cp tests/qemu/assets/ksud lkm-rootfs/ksud
+          chmod 0755 lkm-rootfs/ksud
+          cp -a tests/qemu/assets/android/. lkm-rootfs/
+          chmod 0755 lkm-rootfs/system/bin/linker64
+          cp tests/qemu/assets/selinux-precompiled-sepolicy.gz lkm-rootfs/policy.gz
+
+          if [ "$INCLUDE_NET" = "true" ]; then
+            # Deferred net probes need the legacy backends in both guest
+            # rootfs.  Same cross-installed aarch64 apks the device netfilter
+            # gate uses, minus the nft backend the device kernel lacks.
+            mkdir -p netpkg
+            APK_BASE=https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64
+            for pkg in libmnl-1.0.5-r2 ipset-7.21-r2 iptables-legacy-1.8.10-r3 \
+                       libip4tc-1.8.10-r3 libip6tc-1.8.10-r3 libxtables-1.8.10-r3; do
+              curl -fsSL -o "$pkg.apk" "$APK_BASE/$pkg.apk"
+              tar -xzf "$pkg.apk" -C netpkg 2>/dev/null || true
+            done
+            cp -a netpkg/. oracle-rootfs/
+            cp -a netpkg/. lkm-rootfs/
+          fi
+
+          (cd oracle-rootfs && find . | cpio -o -H newc | gzip -9) > oracle-initramfs.cpio.gz
+          (cd lkm-rootfs && find . | cpio -o -H newc | gzip -9) > lkm-initramfs.cpio.gz
+          ls -l oracle/Image device/Image oracle-initramfs.cpio.gz lkm-initramfs.cpio.gz
+      - name: Boot the oracle and the device kernel
+        env:
+          INCLUDE_NET: ${{ inputs.include_net }}
+        run: |
+          set +e
+          COMMON="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
+          NET_FLAG=""
+          if [ "$INCLUDE_NET" = "true" ]; then
+            NET_FLAG="dnsk_diff_net=1"
+          fi
+          timeout 600 qemu-system-aarch64 -M virt -cpu max -m 2048 -smp 2 \
+            -nographic -no-reboot -kernel oracle/Image \
+            -initrd oracle-initramfs.cpio.gz \
+            -append "$COMMON selinux=0 dnsk_lkm=1 $NET_FLAG" 2>&1 | tee oracle.log
+          ORC=${PIPESTATUS[0]}
+          timeout 600 qemu-system-aarch64 -M virt -cpu max -m 2048 -smp 2 \
+            -nographic -no-reboot -kernel device/Image \
+            -initrd lkm-initramfs.cpio.gz \
+            -append "$COMMON enforcing=0 dnsk_lkm=1 $NET_FLAG" 2>&1 | tee lkm.log
+          LRC=${PIPESTATUS[0]}
+          set -e
+          echo "qemu_oracle_rc=$ORC qemu_lkm_rc=$LRC"
+          [ "$ORC" -eq 0 ] || exit 1
+          [ "$LRC" -eq 0 ] || exit 1
+      - name: Compare probe output
+        run: |
+          set +e
+          sh tests/qemu/diff_semantics.sh oracle.log lkm.log | tee diff.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "diff_rc=$rc"
+          exit "$rc"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qemu-diff-log-${{ inputs.include_net }}
+          path: |
+            oracle.log
+            lkm.log
+            diff.log
           if-no-files-found: warn
