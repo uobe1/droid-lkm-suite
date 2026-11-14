@@ -483,7 +483,7 @@ jobs:
             APPEND="$APPEND dnsk_lkm=1"
           fi
           if [ "$MODE" = "cgpids" ]; then
-            APPEND="$APPEND cgpids_rw_probe=1"
+            APPEND="$APPEND dnsk_lkm=1 cgpids_native=1 cgpids_rw_probe=1"
           fi
           timeout "$TIMEOUT" qemu-system-aarch64 \
             -M virt -cpu max -m "$MEM" -smp 4 -nographic -no-reboot \
