@@ -1,6 +1,6 @@
 # 状态矩阵
 
-当前阶段: **android16-6.12 开发收尾 (仅 dev 工件)**.其他 7 个 KMI, Droidspaces, NixOS 已由项目所有者搁置; 不建 tag.core ABI 5(单入口 `rw`: read/write/xchg/cas/probe, 锁内执行, 文本刷 icache) 已在设备门验证; feature 状态与证据以本表为准, 不得对外宣称未验证的能力
+当前阶段: **android16-6.12 开发收尾 (仅 dev 工件)**.其他 7 个 KMI, Droidspaces, NixOS 已由项目所有者搁置; 不建 tag.core ABI 5(单入口 `rw`: read/write/xchg/cas/probe, 锁内执行, 文本刷 icache) 已在设备门验证; feature 状态与证据以本表为准, 不得对外宣称未验证的能力.2026-11-14 统一地基变更集 `f6d325b` 通过 ci-fast 门控 `43607910982`(含 docs-check 前置, 构建前必过文档门禁); 证据见 `docs/evidence/unification-gate-2026-11-14.md`(本地资料)
 
 状态等级见 [README](../README.md).
 

@@ -22,8 +22,10 @@ run() {
 }
 
 # Always available, and the rules the project actually promises.
-run "API docs match their comment sources" python3 scripts/gen-api-docs.py --check
+# API drift is checked once by `make docs-check` (and docs-check.yml in CI);
+# do not repeat it here, that would be a second run of the same gate.
 run "tracked Markdown style" python3 scripts/check-docs-style.py
+run "Droid-Hook host contract" sh -c 'cd droid-hook/tests/host && python3 -m unittest test_dh_contract.py'
 
 # Optional linters: absence is explicitly reported, never treated as success.
 for tool in shellcheck ruff clang-format markdownlint; do

@@ -54,6 +54,19 @@ def md_files():
             continue
         seen.add(rel)
         yield ROOT / rel, rel
+    # New, not-yet-committed Markdown is also checked.  Without this, a freshly
+    # written README escapes the local gate and only fails later in CI.
+    try:
+        untracked = subprocess.check_output(
+            ['git', 'ls-files', '--others', '--exclude-standard', '*.md'],
+            cwd=ROOT, text=True).splitlines()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        untracked = []
+    for rel in sorted(untracked):
+        if rel in seen or rel in LOCAL_ONLY or rel.startswith(GITIGNORED_DIRS):
+            continue
+        seen.add(rel)
+        yield ROOT / rel, rel
     # Generated API pages are tracked deliverables too, but are not yet in the
     # index when a fresh clone runs `git ls-files` on a dirty worktree.
     for rel in ('docs/api/kernel.md', 'docs/api/userspace.md'):
