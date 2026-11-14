@@ -264,13 +264,41 @@ static int dnsk_rw_do_op(struct dnsk_rw_req *req)
 	case DNSK_RW_READ:
 		return dnsk_rw_kmem_read(req->dst, req->addr, req->len);
 	case DNSK_RW_WRITE:
-		return dnsk_rw_kmem_write(req->addr, req->src, req->len,
-					  req->flags & DNSK_RW_F_TEXT);
+		if (req->flags & (DNSK_RW_F_TEXT | DNSK_RW_F_RO))
+			return dnsk_rw_kmem_write(req->addr, req->src,
+						  req->len,
+						  req->flags & DNSK_RW_F_TEXT);
+		if (!req->src || !req->len || req->len > DNSK_RW_MAX)
+			return -EINVAL;
+		if (((unsigned long)req->addr & ~PAGE_MASK) + req->len >
+		    PAGE_SIZE)
+			return -EINVAL;
+		memcpy(req->addr, req->src, req->len);
+		return 0;
 	case DNSK_RW_XCHG:
-		return dnsk_patch_xchg64(req->addr, req->value, &req->old);
+		if (req->flags & (DNSK_RW_F_TEXT | DNSK_RW_F_RO))
+			return dnsk_patch_xchg64(req->addr, req->value,
+						 &req->old);
+		req->old = __atomic_exchange_n((u64 *)req->addr, req->value,
+					       __ATOMIC_SEQ_CST);
+		return 0;
 	case DNSK_RW_CAS:
-		return dnsk_patch_cas64(req->addr, req->old, req->value,
-					&req->old);
+		if (req->flags & (DNSK_RW_F_TEXT | DNSK_RW_F_RO))
+			return dnsk_patch_cas64(req->addr, req->old, req->value,
+						&req->old);
+		if ((unsigned long)req->addr & 7)
+			return -EINVAL;
+		{
+			u64 expected = req->old;
+
+			if (__atomic_compare_exchange_n((u64 *)req->addr,
+							&expected, req->value,
+							false, __ATOMIC_SEQ_CST,
+							__ATOMIC_SEQ_CST))
+				return 0;
+			req->old = expected;
+			return -EAGAIN;
+		}
 	case DNSK_RW_PROBE: {
 		void *va = req->src ? dnsk_resolve_symbol(req->src) : NULL;
 

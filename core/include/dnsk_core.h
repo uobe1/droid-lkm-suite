@@ -218,10 +218,15 @@ enum dnsk_rw_lock_type {
 	DNSK_RW_LOCK_RWSEM_READ,
 };
 
-/* Perform the operation while holding req->lock. */
+/* Perform the operation while holding req->lock.  The caller must not already
+ * hold that lock; for lock-held contexts use the lockless data path. */
 #define DNSK_RW_F_LOCKED (1u << 0)
 /* The target is executable text: flush the instruction cache after writing. */
 #define DNSK_RW_F_TEXT   (1u << 1)
+/* The target may be read-only: force the patch path, which sleeps and must not
+ * be used while holding a spinlock.  Without this flag XCHG/CAS/WRITE use
+ * hardware atomics or a direct store. */
+#define DNSK_RW_F_RO     (1u << 2)
 
 /**
  * struct dnsk_rw_req - one kernel read, write, exchange or probe
