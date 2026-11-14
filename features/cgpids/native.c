@@ -557,6 +557,28 @@ static int dnsk_native_resolve(struct dnsk_core_api *api)
 		dnsk_on_dfl_key = (struct static_key *)
 			dnsk_on_dfl_keys[DNSK_CGROUP_SUBSYS_SLOT];
 
+	if (!dnsk_subsys_array)
+		pr_err("dnsk_cgpids: missing cgroup_subsys\n");
+	if (!dnsk_root)
+		pr_err("dnsk_cgpids: missing cgrp_dfl_root\n");
+	if (!dnsk_init_cset)
+		pr_err("dnsk_cgpids: missing init_css_set\n");
+	if (!dnsk_css_set_lock)
+		pr_err("dnsk_cgpids: missing css_set_lock\n");
+	if (!dnsk_css_set_table)
+		pr_err("dnsk_cgpids: missing css_set_table\n");
+	if (!dnsk_cgroup_mutex)
+		pr_err("dnsk_cgpids: missing cgroup_mutex\n");
+	if (!dnsk_native_of_css)
+		pr_err("dnsk_cgpids: missing of_css\n");
+	if (!dnsk_add_dfl_cftypes)
+		pr_err("dnsk_cgpids: missing cgroup_add_dfl_cftypes\n");
+	if (!dnsk_inhibit_mask)
+		pr_err("dnsk_cgpids: missing cgrp_dfl_inhibit_ss_mask\n");
+	if (!dnsk_static_key_enable)
+		pr_err("dnsk_cgpids: missing static_key_enable\n");
+	if (!dnsk_on_dfl_key)
+		pr_err("dnsk_cgpids: missing cgroup_subsys_on_dfl_key slot\n");
 	if (!dnsk_subsys_array || !dnsk_root || !dnsk_init_cset ||
 	    !dnsk_have_canfork || !dnsk_have_release || !dnsk_css_set_lock ||
 	    !dnsk_css_set_table || !dnsk_cgroup_mutex ||
@@ -655,6 +677,7 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 	bool key_was_enabled;
 	int ret;
 
+	pr_info("dnsk_cgpids: native init entry\n");
 	if (!try_module_get(THIS_MODULE))
 		return -ENODEV;
 
