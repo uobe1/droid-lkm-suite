@@ -23,7 +23,8 @@ class CoreApiTest(unittest.TestCase):
                        "DNSK_RW_CAS", "DNSK_RW_PROBE"]:
             self.assertIn(opcode, text)
         self.assertIn("#define DNSK_RW_F_LOCKED", text)
-        for lock in ["DNSK_RW_LOCK_MUTEX", "DNSK_RW_LOCK_SPIN_IRQSAVE"]:
+        for lock in ["DNSK_RW_LOCK_MUTEX", "DNSK_RW_LOCK_SPIN_IRQSAVE",
+                     "DNSK_RW_LOCK_RWSEM_READ"]:
             self.assertIn(lock, text)
 
     def test_table_wires_rw(self):

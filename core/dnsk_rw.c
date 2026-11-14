@@ -33,6 +33,7 @@
 #include <linux/ktime.h>
 #include <linux/mm.h>
 #include <linux/mutex.h>
+#include <linux/rwsem.h>
 #include <linux/pfn.h>
 #include <linux/proc_fs.h>
 #include <linux/slab.h>
@@ -321,6 +322,11 @@ int dnsk_rw_op(struct dnsk_rw_req *req)
 		spin_lock_irqsave((spinlock_t *)req->lock, flags);
 		dnsk_rw_lock_call(&ctx);
 		spin_unlock_irqrestore((spinlock_t *)req->lock, flags);
+		return req->ret;
+	case DNSK_RW_LOCK_RWSEM_READ:
+		down_read((struct rw_semaphore *)req->lock);
+		dnsk_rw_lock_call(&ctx);
+		up_read((struct rw_semaphore *)req->lock);
 		return req->ret;
 	default:
 		return -EINVAL;

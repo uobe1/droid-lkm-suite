@@ -215,6 +215,7 @@ enum dnsk_rw_lock_type {
 	DNSK_RW_LOCK_NONE = 0,
 	DNSK_RW_LOCK_MUTEX,
 	DNSK_RW_LOCK_SPIN_IRQSAVE,
+	DNSK_RW_LOCK_RWSEM_READ,
 };
 
 /* Perform the operation while holding req->lock. */
