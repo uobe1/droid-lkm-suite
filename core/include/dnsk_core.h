@@ -219,6 +219,8 @@ enum dnsk_rw_lock_type {
 
 /* Perform the operation while holding req->lock. */
 #define DNSK_RW_F_LOCKED (1u << 0)
+/* The target is executable text: flush the instruction cache after writing. */
+#define DNSK_RW_F_TEXT   (1u << 1)
 
 /**
  * struct dnsk_rw_req - one kernel read, write, exchange or probe

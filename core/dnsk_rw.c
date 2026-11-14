@@ -242,7 +242,8 @@ static int dnsk_rw_kmem_read(void *dst, const void *src, size_t len)
 	return (int)dnsk_rw_read_fn(dst, src, len);
 }
 
-static int dnsk_rw_kmem_write(void *dst, const void *src, size_t len)
+static int dnsk_rw_kmem_write(void *dst, const void *src, size_t len,
+			      bool text)
 {
 	unsigned long a;
 
@@ -253,7 +254,7 @@ static int dnsk_rw_kmem_write(void *dst, const void *src, size_t len)
 		return -EINVAL;
 	if (!dnsk_patch_ready())
 		return -EOPNOTSUPP;
-	return dnsk_patch_text(dst, src, len, false);
+	return dnsk_patch_text(dst, src, len, text);
 }
 
 static int dnsk_rw_do_op(struct dnsk_rw_req *req)
@@ -265,13 +266,14 @@ static int dnsk_rw_do_op(struct dnsk_rw_req *req)
 	case DNSK_RW_READ:
 		return dnsk_rw_kmem_read(req->dst, req->addr, req->len);
 	case DNSK_RW_WRITE:
-		return dnsk_rw_kmem_write(req->addr, req->src, req->len);
+		return dnsk_rw_kmem_write(req->addr, req->src, req->len,
+					  req->flags & DNSK_RW_F_TEXT);
 	case DNSK_RW_XCHG:
 		ret = dnsk_rw_kmem_read(&old, req->addr, sizeof(old));
 		if (ret)
 			return ret;
 		ret = dnsk_rw_kmem_write(req->addr, &req->value,
-					 sizeof(req->value));
+					 sizeof(req->value), false);
 		if (ret)
 			return ret;
 		req->old = old;
@@ -283,7 +285,7 @@ static int dnsk_rw_do_op(struct dnsk_rw_req *req)
 		if (old != req->old)
 			return -EAGAIN;
 		return dnsk_rw_kmem_write(req->addr, &req->value,
-					  sizeof(req->value));
+					  sizeof(req->value), false);
 	case DNSK_RW_PROBE: {
 		void *va = req->src ? dnsk_resolve_symbol(req->src) : NULL;
 
