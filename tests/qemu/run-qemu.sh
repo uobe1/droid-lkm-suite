@@ -24,7 +24,7 @@ command -v "$QEMU" >/dev/null 2>&1 || { echo "QEMU not found: $QEMU" >&2; exit 2
 timeout "$TIMEOUT" "$QEMU" \
 	-M virt -cpu max -m 2048 -smp 4 -nographic \
 	-kernel "$KERNEL" -initrd "$INITRD" \
-	-append "console=ttyAMA0 panic=-1" \
+	-append "console=ttyAMA0 panic=-1 panic_on_oops=1 printk.always_kmsg_dump=1" \
 	-virtfs local,path="$(dirname "$MODULE")",mount_tag=hostshare,security_model=none,readonly=on \
 	2>&1 | tee "$LOG"
 

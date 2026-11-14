@@ -350,7 +350,7 @@ jobs:
             SMP=4
             TIMEOUT=1200
           fi
-          APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 panic_on_oops=1 nokaslr selinux=0 module.sig_enforce=0"
+          APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 panic_on_oops=1 printk.always_kmsg_dump=1 nokaslr selinux=0 module.sig_enforce=0"
           if [ "${{ inputs.kernel }}" = "oracle-nopids" ]; then
             APPEND="$APPEND dnsk_lkm=1"
           fi
