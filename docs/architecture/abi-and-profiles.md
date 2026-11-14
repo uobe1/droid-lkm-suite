@@ -5,7 +5,7 @@
 
 ## `DNSK_CORE_ABI` 与两层 ABI
 
-`DNSK_CORE_ABI` 是 `struct dnsk_core_api` 的修订号 (当前为 3), 不是内核 ABI,
+`DNSK_CORE_ABI` 是 `struct dnsk_core_api` 的修订号 (当前为 5), 不是内核 ABI,
 而是 **core 与 feature 之间的契约版本**.`dnsk_core_get(abi, size)` 要求精确
 相等, 不做兼容回退; API 的布局或语义一变, 这个值就必须递增
 

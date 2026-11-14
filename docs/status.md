@@ -1,6 +1,6 @@
 # 状态矩阵
 
-当前阶段: **android16-6.12 开发收尾 (仅 dev 工件)**.其他 7 个 KMI, Droidspaces, NixOS 已由项目所有者搁置; 不建 tag.core ABI 3(含 `patch_pointer`) 已在设备门验证; feature 状态与证据以本表为准, 不得对外宣称未验证的能力
+当前阶段: **android16-6.12 开发收尾 (仅 dev 工件)**.其他 7 个 KMI, Droidspaces, NixOS 已由项目所有者搁置; 不建 tag.core ABI 5(单入口 `rw`: read/write/xchg/cas/probe, 锁内执行, 文本刷 icache) 已在设备门验证; feature 状态与证据以本表为准, 不得对外宣称未验证的能力
 
 状态等级见 [README](../README.md).
 
