@@ -28,14 +28,26 @@ jobs:
           pip install mkdocs-material mike
           sudo apt-get update
           sudo apt-get install -y doxygen
+      - name: Build kernel API (verify committed page is current)
+        run: |
+          # kernel-doc is a self-contained perl script; fetch the same Linux
+          # release this project builds against instead of a whole source tree.
+          curl -fsSL -o /tmp/kernel-doc \
+            https://raw.githubusercontent.com/torvalds/linux/v6.12/scripts/kernel-doc
+          chmod +x /tmp/kernel-doc
+          perl /tmp/kernel-doc -v >/dev/null
+          make docs-kernel KERNEL_DOC=/tmp/kernel-doc
+          # A committed page that no longer matches the headers is a defect, not
+          # a formatting nit: it tells readers something the code no longer says.
+          git diff --exit-code docs/api/kernel/index.html
       - name: Build userspace API
         run: |
-          mkdir -p build/doxygen-userspace
+          mkdir -p build/docs/doxygen-userspace
           doxygen Doxyfile
       - name: Build site
         run: |
           mkdir -p site/api/userspace
-          cp -r build/doxygen-userspace/html/. site/api/userspace/
+          cp -r build/docs/doxygen-userspace/html/. site/api/userspace/
           mkdocs build
       - uses: actions/configure-pages@v5
         with:

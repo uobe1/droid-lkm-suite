@@ -1,11 +1,11 @@
 # Userspace API
 
 用户态 C 接口由 Doxygen 生成，流水线见 `.github/workflows/docs.yml`：
-`doxygen Doxyfile` 输出到 `build/doxygen-userspace/html/`，再复制进
+`doxygen Doxyfile` 输出到 `build/docs/doxygen-userspace/html/`，再复制进
 `site/api/userspace/` 随 Pages 发布。
 
 ```sh
-doxygen Doxyfile   # 产物在 build/doxygen-userspace/html/
+doxygen Doxyfile   # 产物在 build/docs/doxygen-userspace/html/
 ```
 
 因此**这个页面是生成产物的入口说明，不是 API 手册本身**——真实的函数签名看

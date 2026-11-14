@@ -15,7 +15,8 @@ Native/Real LKM container-subsystem completion for Android GKI.
 
 - [架构](architecture/overview.md)
 - [状态矩阵](status.md)
-- [可行性门控](feasibility/cgpids.md)
 - [构建](guides/build.md)
+- [dnskctl 命令手册](guides/dnskctl.md)
+- [新增一个 feature](guides/new-feature.md)
 - [真机测试](guides/device.md)
 - [文档规范](STYLE.md)

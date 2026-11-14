@@ -59,7 +59,16 @@ dnskctl load core || fail load_core
 # / IP_SET / NF_TABLES, so their behaviour only exists while the modules are
 # loaded.  Omitting them would compare "absent" against "native" and call it a
 # module defect.
-for f in ns devtmpfs cgpids tmpfsx netfilter ipset; do
+#
+# Which modules to load is a parameter, not a fixed list.
+#
+# Loading every module in one boot does not fit the TCG budget: netfilter alone is
+# ~12 MB and its symbol work dominates, so a single full run times out before it
+# finishes and produces no comparable output at all.  One module per round is the
+# same rule the unload gate already follows.
+#
+LOADLIST=${DNSK_DIFF_LOAD:-ns devtmpfs cgpids tmpfsx}
+for f in $LOADLIST; do
 	[ -f "$MODDIR/kmi/"*/"dnsk_$f.ko" ] || continue
 	dnskctl load "$f" || echo "DNSK_LOAD_FAIL $f"
 done

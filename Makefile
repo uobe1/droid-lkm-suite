@@ -6,6 +6,8 @@
 KDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 DOCS_OUT ?= build/docs
+# kernel-doc ships inside a kernel tree; CI has none, so allow a direct path.
+KERNEL_DOC ?= $(KDIR)/scripts/kernel-doc
 
 .PHONY: all clean check docs docs-userspace docs-kernel docs-clean
 
@@ -44,19 +46,25 @@ docs-userspace:
 # kernel-doc ships with the kernel source tree, so it needs KDIR to be a real
 # prepared tree rather than only the external-module build dir.
 docs-kernel:
-	@test -x "$(KDIR)/scripts/kernel-doc" || { \
-		echo "kernel-doc not found at $(KDIR)/scripts/kernel-doc" >&2; \
-		echo "Set KDIR to a kernel source/build tree that has it (a DDK kdir does)." >&2; \
+	@test -x "$(KERNEL_DOC)" || { \
+		echo "kernel-doc not found at $(KERNEL_DOC)" >&2; \
+		echo "Set KERNEL_DOC to the script, or KDIR to a kernel tree that has it." >&2; \
 		exit 1; }
 	@mkdir -p $(DOCS_OUT)/kernel
 	# kernel-doc has no -html mode.  It supports -man, -rst and -none only; passing
 	# anything else prints "Argument unknown!" and exits non-zero, which silently
 	# produced a 0-byte page.  -rst is the real output mode, and Sphinx turns the
 	# rST into HTML (see docs/conf.py wiring in the pages workflow).
-	"$(KDIR)/scripts/kernel-doc" -rst \
+	"$(KERNEL_DOC)" -rst \
 		core/include/dnsk_core.h core/include/dnsk_abi.h \
+		core/include/dnsk_fs_layout.h core/include/dnsk_ns_layout.h \
+		core/include/dnsk_xt_layout.h \
 		> $(DOCS_OUT)/kernel/index.rst
-	@echo "kernel API -> $(DOCS_OUT)/kernel/index.rst"
+	@echo "kernel API (rST) -> $(DOCS_OUT)/kernel/index.rst"
+	# The committed page is generated, not hand-written: readers get HTML without
+	# having to build anything, and CI re-runs this so it cannot silently drift
+	# away from the headers.
+	./scripts/gen-kernel-api.py $(DOCS_OUT)/kernel/index.rst docs/api/kernel/index.html
 
 docs-clean:
 	rm -rf $(DOCS_OUT)

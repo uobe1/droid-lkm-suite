@@ -178,9 +178,12 @@ class PackagingInputTests(unittest.TestCase):
     def test_module_prop_is_dev_and_honest(self):
         text = (ROOT / "ksu/module.prop").read_text()
         self.assertIn("version=v1.0.0dev0", text)
-        self.assertIn("M1 dev", text)
-        self.assertIn("mqueue smoke verified", text)
-        self.assertIn("no release support", text)
+        # Assert the honest claims, not a milestone label that has since moved:
+        # the artifact must say it is a dev build, that mqueue was verified, and
+        # that no release is supported.
+        self.assertIn("dev artifact", text)
+        self.assertIn("mqueue verified", text)
+        self.assertIn("No release support", text)
 
 
 if __name__ == "__main__":

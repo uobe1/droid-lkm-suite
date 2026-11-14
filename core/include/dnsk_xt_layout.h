@@ -8,11 +8,86 @@
 #include <linux/stringify.h>
 #include "dnsk_abi.h"
 
-/*
- * CONFIG_NETFILTER_XTABLES_COMPAT is not part of the GKI KMI.  A kernel built
- * with it has 128-byte xt_match/xt_target; one without has 104-byte copies.
- * The build profile selects the layout and the module stamps it so dnskctl can
- * reject a module built for the other layout before insmod.
+/**
+ * DOC: dnsk_xt_layout - selecting the xtables match/target layout
+ *
+ * CONFIG_NETFILTER_XTABLES_COMPAT is not part of the GKI KMI, but it changes
+ * struct xt_match and struct xt_target: with the option enabled the COMPAT
+ * callbacks are compiled in, the struct grows from 104 to 128 bytes, and
+ * every field after those callbacks moves by 16 bytes.  The kernel walks its
+ * registered tables with the stride it was built with, so a module built for
+ * the other layout crashes xt_register_matches()/xt_register_targets()
+ * instead of failing cleanly.
+ *
+ * Which layout is built
+ * ---------------------
+ *
+ * DNSK_XT_LAYOUT records the choice: 104 for a kernel without
+ * CONFIG_NETFILTER_XTABLES_COMPAT, 128 for stock GKI/DDK builds that keep it
+ * enabled.  The value normally follows DNSK_XT_NOCOMPAT, which the build
+ * profile sets: profiles/abi/android16-6.12-xt104.json selects 104 for the
+ * device, android16-6.12-xt128.json selects 128 for stock GKI and QEMU.  The
+ * profile is the source of truth, not the running uname.
+ *
+ * Both values are measurements of one kernel build (the MTK 6.12.30 device
+ * BTF for 104, stock GKI 6.12 headers for 128), not fixed constants.  A
+ * different config, vendor tree or KMI moves them, which is why the
+ * assertions below cover both branches and why unsupported values are
+ * rejected rather than guessed.
+ *
+ * How a mismatch is caught
+ * ------------------------
+ *
+ * The module stamps the chosen value as dnsk_xt_layout=.  dnskctl compares
+ * that stamp with policy.conf before insmod, and dnsk-preflight checks the
+ * device BTF with the expected value.  For DNSK_XT_NOCOMPAT builds the
+ * include shim undefines CONFIG_NETFILTER_XTABLES_COMPAT before the first
+ * x_tables.h inclusion, so the module and the target kernel agree on the
+ * struct the code is compiled against.
+ *
+ * Field offsets by layout
+ * -----------------------
+ *
+ * ======================  ====  ====
+ * field                    104   128
+ * ======================  ====  ====
+ * list                       0     0
+ * name                      16    16
+ * revision                  45    45
+ * match / target            48    48
+ * checkentry                56    56
+ * destroy                   64    64
+ * compat_from_user           -    72
+ * compat_to_user             -    80
+ * me                        72    88
+ * table                     80    96
+ * matchsize / targetsize    88   104
+ * usersize                  92   108
+ * compatsize                 -   112
+ * hooks                     96   116
+ * proto                    100   120
+ * family                   102   122
+ * sizeof                   104   128
+ * ======================  ====  ====
+ */
+
+/**
+ * define DNSK_XT_LAYOUT - xtables struct layout the module was built for
+ *
+ * The value selects which xt_match/xt_target layout the assertions below
+ * accept: 104 when the target kernel was built without
+ * CONFIG_NETFILTER_XTABLES_COMPAT, 128 when it keeps the option enabled.  It
+ * defaults from DNSK_XT_NOCOMPAT, which the build profile sets, and may be
+ * supplied directly by the build; either way the two #error checks below
+ * reject an inconsistent pair.  The module also stamps the value as
+ * dnsk_xt_layout= so dnskctl and package.py can refuse a module built for
+ * the other layout before insmod.
+ *
+ * The value is a property of the kernel's CONFIG, not of the KMI: a stock
+ * GKI/DDK 6.12 build is 128, while the MTK 6.12.30 device kernel is 104.
+ * Targeting another KMI or config means selecting the matching profile (and
+ * extending the build plus the preflight check for a third layout), not
+ * editing this macro.
  */
 #ifndef DNSK_XT_LAYOUT
 #ifdef DNSK_XT_NOCOMPAT

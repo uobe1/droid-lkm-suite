@@ -31,17 +31,10 @@ nav:
   - 首页: index.md
   - 架构: architecture/overview.md
   - 状态: status.md
-  - 证据:
-      - M0 core: evidence/m0-core.md
-      - M1 ns: evidence/m1-ns.md
-      - M1 devtmpfs: evidence/m1-devtmpfs.md
-      - netfilter unload panic: evidence/netfilter-inactive-unload-panic.md
-  - 可行性:
-      - CGROUP_PIDS: feasibility/cgpids.md
-      - TMPFS_XATTR/ACL: feasibility/tmpfsx.md
-      - USER_NS: feasibility/userns.md
   - 指南:
       - 构建: guides/build.md
+      - dnskctl 命令手册: guides/dnskctl.md
+      - 新增 feature: guides/new-feature.md
       - QEMU: guides/qemu.md
       - 真机: guides/device.md
       - 测试: guides/testing.md

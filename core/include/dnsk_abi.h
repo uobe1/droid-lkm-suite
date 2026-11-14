@@ -5,10 +5,15 @@
 #include <linux/module.h>
 #include <linux/stringify.h>
 
-/*
+/**
+ * define DNSK_ABI_PROFILE - build profile this module was compiled for
+ *
  * The build profile selects the ABI-sensitive config.  Every feature module
  * stamps the profile and the macro-able knobs so dnskctl and package.py can
- * reject a module built for a different profile.
+ * reject a module built for a different profile.  The value is recorded in
+ * modinfo as @dnsk_abi_profile.  A module built without an explicit profile
+ * carries "unknown", which does not match any real profile and so fails those
+ * comparisons.
  */
 #ifndef DNSK_ABI_PROFILE
 #define DNSK_ABI_PROFILE "unknown"

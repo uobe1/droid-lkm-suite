@@ -3,5 +3,5 @@ name=Droid LKM Suite
 version=v1.0.0dev0
 versionCode=1
 author=Uobe
-description=android16-6.12 dev: ns/userns idmap+overlay+FUSE+selftests, Docker 29.x v2 legacy+nft, UFW/Fail2ban, netfilter/ipset, tmpfs ACL. Dev artifact only; tags blocked.
+description=android16-6.12 dev artifact: ns/userns idmap+overlay+FUSE, mqueue verified, Docker v2 legacy+nft, UFW/Fail2ban, netfilter/ipset, tmpfs ACL. No release support; tags blocked.
 updateJson=https://raw.githubusercontent.com/uobe1/droid-lkm-suite/main/update.json
