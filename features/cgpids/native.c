@@ -201,6 +201,90 @@ static void dnsk_rwprobe_scan_refs(void *target)
 		adrp_add, adrp_ldr, stext, etext);
 }
 
+/* Relocate cgroup_subsys[] to a same-content 9-entry array and retarget every
+ * ADRP+ADD/LDR pair that referenced the old array.  Same contents, so any
+ * missed site still sees the whole original table; this validates the patch
+ * machinery before slot 8 carries a real second subsystem.
+ * Enabled with dnsk_cgpids.rw_reloc=1. */
+static bool dnsk_rw_reloc;
+module_param_named(rw_reloc, dnsk_rw_reloc, bool, 0444);
+
+static u32 dnsk_adrp_page(u32 insn, u64 pc, u64 page)
+{
+	s64 delta = ((s64)(page - (pc & ~0xFFFUL))) >> 12;
+	u32 lo = (u32)(delta & 3);
+	u32 hi = (u32)((delta >> 2) & 0x7FFFF);
+
+	return (insn & ~0x60FFFFE0u) | (lo << 29) | (hi << 5);
+}
+
+static int dnsk_rwprobe_reloc(void)
+{
+	struct cgroup_subsys **old = dnsk_subsys_array;
+	struct cgroup_subsys **neo;
+	void *stext = dnsk_native_api->resolve("_stext");
+	void *etext = dnsk_native_api->resolve("_etext");
+	u64 olda = (u64)old;
+	int i, patched = 0;
+	u32 *p, i0, i1, buf[2];
+	u64 pg, tgt, pc, na, off;
+	s64 imm;
+
+	neo = kzalloc((DNSK_CGROUP_SUBSYS_COUNT + 1) * sizeof(void *),
+		      GFP_KERNEL);
+	if (!neo)
+		return -ENOMEM;
+	for (i = 0; i < DNSK_CGROUP_SUBSYS_COUNT; i++)
+		neo[i] = old[i];
+	if (!stext || !etext || etext <= stext)
+		return -ENOENT;
+	for (p = stext; (void *)(p + 2) <= etext; p++) {
+		i0 = READ_ONCE(p[0]);
+		i1 = READ_ONCE(p[1]);
+		if ((i0 & 0x9F000000) != 0x90000000)
+			continue;
+		pc = (u64)p;
+		imm = ((s64)(((i0 >> 5) & 0x7FFFF) << 2) | ((i0 >> 29) & 3));
+		if (imm & (1 << 20))
+			imm |= ~((1 << 21) - 1);
+		pg = (pc & ~0xFFFUL) + ((u64)imm << 12);
+		if ((i1 & 0xFF800000) == 0x91000000)
+			tgt = pg + (((i1 >> 10) & 0xFFF) <<
+				    (((i1 >> 22) & 3) == 1 ? 12 : 0));
+		else if ((i1 & 0xFFC00000) == 0xF9400000)
+			tgt = pg + (((i1 >> 10) & 0xFFF) * 8);
+		else
+			continue;
+		if (tgt < olda || tgt >= olda + 64)
+			continue;
+		na = (u64)neo + (tgt - olda);
+		off = na & 0xFFF;
+		buf[0] = dnsk_adrp_page(i0, pc, na & ~0xFFFUL);
+		if ((i1 & 0xFF800000) == 0x91000000)
+			buf[1] = (i1 & ~0x00FFFC00u) | (((u32)off & 0xFFF) << 10);
+		else
+			buf[1] = (i1 & ~0x00FFFC00u) |
+				 ((((u32)off >> 3) & 0xFFF) << 10);
+		{
+			struct dnsk_rw_req req = { 0 };
+
+			req.opcode = DNSK_RW_WRITE;
+			req.addr = (void *)pc;
+			req.src = buf;
+			req.len = sizeof(buf);
+			req.flags = DNSK_RW_F_TEXT;
+			if (!dnsk_native_api->rw(&req))
+				patched++;
+		}
+	}
+	pr_info("dnsk_rwprobe: reloc %px->%px patched=%d\n",
+		old, neo, patched);
+	if (!patched)
+		return -ENOENT;
+	dnsk_subsys_array = neo;
+	return 0;
+}
+
 static void dnsk_rwprobe_run(void)
 {
 	struct dnsk_rw_req req = { 0 };
@@ -736,6 +820,12 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 
 	if (dnsk_rw_probe)
 		dnsk_rwprobe_run();
+
+	if (dnsk_rw_reloc) {
+		ret = dnsk_rwprobe_reloc();
+		if (ret)
+			goto out_put;
+	}
 
 	old_ss = dnsk_subsys_array[DNSK_CGROUP_SUBSYS_SLOT];
 	if (!old_ss) {
