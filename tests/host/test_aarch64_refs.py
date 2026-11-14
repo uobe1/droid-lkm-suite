@@ -14,10 +14,14 @@ _start:
     add  x0, x0, :lo12:target
     adrp x2, target
     ldr  x3, [x2, #8]
+    adrp x4, other
+    add  x4, x4, :lo12:other
     ret
 .data
 .align 3
 target: .quad 0x1122334455667788
+.skip 0x1000
+other: .quad 0x99
 """
 
 
@@ -79,10 +83,13 @@ class Aarch64RefsTest(unittest.TestCase):
         syms = subprocess.run(["aarch64-linux-gnu-objdump", "-t",
                                str(d / "t.elf")], check=True,
                               capture_output=True, text=True).stdout
-        cls.target = None
+        cls.syms = {}
         for line in syms.splitlines():
-            if line.split()[-1:] == ["target"]:
-                cls.target = int(line.split()[0], 16)
+            parts = line.split()
+            if len(parts) >= 2 and parts[-1] in ("target", "other",
+                                                 "_start"):
+                cls.syms[parts[-1]] = int(parts[0], 16)
+        cls.target = cls.syms.get("target")
 
     @classmethod
     def tearDownClass(cls):
@@ -125,6 +132,55 @@ class Aarch64RefsTest(unittest.TestCase):
         nldr = repack_sub(ldr, new, False)
         self.assertEqual(decode_adrp(nadrp, pc), new & ~0xFFF)
         self.assertEqual(decode_ldr(nldr, decode_adrp(nadrp, pc)), new)
+
+
+    def scan_patch(self, old, new):
+        out = {}
+        for i, (pc, insn, mnem) in enumerate(self.insns):
+            if mnem != "adrp" or i + 1 >= len(self.insns):
+                continue
+            npc, ninsn, nmnem = self.insns[i + 1]
+            if nmnem not in ("add", "ldr"):
+                continue
+            page = decode_adrp(insn, pc)
+            tgt = (decode_add(ninsn, page) if nmnem == "add"
+                   else decode_ldr(ninsn, page))
+            if not old <= tgt < old + 64:
+                continue
+            na = new + (tgt - old)
+            out[pc] = repack_adrp(insn, pc, na & ~0xFFF)
+            out[npc] = repack_sub(ninsn, na, nmnem == "add")
+        return out
+
+    def test_scan_patches_array_refs_only(self):
+        new = 0x40000000
+        patched = self.scan_patch(self.target, new)
+        pairs = []
+        for i, (pc, insn, mnem) in enumerate(self.insns):
+            if mnem != "adrp" or i + 1 >= len(self.insns):
+                continue
+            npc, ninsn, nmnem = self.insns[i + 1]
+            if nmnem not in ("add", "ldr"):
+                continue
+            page = decode_adrp(insn, pc)
+            tgt = (decode_add(ninsn, page) if nmnem == "add"
+                   else decode_ldr(ninsn, page))
+            pairs.append((pc, npc, tgt, nmnem))
+        target_pairs = [p for p in pairs
+                        if self.target <= p[2] < self.target + 64]
+        self.assertEqual(len(target_pairs), 2)
+        self.assertEqual(len(patched), 4)
+        for pc, npc, tgt, nmnem in target_pairs:
+            na = new + (tgt - self.target)
+            self.assertEqual(decode_adrp(patched[pc], pc), na & ~0xFFF)
+            base = decode_adrp(patched[pc], pc)
+            got = (decode_add(patched[npc], base) if nmnem == "add"
+                   else decode_ldr(patched[npc], base))
+            self.assertEqual(got, na)
+        for pc, npc, tgt, _ in pairs:
+            if self.syms["other"] <= tgt < self.syms["other"] + 64:
+                self.assertNotIn(pc, patched)
+                self.assertNotIn(npc, patched)
 
 
 if __name__ == "__main__":
