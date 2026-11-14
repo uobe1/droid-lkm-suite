@@ -324,6 +324,22 @@ if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
 			if [ -r /sys/fs/cgroup/dnsk_diff/pids.events ]; then
 				emit "PIDS_EVENTS_AFTER_FORK=$(tr '\n' ',')" < /sys/fs/cgroup/dnsk_diff/pids.events
 			fi
+			# The same limit must be enforced through a descendant cgroup: the
+			# charge is hierarchical, not just a per-cgroup file check.
+			if [ -x /pids_probe ]; then
+				"$BB" mkdir -p /sys/fs/cgroup/dnsk_diff/child 2>/dev/null
+				echo 1 > "$P" 2>/dev/null
+				afork=$("$BB" sh -c \
+					'echo $$ > /sys/fs/cgroup/dnsk_diff/child/cgroup.procs 2>/dev/null; exec /pids_probe' \
+					2>/dev/null)
+				if [ -n "$afork" ]; then
+					emit "PIDS_ANCESTOR_FORK_ERRNO=${afork#PIDS_FORK_ERRNO=}"
+				else
+					emit "PIDS_ANCESTOR_FORK_ERRNO=missing"
+				fi
+				echo max > "$P" 2>/dev/null
+				"$BB" rmdir /sys/fs/cgroup/dnsk_diff/child 2>/dev/null
+			fi
 		else
 			emit "PIDS_FILES=absent"
 		fi
@@ -455,6 +471,13 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ]; then
 			emit "XT_SET_MATCH=$?"
 			"$IPT" -t filter -A OUTPUT -j SET --add-set dnskprobe src 2>/dev/null
 			emit "XT_SET_TARGET=$?"
+			# Registration is not the contract: a packet through OUTPUT must
+			# actually add the source address to the set.
+			"$BB" ip link set lo up 2>/dev/null ||
+				"$BB" ifconfig lo up 2>/dev/null
+			"$BB" nc -w1 127.0.0.1 9 </dev/null >/dev/null 2>&1
+			"$IPS" test dnskprobe 127.0.0.1 >/dev/null 2>&1
+			emit "XT_SET_TARGET_HIT=$?"
 		else
 			emit "XT_SET_MATCH=set_missing"
 			emit "XT_SET_TARGET=set_missing"
@@ -559,6 +582,23 @@ if [ -x /fuse_test ]; then
 	fi
 else
 	emit "USERNS_FUSE_PROBE=missing"
+fi
+
+# The vendored mount_setattr selftest covers detached idmapped mounts of a
+# host-owned ext4, which is exactly the trampoline the idmap helper in
+# userns_test does not reach.  It needs e2fsprogs and /mnt (both provided by
+# the differential initramfs).
+if [ -x /mount_setattr_test ]; then
+	"$BB" mkdir -p /mnt
+	if /mount_setattr_test >/tmp/msa 2>&1; then
+		emit "USERNS_MOUNT_SETATTR=ok"
+	else
+		emit "USERNS_MOUNT_SETATTR=err:$(norm < /tmp/msa | tail -1)"
+	fi
+	msa_totals=$(grep -m1 '^Totals:' /tmp/msa 2>/dev/null | tr -s ' ' '_')
+	[ -n "$msa_totals" ] && emit "USERNS_MOUNT_SETATTR_TOTALS=$msa_totals"
+else
+	emit "USERNS_MOUNT_SETATTR_PROBE=missing"
 fi
 
 # setns must refuse what native refuses: entering a namespace the caller has no

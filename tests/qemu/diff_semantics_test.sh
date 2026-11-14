@@ -145,7 +145,9 @@ PIDS_FORK_ERRNO PIDS_FORK_PROBE IPC_PROBE_DONE
 XATTR_SET_RC XATTR_GET_RC XATTR_GET_VALUE XATTR_LIST_RC XATTR_LIST_HAS_PROBE
 XATTR_REMOVE_RC XATTR_GET_AFTER_REMOVE_RC ACL_EXISTING_TEST_OK
 ACL_LEGACY_EXISTING_TEST_OK ACL_LEGACY_INHERIT_INHERIT_MASK
-SETNS_PIDFD_IPC_RC SETNS_PIDFD_IPC_ERRNO SETNS_PIDFD_IPC_PROBE'
+ACL_NOACL_TEST_OK XATTR_TRUSTED_SET_RC XATTR_TRUSTED_REMOVE_RC
+TMPFSX_NOACL_ACL_RC SETNS_PIDFD_IPC_RC SETNS_PIDFD_IPC_ERRNO
+SETNS_PIDFD_IPC_PROBE'
 : >"$TMP/vocab_keys"
 for k in $literal $dynamic; do
 	case $k in
@@ -161,7 +163,7 @@ while IFS= read -r k; do
 	# The bare markers are printed by the probe helper test programs.
 	case $k in
 	USERNS_IDMAP_OK|USERNS_OVERLAY_OK|IPC_PROBE_DONE|ACL_EXISTING_TEST_OK|\
-	ACL_LEGACY_EXISTING_TEST_OK)
+	ACL_LEGACY_EXISTING_TEST_OK|ACL_NOACL_TEST_OK)
 		printf '%s\n' "$k" >>"$TMP/vocab_o"
 		;;
 	*)
@@ -282,6 +284,10 @@ assert_file_has "unprivileged userns probe runs the helper" "$PROBE" \
 	'\[ -x /userns_unpriv_test \]'
 assert_file_has "userns probe covers FUSE mounts" "$PROBE" '"USERNS_FUSE='
 assert_file_has "userns FUSE probe runs the helper" "$PROBE" '\[ -x /fuse_test \]'
+assert_file_has "userns probe covers mount_setattr selftest" "$PROBE" \
+	'"USERNS_MOUNT_SETATTR='
+assert_file_has "mount_setattr probe runs the vendored selftest" "$PROBE" \
+	'\[ -x /mount_setattr_test \]'
 assert_file_has "ns probe covers pidfd setns" "$PROBE" '"SETNS_PIDFD_IPC_'
 assert_file_has "pidfd setns probe runs the helper" "$PROBE" '\[ -x /setns_pidfd_probe \]'
 assert_file_has "module-owned APIs are declared out of differential scope" "$PROBE" \
@@ -295,7 +301,8 @@ assert_file_has "ipcns isolation probe runs the helper" "$PROBE" '\[ -x /ipcns_l
 cgpids_keys='PIDS_MAX_INIT PIDS_MAX_WRITE PIDS_MAX_RESET PIDS_BAD_WRITE_RC
 PIDS_CURRENT PIDS_CURRENT_VALUE PIDS_EVENTS PIDS_EVENTS_LOCAL
 PIDS_EVENTS_AFTER_FORK PIDS_PEAK1 PIDS_PEAK2 PIDS_PEAK_AFTER_MIGRATE
-PIDS_MIGRATE_CURRENT PIDS_RELEASE_CURRENT PIDS_FORK_ERRNO'
+PIDS_MIGRATE_CURRENT PIDS_RELEASE_CURRENT PIDS_ANCESTOR_FORK_ERRNO
+PIDS_FORK_ERRNO'
 for k in $cgpids_keys; do
 	assert_file_has "cgpids probe covers $k" "$PROBE" "\"$k"
 done
@@ -304,7 +311,8 @@ assert_file_has "cgpids helper reports fork errno" "$ROOT/tests/qemu/pids_probe.
 	'PIDS_FORK_ERRNO'
 
 tmpfsx_keys='XATTR_RC ACL_RC TMPFSX_MOUNT1_RC TMPFSX_MOUNT2_RC
-TMPFSX_ACL_LEGACY_EXISTING_RC TMPFSX_ACL_LEGACY_INHERIT_RC'
+TMPFSX_ACL_LEGACY_EXISTING_RC TMPFSX_ACL_LEGACY_INHERIT_RC
+TMPFSX_NOACL_MOUNT'
 for k in $tmpfsx_keys; do
 	assert_file_has "tmpfsx probe covers $k" "$PROBE" "\"$k"
 done
@@ -312,8 +320,9 @@ done
 assert_file_has "tmpfsx probe forwards ACL_* values" "$PROBE" "'\^ACL_'"
 assert_file_has "tmpfsx probe covers existing-file ACL" "$PROBE" 'ACL_EXISTING_'
 assert_file_has "tmpfsx probe forwards granular xattr keys" "$PROBE" "'\^XATTR_'"
+assert_file_has "tmpfsx probe covers the noacl control" "$PROBE" 'TMPFSX_NOACL_MOUNT'
 for k in XATTR_SET_RC XATTR_GET_VALUE XATTR_GET_AFTER_REMOVE_RC \
-	XATTR_REMOVE_RC XATTR_LIST_HAS_PROBE; do
+	XATTR_REMOVE_RC XATTR_LIST_HAS_PROBE XATTR_TRUSTED_SET_RC; do
 	assert_file_has "xattr_probe covers $k" "$ROOT/tests/qemu/xattr_probe.c" "$k"
 done
 for k in DEVTMPFS_MOUNT DEVTMPFS_NULL DEVTMPFS_CONSOLE DEVTMPFS_FSTYPE \
@@ -324,7 +333,7 @@ done
 # The 11-item net minimum baseline: missing items included, behind the gate.
 net_keys='XT_ADDRTYPE XT_ADDRTYPE6 XT_RECENT XT_REJECT XT_REJECT6 XT_LOG
 IP6T_NAT XT_SET_MATCH XT_SET_TARGET IPSET_CREATE IPSET_NET_CREATE
-IPSET_NET_MISS NETNS_RULE_ISOLATED'
+IPSET_NET_MISS NETNS_RULE_ISOLATED XT_SET_TARGET_HIT'
 for k in $net_keys; do
 	assert_file_has "net minimum baseline probe covers $k" "$PROBE" "\"$k"
 done
@@ -369,6 +378,10 @@ assert_file_has "workflow builds the ipcns isolation helper" "$WORKFLOW" \
 assert_file_has "workflow builds the pidfd setns helper" "$WORKFLOW" \
 	'setns_pidfd_probe'
 assert_file_has "workflow builds the FUSE helper" "$WORKFLOW" 'fuse_test'
+assert_file_has "workflow builds the mount_setattr selftest" "$WORKFLOW" \
+	'mount_setattr_test'
+assert_file_has "workflow installs e2fsprogs for the selftest" "$WORKFLOW" \
+	'add e2fsprogs'
 
 # --------------------------------------------------------------------------
 # 9. Every C probe compiles; the fork helper also prints the comparable key.
