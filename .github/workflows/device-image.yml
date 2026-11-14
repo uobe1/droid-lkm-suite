@@ -15,6 +15,7 @@ on:
           - bench-lkm
           - ksud-ns
           - ksud-docker
+          - cgpids
           - tmpfsx
           - userns
           - netfilter
@@ -344,6 +345,13 @@ jobs:
               --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/community \
               add ufw fail2ban iptables-legacy
             cp tests/qemu/init-apps-device rootfs/init
+          elif [ "${{ inputs.mode }}" = "cgpids" ]; then
+            cp modules/dnsk_core.ko modules/dnsk_cgpids.ko rootfs/modules/
+            cp tests/qemu/init-cgpids rootfs/init
+            aarch64-linux-gnu-gcc -static -O2 -o pids_probe tests/qemu/pids_probe.c
+            cp pids_probe rootfs/pids_probe
+            aarch64-linux-gnu-gcc -static -O2 -o insmod_force tests/qemu/insmod_force.c
+            cp insmod_force rootfs/insmod_force
           elif [ "${{ inputs.mode }}" = "lifecycle" ]; then
             # Install a real module layout so dnskctl resolves kmi/policy.conf
             # exactly as an installed KSU module does, then load and unload
@@ -474,6 +482,9 @@ jobs:
           if [ "$MODE" = "ksud-ns" ] || [ "$MODE" = "ksud-docker" ]; then
             APPEND="$APPEND dnsk_lkm=1"
           fi
+          if [ "$MODE" = "cgpids" ]; then
+            APPEND="$APPEND cgpids_rw_probe=1"
+          fi
           timeout "$TIMEOUT" qemu-system-aarch64 \
             -M virt -cpu max -m "$MEM" -smp 4 -nographic -no-reboot \
             -kernel device/Image -initrd initramfs.cpio.gz \
@@ -536,6 +547,9 @@ jobs:
             grep -q 'DNSK_UFW_OK' qemu.log
             grep -q 'DNSK_FAIL2BAN_OK' qemu.log
             grep -q 'DNSK_APPS_OK' qemu.log
+          elif [ "$MODE" = "cgpids" ]; then
+            grep -q 'DNSK_CGPIDS_OK' qemu.log
+            grep -q 'dnsk_rwprobe:' qemu.log
           elif [ "$MODE" = "lifecycle" ]; then
             # Every module loads through dnskctl, is visible in monitor, and is
             # then removed again without leaving hooks, refs or kernel alarms.
