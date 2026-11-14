@@ -166,6 +166,7 @@ static void dnsk_rwprobe_run(void)
 {
 	struct dnsk_rw_req req = { 0 };
 	struct cgroup_subsys *ss;
+	void *namep;
 	char name[40];
 	void *arr = NULL;
 	int i, ret;
@@ -200,11 +201,19 @@ static void dnsk_rwprobe_run(void)
 			continue;
 		}
 		name[0] = '\0';
+		namep = NULL;
 		req.opcode = DNSK_RW_READ;
 		req.addr = (char *)ss + DNSK_CGROUP_SUBSYS_NAME;
-		req.dst = name;
-		req.len = sizeof(name) - 1;
-		if (dnsk_native_api->rw(&req) || !name[0])
+		req.dst = &namep;
+		req.len = sizeof(namep);
+		if (!dnsk_native_api->rw(&req) && namep) {
+			req.opcode = DNSK_RW_READ;
+			req.addr = namep;
+			req.dst = name;
+			req.len = sizeof(name) - 1;
+			dnsk_native_api->rw(&req);
+		}
+		if (!name[0])
 			pr_info("dnsk_rwprobe: slot %d ss=%px name unreadable\n",
 				i, ss);
 		else
