@@ -2,22 +2,41 @@
 
 ## 语言与术语
 
-- 正文默认中文；代码标识、配置名、API、错误码保持英文。
-- 代码注释英文；内核 API 用 kernel-doc 格式，用户态 C 用 Doxygen 格式。
-- 同一概念使用固定术语：`feature`、`module`、`native`、`real`、`differential`、`virtual`、`N/A`、`unsupported`、`not-shipped`。
-- 不使用营销语、夸张承诺、emoji；结论必须能追溯到源码、测试或日志。
+- 正文默认中文; 代码标识, 配置名, API, 错误码保持英文
+- 代码注释英文; 内核 API 用 kernel-doc 格式, 用户态 C 用 Doxygen 格式
+- 同一概念使用固定术语: `feature`, `module`, `native`, `real`, `differential`, `virtual`, `O`, `V`, `unsupported`, `not-shipped`
+- 不使用营销语, 夸张承诺, emoji; 结论必须能追溯到源码, 测试或日志
+
+## 标点与符号
+
+- 不得使用全角符号
+- 逗号, 句号, 分号, 冒号, 括号, 引号, 问号, 感叹号一律用半角
+- 部分半角符号后加一个空格, 用于视觉分隔
+- 加空格的有: 逗号 `,`, 分号 `;`, 冒号 `:`, 句号 `.`(句末除外), 右括号 `)` 之后的正文继续时
+- 中英文之间不加额外空格; 英文标识, 路径, 命令保持原样
+- 不用全角空格, 全角竖线, 全角引号; 表格分隔用半角 `|`
+- 句末不得追加句号
+
+## 换行与断句
+
+- 不得出现行尾空格
+- 行尾空白不做任何事, 只会在 diff 里制造噪声
+- 一行只能写一个句子
+- 一句话内需要多个分句时用分号 `;` 连接, 不要在一行里写多个完整句子
+- 能用列表表达的内容用列表, 一行一项; 不要把多项塞进一段
 
 ## Markdown 规则
 
-- CommonMark；ATX 标题；标题层级不跳级。
-- 围栏代码块必须标注语言；路径/命令使用行内代码。
-- 表格用于状态矩阵、验收矩阵、版本固定；避免超宽表格。
-- 图使用 Mermaid；禁止直接嵌入不可审计的外部图片。
-- 由 markdownlint 检查；链接必须可解析。
+- CommonMark; ATX 标题; 标题层级不跳级
+- 列表不得嵌套三层及以上; 第三层就应改用小标题或表格
+- 围栏代码块必须标注语言; 路径与命令使用行内代码
+- 表格用于状态矩阵, 验收矩阵, 版本固定; 避免超宽表格
+- 图使用 Mermaid; 禁止直接嵌入不可审计的外部图片
+- 由 markdownlint 检查; 链接必须可解析
 
 ## 页面结构
 
-每个功能页必须包含：
+每个功能页必须包含以下小节, 顺序固定
 
 ```text
 # 功能名
@@ -28,17 +47,26 @@
 ## Evidence
 ```
 
-- `Status` 使用 N/R/D/V/N/A/unsupported/not-shipped，并注明 KMI。
-- `Evidence` 链接到测试日志、CI run、差分报告或真机记录；没有证据就写 `pending`，不得写“已验证”。
-- 变更历史不写入功能页；由 Git 和 release notes 记录。
+- `Status` 使用 O, V, unsupported, not-shipped, 并注明 KMI
+- `Evidence` 链接到测试日志, CI run, 差分报告或真机记录; 没有证据就写 `pending`, 不得写"已验证"
+- 变更历史不写入功能页; 由 Git 和 release notes 记录
+
+## 文档分层
+
+- tracked 文档只放读者能直接用的内容
+- 一次性证据, run id, 实测数字放本地资料, 不进 tracked 文档
+- tracked 文档不得链接本地资料目录, 只能写纯路径并注明"本地资料"
+- 维护者契约放 `CONTRIBUTING.md`; 实现判据放 `contract.md`
+- 使用者文档里不写分支策略, tag 规则, 风格要求, 提交规范
 
 ## 生成文档
 
-- 内核 API：kernel-doc（`scripts/kernel-doc`）生成，放入 `site/api/kernel/`。
-- 用户态 C API：Doxygen 生成，放入 `site/api/userspace/`。
-- 导航与指南：MkDocs Material；版本化使用 mike 发布 GitHub Pages。
-- 生成物不手工编辑；注释是唯一 API 文档来源。
+- API 文档必须由工具生成, 不手写
+- 内核 API: kernel-doc(`scripts/kernel-doc`) 生成 rST, 再由 `scripts/gen-kernel-api.py` 转 HTML
+- 用户态 C API: Doxygen 生成 HTML
+- 生成物不手工编辑; 注释是唯一 API 文档来源
+- 生成页面提交到仓库, 让读者不必自行构建; CI 校验其与头文件一致
 
 ## 许可证
 
-文档文件使用 CC-BY-SA-4.0；若嵌入代码片段，片段沿用对应代码许可证。
+文档文件使用 CC-BY-SA-4.0; 若嵌入代码片段, 片段沿用对应代码许可证

@@ -29,7 +29,12 @@ plugins:
       canonical_version: latest
 nav:
   - 首页: index.md
-  - 架构: architecture/overview.md
+  - 架构:
+      - 概览: architecture/overview.md
+      - 模块生命周期: architecture/module-lifecycle.md
+      - Hook 机制: architecture/hook-mechanism.md
+      - 卸载安全: architecture/unload-safety.md
+      - ABI 与 profile: architecture/abi-and-profiles.md
   - 状态: status.md
   - 指南:
       - 构建: guides/build.md
@@ -39,6 +44,3 @@ nav:
       - 真机: guides/device.md
       - 测试: guides/testing.md
   - 文档规范: STYLE.md
-  - API:
-      - Kernel: api/kernel.md
-      - Userspace: api/userspace.md
