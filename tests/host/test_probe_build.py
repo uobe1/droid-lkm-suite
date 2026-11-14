@@ -6,8 +6,7 @@ import subprocess
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SYSROOT = pathlib.Path(
-    "/opt/ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot")
+SYSROOT = pathlib.Path("/usr/local/share/ndk/sysroot")
 # bionic has no POSIX mqueue.h; the workflow builds these with glibc instead.
 BIONIC_GAPS = {"ipcns_leak.c", "ipc_probe.c"}
 
