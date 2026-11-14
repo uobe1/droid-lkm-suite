@@ -258,6 +258,11 @@ static int dnsk_rwprobe_reloc(void)
 		if (tgt < olda || tgt >= olda + 64)
 			continue;
 		na = (u64)neo + (tgt - olda);
+		if (((s64)((na & ~0xFFFUL) - (pc & ~0xFFFUL))) >> 12 <
+		    -(1 << 20) ||
+		    ((s64)((na & ~0xFFFUL) - (pc & ~0xFFFUL))) >> 12 >=
+		    (1 << 20))
+			continue;
 		off = na & 0xFFF;
 		buf[0] = dnsk_adrp_page(i0, pc, na & ~0xFFFUL);
 		if ((i1 & 0xFF800000) == 0x91000000)
@@ -279,8 +284,10 @@ static int dnsk_rwprobe_reloc(void)
 	}
 	pr_info("dnsk_rwprobe: reloc %px->%px patched=%d\n",
 		old, neo, patched);
-	if (!patched)
+	if (!patched) {
+		kfree(neo);
 		return -ENOENT;
+	}
 	dnsk_subsys_array = neo;
 	return 0;
 }
