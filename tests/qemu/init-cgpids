@@ -25,6 +25,7 @@ MODPARAM=""
 for arg in $(cat /proc/cmdline); do
 	case "$arg" in
 		cgpids_native=1) EXPECT_PIDS=1; MODPARAM="native=1" ;;
+		cgpids_rw_probe=1) MODPARAM="$MODPARAM rw_probe=1" ;;
 	esac
 done
 

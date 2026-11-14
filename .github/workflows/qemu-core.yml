@@ -292,6 +292,8 @@ jobs:
             aarch64-linux-gnu-gcc -static -O2 -o userns_unpriv_test \
               tests/qemu/userns_unpriv_test.c
             aarch64-linux-gnu-gcc -static -O2 -o fuse_test tests/qemu/fuse_test.c
+          aarch64-linux-gnu-gcc -static -O2 -pthread -o mount_setattr_test \
+            tests/qemu/selftests/mount_setattr/mount_setattr_test.c
             aarch64-linux-gnu-gcc -static -O2 -pthread -o mount_setattr_test \
               tests/qemu/selftests/mount_setattr/mount_setattr_test.c
             cp userns_test userns_unpriv_test fuse_test mount_setattr_test rootfs/
@@ -354,6 +356,9 @@ jobs:
           fi
           if [ "${{ inputs.mode }}" = "cgpids" ] && [ "${{ inputs.kernel }}" = "oracle" ]; then
             APPEND="$APPEND cgpids_native=1"
+          fi
+          if [ "${{ inputs.mode }}" = "cgpids" ]; then
+            APPEND="$APPEND cgpids_rw_probe=1"
           fi
           timeout "$TIMEOUT" qemu-system-aarch64 \
             -M virt -cpu max -m "$MEM" -smp "$SMP" -nographic -no-reboot \
@@ -542,7 +547,17 @@ jobs:
           }
           build_rootfs oracle-rootfs
           cp ipc_probe xattr_probe acl_test userns_test userns_unpriv_test \
-            pids_probe ipcns_leak setns_pidfd_probe fuse_test oracle-rootfs/
+            pids_probe ipcns_leak setns_pidfd_probe fuse_test \
+            mount_setattr_test oracle-rootfs/
+          # mount_setattr_test formats and mounts an ext4 image.
+          rm -rf apk-tools && mkdir -p apk-tools
+          curl -fsSL -o apk-tools.apk \
+            https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/apk-tools-static-2.14.13-r0.apk
+          tar -xzf apk-tools.apk -C apk-tools
+          apk-tools/sbin/apk.static --root "$PWD/oracle-rootfs" \
+            --arch aarch64 --no-cache --allow-untrusted --no-scripts \
+            --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
+            add e2fsprogs
           cp tests/qemu/diff_probe.sh tests/qemu/init-diff-oracle oracle-rootfs/
           chmod 0755 oracle-rootfs/init oracle-rootfs/diff_probe.sh
 
@@ -556,7 +571,12 @@ jobs:
           cp modules/*.ko "$MODROOT/kmi/android16-6.12/"
           cp modules/selpermissive.ko lkm-rootfs/modules/
           cp ipc_probe xattr_probe acl_test userns_test userns_unpriv_test \
-            pids_probe ipcns_leak setns_pidfd_probe fuse_test lkm-rootfs/
+            pids_probe ipcns_leak setns_pidfd_probe fuse_test \
+            mount_setattr_test lkm-rootfs/
+          apk-tools/sbin/apk.static --root "$PWD/lkm-rootfs" \
+            --arch aarch64 --no-cache --allow-untrusted --no-scripts \
+            --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
+            add e2fsprogs
           cp selinux_load insmod_force lkm-rootfs/
           cp tests/qemu/diff_probe.sh tests/qemu/init-diff-lkm lkm-rootfs/
           chmod 0755 lkm-rootfs/init lkm-rootfs/diff_probe.sh
