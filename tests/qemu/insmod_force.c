@@ -14,14 +14,18 @@
 
 int main(int argc, char **argv)
 {
-	int fd, ret;
-	const char *args;
+	char args[256] = "";
+	int fd, ret, i;
 
-	if (argc < 2 || argc > 3) {
-		fprintf(stderr, "usage: %s <module.ko> [module-args]\n", argv[0]);
+	if (argc < 2) {
+		fprintf(stderr, "usage: %s <module.ko> [module-args...]\n", argv[0]);
 		return 2;
 	}
-	args = argc == 3 ? argv[2] : "";
+	for (i = 2; i < argc; i++) {
+		if (i > 2)
+			strncat(args, " ", sizeof(args) - strlen(args) - 1);
+		strncat(args, argv[i], sizeof(args) - strlen(args) - 1);
+	}
 	fd = open(argv[1], O_RDONLY | O_CLOEXEC);
 	if (fd < 0) {
 		perror("open");
