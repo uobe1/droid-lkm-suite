@@ -294,9 +294,36 @@ fi
 # fork-EAGAIN probe or the sleep+cgroup.procs migration blocks instead of
 # failing.  Root cause still unproven; the skip below exists to stop it from
 # poisoning unrelated groups, not to hide it.
+# A cgroup file read that never returns EOF hangs the whole probe (observed on
+# both sides right after PIDS_PEAK2), and a hung probe produces no comparable
+# output at all.  Every read below is wrapped in a 5s timeout and reports
+# BEGIN/RC plus a HANG marker on timeout; the section then keeps going.
+cg_read() { # $1=step $2=path -> CGL
+	emit "PIDS_$1_BEGIN"
+	CGL=$("$BB" timeout 5 "$BB" cat "$2" 2>/dev/null); CG_RC=$?
+	emit "PIDS_$1_RC=$CG_RC"
+	if [ "$CG_RC" = 124 ]; then
+		emit "PIDS_$1_HANG"
+		CGL=
+		return 1
+	fi
+	return 0
+}
+cg_read_csv() { # newline -> comma, same contract as cg_read
+	emit "PIDS_$1_BEGIN"
+	CGL=$("$BB" timeout 5 "$BB" tr '\n' ',' < "$2" 2>/dev/null); CG_RC=$?
+	emit "PIDS_$1_RC=$CG_RC"
+	if [ "$CG_RC" = 124 ]; then
+		emit "PIDS_$1_HANG"
+		CGL=
+		return 1
+	fi
+	return 0
+}
 if have_mod cgpids; then
 if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
-	emit "CONTROLLERS=$("$BB" cat /sys/fs/cgroup/cgroup.controllers)"
+	cg_read CONTROLLERS /sys/fs/cgroup/cgroup.controllers
+	emit "CONTROLLERS=${CGL:-}"
 	"$BB" mkdir -p /sys/fs/cgroup/dnsk_diff 2>/dev/null
 	if [ -d /sys/fs/cgroup/dnsk_diff ]; then
 		for c in pids memory cpu; do
@@ -305,56 +332,84 @@ if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
 		P=/sys/fs/cgroup/dnsk_diff/pids.max
 		if [ -r "$P" ]; then
 			emit "PIDS_FILES=present"
-			emit "PIDS_MAX_INIT=$(cat "$P" 2>/dev/null)"
+			cg_read MAX_INIT "$P"; emit "PIDS_MAX_INIT=${CGL:-}"
 			echo 5 > "$P" 2>/dev/null
-			emit "PIDS_MAX_WRITE=$(cat "$P" 2>/dev/null)"
+			cg_read MAX_WRITE "$P"; emit "PIDS_MAX_WRITE=${CGL:-}"
 			echo 3 > "$P" 2>/dev/null
-			emit "PIDS_MAX_RESET=$(cat "$P" 2>/dev/null)"
+			cg_read MAX_RESET "$P"; emit "PIDS_MAX_RESET=${CGL:-}"
 			echo bogus > "$P" 2>/dev/null
 			emit "PIDS_BAD_WRITE_RC=$?"
 			echo max > "$P" 2>/dev/null
 			# peak is a monotonic high-water mark: reading twice must not change
 			# it, and it must survive a limit rewrite.
-			[ -r /sys/fs/cgroup/dnsk_diff/pids.peak ] && {
-				emit "PIDS_PEAK1=$(cat /sys/fs/cgroup/dnsk_diff/pids.peak 2>/dev/null)"
-				emit "PIDS_PEAK2=$(cat /sys/fs/cgroup/dnsk_diff/pids.peak 2>/dev/null)"
-			}
+			if [ -r /sys/fs/cgroup/dnsk_diff/pids.peak ]; then
+				cg_read PEAK1 /sys/fs/cgroup/dnsk_diff/pids.peak
+				emit "PIDS_PEAK1=${CGL:-}"
+				cg_read PEAK2 /sys/fs/cgroup/dnsk_diff/pids.peak
+				emit "PIDS_PEAK2=${CGL:-}"
+			fi
 			# events is a per-controller file; its presence and readable name set
 			# are part of the contract.  events.local is the non-hierarchical
 			# view the virtual controller also has to expose.
 			if [ -r /sys/fs/cgroup/dnsk_diff/pids.events ]; then
-				emit "PIDS_EVENTS=$(tr '\n' ',')" < /sys/fs/cgroup/dnsk_diff/pids.events
+				cg_read_csv EVENTS /sys/fs/cgroup/dnsk_diff/pids.events
+				emit "PIDS_EVENTS=${CGL:-}"
 			fi
 			if [ -r /sys/fs/cgroup/dnsk_diff/pids.events.local ]; then
-				emit "PIDS_EVENTS_LOCAL=$(tr '\n' ',')" < /sys/fs/cgroup/dnsk_diff/pids.events.local
+				cg_read_csv EVENTS_LOCAL /sys/fs/cgroup/dnsk_diff/pids.events.local
+				emit "PIDS_EVENTS_LOCAL=${CGL:-}"
 			fi
 			if [ -r /sys/fs/cgroup/dnsk_diff/pids.current ]; then
 				emit "PIDS_CURRENT=present"
 				# current is accounting, not a static file: a migrated task must
 				# be charged and its exit must release the charge.
-				emit "PIDS_CURRENT_VALUE=$(cat /sys/fs/cgroup/dnsk_diff/pids.current 2>/dev/null)"
+				cg_read CURRENT_VALUE /sys/fs/cgroup/dnsk_diff/pids.current
+				emit "PIDS_CURRENT_VALUE=${CGL:-}"
 				"$BB" sleep 30 &
 				spid=$!
-				echo "$spid" > /sys/fs/cgroup/dnsk_diff/cgroup.procs 2>/dev/null
+				emit "PIDS_MIGRATE_WRITE_BEGIN"
+				"$BB" timeout 5 sh -c \
+					"echo $spid > /sys/fs/cgroup/dnsk_diff/cgroup.procs" \
+					2>/dev/null
+				mw=$?
+				emit "PIDS_MIGRATE_WRITE_RC=$mw"
+				[ "$mw" = 124 ] && emit "PIDS_MIGRATE_WRITE_HANG"
 				i=0
-				while [ "$(cat /sys/fs/cgroup/dnsk_diff/pids.current 2>/dev/null)" != 1 ] && \
-				      [ "$i" -lt 10 ]; do
+				while :; do
+					CGL=$("$BB" timeout 5 "$BB" cat \
+						/sys/fs/cgroup/dnsk_diff/pids.current 2>/dev/null)
+					CG_RC=$?
+					if [ "$CG_RC" = 124 ]; then
+						emit "PIDS_MIGRATE_WAIT_HANG"
+						break
+					fi
+					[ "$CGL" = 1 ] && break
+					[ "$i" -ge 10 ] && break
 					"$BB" sleep 1
 					i=$((i + 1))
 				done
-				emit "PIDS_MIGRATE_CURRENT=$(cat /sys/fs/cgroup/dnsk_diff/pids.current 2>/dev/null)"
+				emit "PIDS_MIGRATE_CURRENT=${CGL:-}"
 				kill "$spid" 2>/dev/null
 				wait "$spid" 2>/dev/null
 				i=0
-				while [ "$(cat /sys/fs/cgroup/dnsk_diff/pids.current 2>/dev/null)" != 0 ] && \
-				      [ "$i" -lt 10 ]; do
+				while :; do
+					CGL=$("$BB" timeout 5 "$BB" cat \
+						/sys/fs/cgroup/dnsk_diff/pids.current 2>/dev/null)
+					CG_RC=$?
+					if [ "$CG_RC" = 124 ]; then
+						emit "PIDS_RELEASE_WAIT_HANG"
+						break
+					fi
+					[ "$CGL" = 0 ] && break
+					[ "$i" -ge 10 ] && break
 					"$BB" sleep 1
 					i=$((i + 1))
 				done
-				emit "PIDS_RELEASE_CURRENT=$(cat /sys/fs/cgroup/dnsk_diff/pids.current 2>/dev/null)"
+				emit "PIDS_RELEASE_CURRENT=${CGL:-}"
 				# peak is monotonic across the same run: after one task was
 				# charged it must still report 1, not reset with current.
-				emit "PIDS_PEAK_AFTER_MIGRATE=$(cat /sys/fs/cgroup/dnsk_diff/pids.peak 2>/dev/null)"
+				cg_read PEAK_AFTER_MIGRATE /sys/fs/cgroup/dnsk_diff/pids.peak
+				emit "PIDS_PEAK_AFTER_MIGRATE=${CGL:-}"
 			else
 				emit "PIDS_CURRENT=absent"
 			fi
@@ -363,9 +418,10 @@ if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
 			# the cgroup, so a failed fork cannot kill this probe shell.
 			if [ -x /pids_probe ]; then
 				echo 1 > "$P" 2>/dev/null
-				fork=$("$BB" sh -c \
+				fork=$("$BB" timeout 10 sh -c \
 					'echo $$ > /sys/fs/cgroup/dnsk_diff/cgroup.procs 2>/dev/null; exec /pids_probe' \
-					2>/dev/null)
+					2>/dev/null); frc=$?
+				[ "$frc" = 124 ] && emit "PIDS_FORK_HANG"
 				[ -n "$fork" ] && emit "$fork" || emit "PIDS_FORK_ERRNO=missing"
 				echo max > "$P" 2>/dev/null
 			else
@@ -375,16 +431,18 @@ if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
 			# rejects the fork without charging the event has not reproduced
 			# the native accounting, even though fork returned the same errno.
 			if [ -r /sys/fs/cgroup/dnsk_diff/pids.events ]; then
-				emit "PIDS_EVENTS_AFTER_FORK=$(tr '\n' ',')" < /sys/fs/cgroup/dnsk_diff/pids.events
+				cg_read_csv EVENTS_AFTER_FORK /sys/fs/cgroup/dnsk_diff/pids.events
+				emit "PIDS_EVENTS_AFTER_FORK=${CGL:-}"
 			fi
 			# The same limit must be enforced through a descendant cgroup: the
 			# charge is hierarchical, not just a per-cgroup file check.
 			if [ -x /pids_probe ]; then
 				"$BB" mkdir -p /sys/fs/cgroup/dnsk_diff/child 2>/dev/null
 				echo 1 > "$P" 2>/dev/null
-				afork=$("$BB" sh -c \
+				afork=$("$BB" timeout 10 sh -c \
 					'echo $$ > /sys/fs/cgroup/dnsk_diff/child/cgroup.procs 2>/dev/null; exec /pids_probe' \
-					2>/dev/null)
+					2>/dev/null); afrc=$?
+				[ "$afrc" = 124 ] && emit "PIDS_ANCESTOR_FORK_HANG"
 				if [ -n "$afork" ]; then
 					emit "PIDS_ANCESTOR_FORK_ERRNO=${afork#PIDS_FORK_ERRNO=}"
 				else

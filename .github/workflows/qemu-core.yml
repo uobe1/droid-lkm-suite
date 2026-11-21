@@ -54,6 +54,11 @@ on:
         description: diff mode only - include netfilter/ipset probes (temporarily off until the net baseline is complete)
         type: boolean
         default: false
+      diff_load:
+        description: comma-separated modules for the LKM side (empty = default ns devtmpfs cgpids tmpfsx; include_net=true defaults to netfilter,ipset)
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -658,15 +663,24 @@ jobs:
         env:
           INCLUDE_NET: ${{ inputs.include_net }}
           IP6NAT: ${{ steps.validate_images.outputs.ip6nat }}
+          DIFF_LOAD_IN: ${{ inputs.diff_load }}
         run: |
           set +e
           COMMON="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
+          # Module names are [a-z] separated by commas; validate so a stray
+          # space or quote can never reach the kernel command line.
+          case "$DIFF_LOAD_IN" in
+          *[!a-z,]*) echo "diff_load must be comma-separated module names: $DIFF_LOAD_IN" >&2; exit 1 ;;
+          esac
           NET_FLAG=""
           if [ "$INCLUDE_NET" = "true" ]; then
-            # The net gate must load netfilter+ipset only: all six modules in
-            # one TCG boot times out.  The list is comma-separated because a
-            # kernel arg cannot contain a space; the LKM init splits it back.
-            NET_FLAG="dnsk_diff_net=1 dnsk_diff_load=netfilter,ipset"
+            NET_FLAG="dnsk_diff_net=1"
+            # Net probes need netfilter+ipset loaded unless diff_load says
+            # otherwise.  Comma-separated: a kernel arg cannot contain a space.
+            [ -n "$DIFF_LOAD_IN" ] || DIFF_LOAD_IN="netfilter,ipset"
+          fi
+          if [ -n "$DIFF_LOAD_IN" ]; then
+            NET_FLAG="$NET_FLAG dnsk_diff_load=$DIFF_LOAD_IN"
           fi
           # Enable the IPv6 NAT assertion only when the oracle really carries
           # it; otherwise both sides skip it and the validate step has already
@@ -674,12 +688,12 @@ jobs:
           if [ "$IP6NAT" = "yes" ]; then
             NET_FLAG="$NET_FLAG dnsk_diff_net6=1"
           fi
-          timeout 600 qemu-system-aarch64 -M virt -cpu max -m 2048 -smp 2 \
+          timeout 750 qemu-system-aarch64 -M virt -cpu max -m 2048 -smp 2 \
             -nographic -no-reboot -kernel oracle/Image \
             -initrd oracle-initramfs.cpio.gz \
             -append "$COMMON selinux=0 dnsk_lkm=1 $NET_FLAG" 2>&1 | tee oracle.log
           ORC=${PIPESTATUS[0]}
-          timeout 600 qemu-system-aarch64 -M virt -cpu max -m 2048 -smp 2 \
+          timeout 750 qemu-system-aarch64 -M virt -cpu max -m 2048 -smp 2 \
             -nographic -no-reboot -kernel device/Image \
             -initrd lkm-initramfs.cpio.gz \
             -append "$COMMON enforcing=0 dnsk_lkm=1 $NET_FLAG" 2>&1 | tee lkm.log
