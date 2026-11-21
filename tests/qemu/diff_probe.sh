@@ -57,12 +57,21 @@ have_mod() {
 	esac
 }
 
+# Sections that were skipped because their module is not in LOADLIST.  Printed
+# as one summary line so a reader can never mistake "skipped" for "equal".
+SKIPPED_SECTIONS=
+skip_sec() {
+	emit "SKIP $1 (not in LOADLIST)"
+	SKIPPED_SECTIONS="${SKIPPED_SECTIONS}${SKIPPED_SECTIONS:+,}$1"
+}
+
 emit "SIDE=$SIDE"
 emit "KERNEL=$("$BB" uname -r)"
 
 # ==========================================================================
 # 1. user namespace
 # ==========================================================================
+if have_mod ns; then
 "$BB" unshare -u -r /bin/sh -c 'cat /proc/self/uid_map' >/tmp/um 2>/tmp/ue
 if [ $? -eq 0 ]; then
 	emit "USERNS_CREATE=ok"
@@ -119,9 +128,13 @@ for spec in mnt:-m uts:-u net:-n cgroup:-C time:-T; do
 	fi
 done
 
+else
+	skip_sec "user-namespace"
+fi
 # ==========================================================================
 # 2. PID / IPC namespace
 # ==========================================================================
+if have_mod ns; then
 "$BB" unshare -p -f /bin/sh -c 'echo ok' >/dev/null 2>/tmp/pe
 [ $? -eq 0 ] && emit "PIDNS_CREATE=ok" || emit "PIDNS_CREATE=err:$(norm < /tmp/pe | head -1)"
 
@@ -153,9 +166,13 @@ else
 	emit "PIDNS_SELF_NS=same_or_missing"
 fi
 
+else
+	skip_sec "pid-ipc-namespace"
+fi
 # ==========================================================================
 # 3. SysV IPC + POSIX mqueue error codes
 # ==========================================================================
+if have_mod ns; then
 [ -x /ipc_probe ] && /ipc_probe || emit "IPC_PROBE=missing"
 
 # IPC namespace isolation is kernel state, not just a syscall result: a shm
@@ -188,9 +205,13 @@ else
 	emit "IPCNS_ISOLATION_PROBE=missing"
 fi
 
+else
+	skip_sec "sysvipc-mqueue"
+fi
 # ==========================================================================
 # 4. tmpfs xattr and ACL
 # ==========================================================================
+if have_mod tmpfsx; then
 "$BB" mkdir -p /tmp/xf
 if "$BB" mount -t tmpfs tmpfs /tmp/xf 2>/dev/null; then
 	emit "TMPFS_MOUNT=ok"
@@ -253,6 +274,9 @@ else
 	emit "TMPFSX_NOACL_MOUNT=err:$(norm < /tmp/xne | head -1)"
 fi
 
+else
+	skip_sec "tmpfsx-xattr-acl"
+fi
 # ==========================================================================
 # 5. cgroup pids
 # ==========================================================================
@@ -430,7 +454,7 @@ fi
 #
 # Legacy backend only: the device kernel has IP_NF_IPTABLES=y and no
 # CONFIG_NF_TABLES, so nft would measure a backend that does not exist there.
-if [ "${DNSK_DIFF_NET:-0}" = 1 ]; then
+if [ "${DNSK_DIFF_NET:-0}" = 1 ] && have_mod netfilter && have_mod ipset; then
 	IPT=
 	for c in /sbin/iptables-legacy /usr/sbin/iptables-legacy /iptables-legacy; do
 		[ -x "$c" ] && { IPT=$c; break; }
@@ -600,16 +624,22 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ]; then
 			emit "IPSET_COUNTERS_MOVED=yes"
 		else
 			emit "IPSET_COUNTERS_MOVED=no"
+			emit "E4_INSUFFICIENT=IPSET_COUNTERS"
 		fi
 		# Rule counters are kernel state too: after one packet, the SET rules
 		# in OUTPUT must show a non-zero packet count on both sides.
-		emit "IPT_COUNTERS_RULES_HIT=$("$IPT" -v -L OUTPUT 2>/dev/null |
-			"$BB" awk 'NR > 2 && $1 + 0 > 0 { n++ } END { print n + 0 }')"
+		hit=$("$IPT" -v -L OUTPUT 2>/dev/null |
+			"$BB" awk 'NR > 2 && $1 + 0 > 0 { n++ } END { print n + 0 }')
+		emit "IPT_COUNTERS_RULES_HIT=$hit"
+		# Two SET rules are installed in OUTPUT; fewer means the packet path
+		# did not really exercise the counters.
+		[ "${hit:-0}" -ge 2 ] || emit "E4_INSUFFICIENT=IPT_COUNTERS"
 		if [ -e /proc/net/xt_recent/dnskprobe ] &&
 			"$BB" grep -q 'src=127.0.0.1' /proc/net/xt_recent/dnskprobe; then
 			emit "XT_RECENT_ENTRY=present"
 		else
 			emit "XT_RECENT_ENTRY=absent"
+			emit "E4_INSUFFICIENT=XT_RECENT_ENTRY"
 		fi
 		"$IPT" -t filter -D OUTPUT -j SET --add-set dnskcounters src 2>/dev/null
 		"$IPS" destroy dnskcounters 2>/dev/null
@@ -647,40 +677,74 @@ fi
 # ==========================================================================
 # Userspace agreeing is not enough: the kernel's own bookkeeping is part of the
 # contract.  A module that fakes the syscall result shows up here.
-for nsw in user pid ipc mnt uts net cgroup time; do
+for nsw in mnt uts net cgroup time; do
 	[ -e "/proc/self/ns/$nsw" ] && emit "NS_LINK_$nsw=present" || emit "NS_LINK_$nsw=absent"
 done
+if have_mod ns; then
+	for nsw in user pid ipc; do
+		[ -e "/proc/self/ns/$nsw" ] && emit "NS_LINK_$nsw=present" ||
+			emit "NS_LINK_$nsw=absent"
+	done
+else
+	skip_sec "kernel-side/ns"
+fi
 
 for k in Uid Gid CapEff NoNewPrivs Seccomp; do
 	v=$("$BB" grep -m1 "^$k:" /proc/self/status 2>/dev/null)
 	[ -n "$v" ] && emit "STATUS_$k=present" || emit "STATUS_$k=absent"
 done
 
-for f in shm msg sem; do
-	if [ -r "/proc/sysvipc/$f" ]; then
-		emit "SYSVIPC_$f=present"
-	else
-		emit "SYSVIPC_$f=absent"
-	fi
-done
+if have_mod ns; then
+	for f in shm msg sem; do
+		if [ -r "/proc/sysvipc/$f" ]; then
+			emit "SYSVIPC_$f=present"
+		else
+			emit "SYSVIPC_$f=absent"
+		fi
+	done
+else
+	skip_sec "kernel-side/sysvipc"
+fi
 
 if [ -r /proc/filesystems ]; then
-	for fs in tmpfs devtmpfs mqueue overlay fuse; do
+	for fs in tmpfs overlay fuse; do
 		"$BB" grep -qw "$fs" /proc/filesystems && emit "FS_$fs=present" || emit "FS_$fs=absent"
 	done
+	if have_mod devtmpfs; then
+		if "$BB" grep -qw devtmpfs /proc/filesystems; then
+			emit "FS_devtmpfs=present"
+		else
+			emit "FS_devtmpfs=absent"
+		fi
+	else
+		skip_sec "kernel-side/devtmpfs"
+	fi
+	if have_mod ns; then
+		if "$BB" grep -qw mqueue /proc/filesystems; then
+			emit "FS_mqueue=present"
+		else
+			emit "FS_mqueue=absent"
+		fi
+	else
+		skip_sec "kernel-side/mqueue"
+	fi
 fi
 
-if [ -r /proc/cgroups ]; then
-	line=$("$BB" grep -E '^pids[[:space:]]' /proc/cgroups 2>/dev/null)
-	[ -n "$line" ] && emit "CGROUPS_PIDS=present" || emit "CGROUPS_PIDS=absent"
+if have_mod cgpids; then
+	if [ -r /proc/cgroups ]; then
+		line=$("$BB" grep -E '^pids[[:space:]]' /proc/cgroups 2>/dev/null)
+		[ -n "$line" ] && emit "CGROUPS_PIDS=present" || emit "CGROUPS_PIDS=absent"
+	fi
+	[ -r /sys/fs/cgroup/cgroup.subtree_control ] && \
+		emit "SUBTREE=$("$BB" tr ' ' '_' < /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null)"
+else
+	skip_sec "kernel-side/cgpids"
 fi
-
-[ -r /sys/fs/cgroup/cgroup.subtree_control ] && \
-	emit "SUBTREE=$("$BB" tr ' ' '_' < /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null)"
 
 # ==========================================================================
 # 9. idmapped mounts and setns boundaries
 # ==========================================================================
+if have_mod ns; then
 # These are the paths where CONFIG_USER_NS=n shows up most subtly: the mount
 # succeeds but carries the wrong ownership, or setns is allowed where native
 # refuses.  A probe that only checks "unshare worked" misses both.
@@ -748,9 +812,13 @@ else
 	emit "SETNS_PIDFD_IPC_PROBE=missing"
 fi
 
+else
+	skip_sec "userns-idmap-setns"
+fi
 # ==========================================================================
 # 10. mount namespace and mqueue isolation
 # ==========================================================================
+if have_mod ns; then
 if [ -d /proc/sys/fs/mqueue ]; then
 	emit "MQUEUE_SYSCTL=present"
 	emit "MQUEUE_MSG_MAX=$("$BB" cat /proc/sys/fs/mqueue/msg_max 2>/dev/null)"
@@ -764,9 +832,13 @@ fi
 	>/dev/null 2>&1
 emit "IPCNS_MQUEUE_ISOLATION=$?"
 
+else
+	skip_sec "mqueue-isolation"
+fi
 # ==========================================================================
 # 11. tmpfsx teardown: stock behaviour must return
 # ==========================================================================
+if have_mod tmpfsx; then
 # When the tmpfsx module is loaded the xattr table is wired; the contract is that
 # unmounting and remounting does not leak that state.  On a kernel with native
 # TMPFS_XATTR the answer is "accepted" both times, which is the equivalence being
@@ -787,4 +859,8 @@ if "$BB" mount -t tmpfs tmpfs /tmp/tx 2>/dev/null; then
 	fi
 fi
 
+emit "SKIPPED_SECTIONS=[${SKIPPED_SECTIONS:-}]"
+else
+	skip_sec "tmpfsx-teardown"
+fi
 emit "PROBE_DONE"

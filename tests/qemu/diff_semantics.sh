@@ -245,6 +245,10 @@ echo
 echo "== summary =="
 echo "differences: $n (A=${a:-0} C=${c:-0} B=${b:-0})"
 echo "unrecognised keys: $unrecognised"
+if [ "$unrecognised" -gt 0 ]; then
+	printf 'UNRECOGNISED_KEYS=[%s]\n' \
+		"$(sort -u "$tmpd/unrecognised" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
+fi
 if [ "$n" -eq 0 ]; then
 	echo "DIFF_SEMANTICS_OK"
 	exit 0
