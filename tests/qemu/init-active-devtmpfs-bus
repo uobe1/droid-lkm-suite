@@ -1,0 +1,85 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Devtmpfs trigger=bus gate: boot the *device* Image (CONFIG_DEVTMPFS=n), load
+# only dnsk_devtmpfs.ko with trigger=bus, then prove with a bus-notify probe
+# that the node exists before ADD notify and after DEL notify.  Finally reload
+# with the default trigger=entry and prove the same probe sees no node.
+#
+# Cloned from the diff job's LKM side: ksud late-load is required because the
+# module imports unexported symbols (override_creds, set_fs_root,
+# shmem_init_fs_context, ...).
+
+BB=/bin/busybox
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export ANDROID_ROOT=/system ANDROID_DATA=/data
+
+MODDIR=/data/adb/modules/droid_lkm_suite
+KO=$MODDIR/kmi/android16-6.12
+PARAM=/sys/module/dnsk_devtmpfs/parameters
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg | "$BB" tail -20
+	"$BB" poweroff -f
+}
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+"$BB" mkdir -p /dev /tmp /mnt
+"$BB" mount -t tmpfs tmpfs /dev
+"$BB" mknod /dev/console c 5 1 2>/dev/null
+"$BB" mknod /dev/null c 1 3 2>/dev/null
+"$BB" chmod 1777 /tmp
+
+echo "DNSK_TRIGGER_BUS_BOOT $(cat /proc/sys/kernel/osrelease)"
+
+# ksud resolves this module's unexported imports; plain insmod cannot.
+/ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
+
+"$BB" insmod "$KO/dnsk_devtmpfs.ko" gki=1 activate=1 trigger=bus ||
+	fail devtmpfs_bus_insmod
+[ "$(cat "$PARAM/trigger" 2>/dev/null)" = "bus" ] || fail trigger_not_bus
+[ "$(cat "$PARAM/trigger_active" 2>/dev/null)" = "1" ] || fail trigger_not_active
+echo "DNSK_TRIGGER_BUS_READY"
+
+# The node window belongs to the bus notifier, so devtmpfs has to be mounted
+# for nodes to exist at all.
+"$BB" mount -t devtmpfs devtmpfs /dev || fail devtmpfs_mount
+"$BB" dmesg | "$BB" grep -qF 'droidspaces_devtmpfs: trigger=bus active' ||
+	fail no_bus_active_marker
+
+# Probe #1: trigger=bus -- ADD and DEL callbacks must both see the node.
+"$BB" insmod "$KO/trigger_probe.ko" || fail trigger_probe_insmod
+"$BB" dmesg | "$BB" grep -qF 'DNSK_TRIGGER_BUS_ADD_NODE_PRESENT' ||
+	fail bus_add_node_absent
+"$BB" dmesg | "$BB" grep -qF 'DNSK_TRIGGER_BUS_DEL_NODE_PRESENT' ||
+	fail bus_del_node_absent
+"$BB" rmmod trigger_probe 2>/dev/null
+
+# Rollback: same boot, back to the default trigger=entry, then re-run the same
+# probe as the control.  A failed rmmod is not fatal here: the next run simply
+# boots without trigger=bus, and nothing persistent is changed.
+"$BB" umount /dev 2>/dev/null
+if "$BB" rmmod dnsk_devtmpfs 2>/dev/null; then
+	"$BB" insmod "$KO/dnsk_devtmpfs.ko" gki=1 activate=1 ||
+		fail devtmpfs_entry_insmod
+	[ "$(cat "$PARAM/trigger" 2>/dev/null)" = "entry" ] ||
+		fail trigger_not_entry
+	[ "$(cat "$PARAM/trigger_active" 2>/dev/null)" = "0" ] ||
+		fail trigger_active_not_zero
+	"$BB" dmesg | "$BB" grep -qF 'droidspaces_devtmpfs: trigger=bus active' &&
+		fail bus_marker_survived_rollback
+	"$BB" mount -t devtmpfs devtmpfs /dev || fail devtmpfs_mount2
+	"$BB" insmod "$KO/trigger_probe.ko" || fail trigger_probe_insmod2
+	"$BB" dmesg | "$BB" grep -qF 'DNSK_TRIGGER_ENTRY_ADD_NO_NODE' ||
+		fail entry_add_node_present
+	"$BB" dmesg | "$BB" grep -qF 'DNSK_TRIGGER_ENTRY_DEL_NO_NODE' ||
+		fail entry_del_node_present
+	echo "DNSK_TRIGGER_ROLLBACK_OK"
+else
+	echo "DNSK_TRIGGER_ROLLBACK_SKIPPED rmmod_failed"
+fi
+
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f
