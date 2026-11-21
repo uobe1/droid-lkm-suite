@@ -557,6 +557,8 @@ jobs:
           aarch64-linux-gnu-gcc -static -O2 -o ipc_probe tests/qemu/ipc_probe.c
           aarch64-linux-gnu-gcc -static -O2 -o xattr_probe tests/qemu/xattr_probe.c
           aarch64-linux-gnu-gcc -static -O2 -o acl_test tests/qemu/acl_test.c
+          aarch64-linux-gnu-gcc -static -O2 -o listxattr_probe \
+            tests/qemu/listxattr_probe.c
           aarch64-linux-gnu-gcc -static -O2 -o userns_test tests/qemu/userns_test.c
           aarch64-linux-gnu-gcc -static -O2 -o userns_unpriv_test \
             tests/qemu/userns_unpriv_test.c
