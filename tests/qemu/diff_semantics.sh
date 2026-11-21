@@ -57,7 +57,13 @@ trap 'rm -rf "$tmpd"' 0 1 2 15
 # free-running value (pid, inode, uid, timeout ...), three or fewer are part of
 # the contract (pids.max=5, errno=11, ACL permission bits).
 extract() {
-	sed -n '/^DIFF_BEGIN/,/^DIFF_END/p' "$1" |
+	# The guest serial console applies ONLCR (\n -> \r\n), so a raw capture can
+	# carry a trailing CR on every line.  Strip it before anything else: the
+	# exact `grep -qx PROBE_DONE` sentinel check below can never match a line
+	# that still ends in CR, which showed up as "did not reach PROBE_DONE" on a
+	# run where both sides had printed it.
+	tr -d '\r' < "$1" |
+	sed -n '/^DIFF_BEGIN/,/^DIFF_END/p' |
 		grep -v -E '^(DIFF_BEGIN|DIFF_END)' |
 		# Kernel log lines interleave with stdout on the serial console.  They
 		# are not probe results, and leaving them in compares two different
