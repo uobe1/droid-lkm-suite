@@ -637,6 +637,18 @@ jobs:
             done
             cp -a netpkg/. oracle-rootfs/
             cp -a netpkg/. lkm-rootfs/
+            # The legacy binaries cannot load -m addrtype / -m recent / -m set:
+            # those xtables plugin .so files ship in Alpine's `iptables`
+            # package, not in `iptables-legacy`.  Copy only usr/lib/xtables so
+            # the /sbin binaries the probe invokes stay the legacy ones.
+            mkdir -p xtpkg
+            curl -fsSL -o iptables.apk \
+              "$APK_BASE/iptables-1.8.10-r3.apk"
+            tar -xzf iptables.apk -C xtpkg 2>/dev/null || true
+            for r in oracle-rootfs lkm-rootfs; do
+              mkdir -p "$r/usr/lib/xtables"
+              cp -a xtpkg/usr/lib/xtables/. "$r/usr/lib/xtables/"
+            done
           fi
 
           (cd oracle-rootfs && find . | cpio -o -H newc | gzip -9) > oracle-initramfs.cpio.gz

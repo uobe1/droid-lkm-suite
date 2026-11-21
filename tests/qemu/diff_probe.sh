@@ -43,6 +43,20 @@ SIDE=${1:-unknown}
 emit() { printf '%s\n' "$*"; }
 norm() { sed -e 's/\b[0-9]\{4,\}\b/<NUM>/g'; }
 
+# Which modules are under test in this boot.  The QEMU diff job puts the same
+# dnsk_diff_load=<a,b> on BOTH kernel command lines, so the two sides always
+# decide identically; a section whose module is not loaded must skip on both
+# sides or the absence itself would look like a semantic difference.
+DIFF_LOAD=$(sed -n 's/.* dnsk_diff_load=\([^ ]*\).*/\1/p' /proc/cmdline 2>/dev/null |
+	tr ',' ' ')
+[ -n "$DIFF_LOAD" ] || DIFF_LOAD="ns devtmpfs cgpids tmpfsx"
+have_mod() {
+	case " $DIFF_LOAD " in
+	*" $1 "*) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
 emit "SIDE=$SIDE"
 emit "KERNEL=$("$BB" uname -r)"
 
@@ -242,6 +256,21 @@ fi
 # ==========================================================================
 # 5. cgroup pids
 # ==========================================================================
+#
+# Oracle-side hang, observed on run 44911018208 (2026-11-21): the oracle probe
+# stops right after PIDS_PEAK2 and prints nothing for the remaining ~10 min
+# until `timeout 600` kills QEMU (qemu_oracle_rc=124).  PIDS_EVENTS and
+# PIDS_CURRENT never appear.  PIDS_PEAK1/PIDS_PEAK2 are both 0, i.e. nothing was
+# ever charged to that cgroup.  No panic/oops line is present, and the guest
+# runs with panic=-1 and no hard watchdog, so a stuck kernel looks exactly like
+# a silent 10-minute stall.
+#
+# HYPOTHESIS (not a conclusion): the `+pids` write to cgroup.subtree_control
+# below may not take effect on the native oracle, after which either the
+# fork-EAGAIN probe or the sleep+cgroup.procs migration blocks instead of
+# failing.  Root cause still unproven; the skip below exists to stop it from
+# poisoning unrelated groups, not to hide it.
+if have_mod cgpids; then
 if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
 	emit "CONTROLLERS=$("$BB" cat /sys/fs/cgroup/cgroup.controllers)"
 	"$BB" mkdir -p /sys/fs/cgroup/dnsk_diff 2>/dev/null
@@ -350,10 +379,14 @@ if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
 else
 	emit "CONTROLLERS=unavailable"
 fi
+else
+	emit "SKIP cgpids (not in LOADLIST)"
+fi
 
 # ==========================================================================
 # 6. devtmpfs
 # ==========================================================================
+if have_mod devtmpfs; then
 "$BB" mkdir -p /tmp/dv
 if "$BB" mount -t devtmpfs devtmpfs /tmp/dv 2>/tmp/dve; then
 	emit "DEVTMPFS_MOUNT=ok"
@@ -377,6 +410,9 @@ if "$BB" mount -t devtmpfs devtmpfs /tmp/dv 2>/tmp/dve; then
 	"$BB" umount /tmp/dv 2>/dev/null
 else
 	emit "DEVTMPFS_MOUNT=err:$(norm < /tmp/dve | head -1)"
+fi
+else
+	emit "SKIP devtmpfs (not in LOADLIST)"
 fi
 
 # ==========================================================================
@@ -408,6 +444,33 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ]; then
 		[ -x "$c" ] && { IPS=$c; break; }
 	done
 	emit "IPT_BACKEND=legacy path=${IPT:-none} path6=${IP6T:-none}"
+
+	# -m addrtype / -m recent / -m set are userspace xtables plugins, not
+	# kernel features: the legacy binaries alone cannot load them (the .so
+	# files ship in Alpine's `iptables` package, not in `iptables-legacy`).
+	# If a plugin is missing, iptables exits 2 on BOTH sides and the
+	# differential would happily read that as "equal".  Refuse instead: abort
+	# before DIFF_END so the comparator reports a truncated probe, never a pass.
+	if [ -n "$IPT" ]; then
+		missing=
+		for m in addrtype recent set; do
+			if "$IPT" -m "$m" -h >/dev/null 2>&1; then
+				emit "XT_PLUGIN_$m=present"
+			else
+				emit "XT_PLUGIN_$m=MISSING"
+				emit "XT_PLUGIN_${m}_ERR=$("$IPT" -m "$m" -h 2>&1 |
+					"$BB" tr '\n' ' ')"
+				missing="${missing:+$missing,}$m"
+			fi
+		done
+		if [ -n "$missing" ]; then
+			emit "PROBE_ABORT=missing_xt_plugin:$missing"
+			# Stop before the init prints DIFF_END: a truncated probe is a
+			# hard failure, not an empty-but-equal result.
+			"$BB" poweroff -f 2>/dev/null
+			exit 1
+		fi
+	fi
 
 	# ipset first: the xt_set rules below refer to the sets.
 	if [ -n "$IPS" ]; then
