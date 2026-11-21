@@ -233,6 +233,22 @@ if "$BB" mount -t tmpfs tmpfs /tmp/xf 2>/dev/null; then
 		printf '%s\n' "$ACL_EX" |
 			sed -n 's/^ACL_/ACL_EXISTING_/p'
 	}
+	# A native tmpfs lists an ACL exactly once (from the inode cache).  An
+	# xattr-ized ACL is also a real xattr, so listxattr() reports the same name
+	# twice.  That duplicate is the observable that separates the B decision
+	# (native only) from the superset, and it needs a C helper because the
+	# guest has no getfattr.
+	[ -x /listxattr_probe ] && {
+		for lxp in /tmp/xf/adir /tmp/xf/file; do
+			[ -e "$lxp" ] || continue
+			case "$lxp" in
+			*/adir) pfx=ACL_DIR_ ;;
+			*) pfx=ACL_FILE_ ;;
+			esac
+			/listxattr_probe "$lxp" 2>&1 |
+				sed -n "s/^/${pfx}/p"
+		done
+	}
 	"$BB" umount /tmp/xf 2>/dev/null
 else
 	emit "TMPFS_MOUNT=failed"

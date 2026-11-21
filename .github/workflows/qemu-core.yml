@@ -292,6 +292,8 @@ jobs:
           if [ "${{ inputs.mode }}" = "tmpfsx" ]; then
             aarch64-linux-gnu-gcc -static -O2 -o xattr_test tests/qemu/xattr_test.c
             aarch64-linux-gnu-gcc -static -O2 -o acl_test tests/qemu/acl_test.c
+          aarch64-linux-gnu-gcc -static -O2 -o listxattr_probe \
+            tests/qemu/listxattr_probe.c
             cp xattr_test acl_test rootfs/
             cp tests/qemu/init-tmpfsx-oracle rootfs/init
           elif [ "${{ inputs.mode }}" = "userns" ]; then
@@ -583,9 +585,9 @@ jobs:
             chmod 1777 "$1/tmp"
           }
           build_rootfs oracle-rootfs
-          cp ipc_probe xattr_probe acl_test userns_test userns_unpriv_test \
-            pids_probe ipcns_leak setns_pidfd_probe fuse_test \
-            mount_setattr_test oracle-rootfs/
+          cp ipc_probe xattr_probe acl_test listxattr_probe userns_test \
+            userns_unpriv_test pids_probe ipcns_leak setns_pidfd_probe \
+            fuse_test mount_setattr_test oracle-rootfs/
           # mount_setattr_test formats and mounts an ext4 image.
           rm -rf apk-tools && mkdir -p apk-tools
           curl -fsSL -o apk-tools.apk \
@@ -611,9 +613,9 @@ jobs:
           chmod 0755 "$MODROOT/bin/dnskctl" "$MODROOT/bin/dnsk-preflight"
           cp modules/*.ko "$MODROOT/kmi/android16-6.12/"
           cp modules/selpermissive.ko lkm-rootfs/modules/
-          cp ipc_probe xattr_probe acl_test userns_test userns_unpriv_test \
-            pids_probe ipcns_leak setns_pidfd_probe fuse_test \
-            mount_setattr_test lkm-rootfs/
+          cp ipc_probe xattr_probe acl_test listxattr_probe userns_test \
+            userns_unpriv_test pids_probe ipcns_leak setns_pidfd_probe \
+            fuse_test mount_setattr_test lkm-rootfs/
           apk-tools/sbin/apk.static --root "$PWD/lkm-rootfs" \
             --arch aarch64 --no-cache --allow-untrusted --no-scripts \
             --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
