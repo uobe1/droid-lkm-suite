@@ -162,13 +162,167 @@ static void dnsk_rwprobe_probe(const char *name)
 		pr_info("dnsk_rwprobe: %s=%px\n", name, addr);
 }
 
+/*
+ * ===== Pure AArch64 reference decode/encode helpers =====================
+ *
+ * Everything between the BEGIN/END markers below is free of kernel
+ * dependencies: plain integer arithmetic over instruction words.  The host
+ * test tests/host/test_aarch64_refs.py extracts this exact text, compiles it
+ * with the host cc and drives it through ctypes, so the unit tests exercise
+ * the very code the module runs instead of a second, drifting copy.  Keep the
+ * region self-contained: no READ_ONCE, no kernel helpers -- only u32/u64/s64/
+ * bool and the enums/macros defined inside it.
+ */
+/* DNSK_AARCH64_PURE_BEGIN */
+enum dnsk_ref_kind {
+	DNSK_REF_NONE = 0,
+	DNSK_REF_ADD,
+	DNSK_REF_LDR,
+};
+
+enum dnsk_reloc_result {
+	DNSK_RELOC_NONE = 0,	/* not an ADRP + ADD/LDR pair into the window */
+	DNSK_RELOC_PATCH = 1,	/* buf[0..1] hold the retargeted words */
+	DNSK_RELOC_FAR = 2,	/* target matched but ADRP cannot reach new page */
+};
+
+/*
+ * Bytes retargeted from the old array base.  The array is
+ * CGROUP_SUBSYS_COUNT pointers (8 * 8 = 64 bytes on beryl), so 64 bytes
+ * covers every element read through the old base.
+ */
+#define DNSK_RELOC_WINDOW 64
+
+/* ADRP: immlo bits[30:29], immhi bits[23:5], a signed 21-bit page count. */
+static inline bool dnsk_insn_is_adrp(u32 insn)
+{
+	return (insn & 0x9F000000u) == 0x90000000u;
+}
+
+static inline u64 dnsk_adrp_target_page(u64 pc, u32 insn)
+{
+	s64 imm = (s64)((((insn >> 5) & 0x7FFFFu) << 2) | ((insn >> 29) & 3u));
+
+	if (imm & (1 << 20))
+		imm |= ~((s64)((1 << 21) - 1));
+	return (pc & ~0xFFFULL) + ((u64)imm << 12);
+}
+
+/* Rewrite an ADRP to name a new page (same 21-bit signed page contract). */
+static inline u32 dnsk_adrp_page(u32 insn, u64 pc, u64 page)
+{
+	s64 delta = ((s64)(page - (pc & ~0xFFFULL))) >> 12;
+	u32 lo = (u32)(delta & 3);
+	u32 hi = (u32)((delta >> 2) & 0x7FFFF);
+
+	return (insn & ~0x60FFFFE0u) | (lo << 29) | (hi << 5);
+}
+
+static inline bool dnsk_insn_is_add_imm(u32 insn)
+{
+	return (insn & 0xFF800000u) == 0x91000000u;
+}
+
+/* LDR (immediate, unsigned offset), 64-bit variant (opc = 11). */
+static inline bool dnsk_insn_is_ldr_uimm64(u32 insn)
+{
+	return (insn & 0xFFC00000u) == 0xF9400000u;
+}
+
+/* ADD (immediate): page + imm12 << (sh ? 12 : 0); sh is bit 22. */
+static inline u64 dnsk_add_imm_target(u32 insn, u64 page)
+{
+	u64 imm = (insn >> 10) & 0xFFFu;
+	u64 sh = (((insn >> 22) & 3u) == 1u) ? 12u : 0u;
+
+	return page + (imm << sh);
+}
+
+/* LDR (unsigned offset, 64-bit): base + imm12 * 8. */
+static inline u64 dnsk_ldr_uimm_target(u32 insn, u64 base)
+{
+	return base + ((insn >> 10) & 0xFFFu) * 8u;
+}
+
+/*
+ * ADD (immediate) repack.  imm12 lives in bits[21:10] (mask 0x003FFC00); sh
+ * is bit 22; bit 23 is the low bit of the fixed 0b100010 opcode and is always
+ * 0 for ADD.  `off` is a byte page offset, so the shift must be 0: clear
+ * imm12 and sh explicitly.  For every ADD this scan can match (sh == 0 and
+ * bit23 == 0) this is byte-identical to the old, wider 0x00FFFC00 mask, but
+ * the narrow imm12 mask plus the explicit sh clear states the intent and is
+ * pinned by the unit test's mask/equivalence cases.
+ */
+static inline u32 dnsk_repack_add_imm(u32 insn, u32 off)
+{
+	return (insn & ~(0x003FFC00u | 0x00400000u)) | ((off & 0xFFFu) << 10);
+}
+
+/* LDR (unsigned offset, 64-bit) repack: imm12 bits[21:10], scaled by 8. */
+static inline u32 dnsk_repack_ldr_uimm64(u32 insn, u32 off)
+{
+	return (insn & ~0x003FFC00u) | (((off >> 3) & 0xFFFu) << 10);
+}
+
+/* Classify an instruction pair as an ADRP + ADD/LDR reference. */
+static inline enum dnsk_ref_kind
+dnsk_ref_pair(u64 pc, u32 i0, u32 i1, u64 *tgt)
+{
+	u64 pg;
+
+	if (!dnsk_insn_is_adrp(i0))
+		return DNSK_REF_NONE;
+	pg = dnsk_adrp_target_page(pc, i0);
+	if (dnsk_insn_is_add_imm(i1)) {
+		*tgt = dnsk_add_imm_target(i1, pg);
+		return DNSK_REF_ADD;
+	}
+	if (dnsk_insn_is_ldr_uimm64(i1)) {
+		*tgt = dnsk_ldr_uimm_target(i1, pg);
+		return DNSK_REF_LDR;
+	}
+	return DNSK_REF_NONE;
+}
+
+static inline bool dnsk_ref_in_window(u64 tgt, u64 base)
+{
+	return tgt >= base && tgt < base + DNSK_RELOC_WINDOW;
+}
+
+/*
+ * Decide whether the pair at `pc` references the old array and, if so, put
+ * the two retargeted words in buf[0]/buf[1].  Shared by dnsk_rwprobe_reloc()
+ * and the host unit test.
+ */
+static inline enum dnsk_reloc_result
+dnsk_reloc_pair(u64 pc, u32 i0, u32 i1, u64 olda, u64 neua, u32 buf[2])
+{
+	u64 tgt, na;
+	s64 delta_pages;
+	enum dnsk_ref_kind kind = dnsk_ref_pair(pc, i0, i1, &tgt);
+
+	if (kind == DNSK_REF_NONE || !dnsk_ref_in_window(tgt, olda))
+		return DNSK_RELOC_NONE;
+	na = neua + (tgt - olda);
+	delta_pages = (s64)((na & ~0xFFFULL) - (pc & ~0xFFFULL)) >> 12;
+	if (delta_pages < -(1 << 20) || delta_pages >= (1 << 20))
+		return DNSK_RELOC_FAR;
+	buf[0] = dnsk_adrp_page(i0, pc, na & ~0xFFFULL);
+	if (kind == DNSK_REF_ADD)
+		buf[1] = dnsk_repack_add_imm(i1, (u32)(na & 0xFFF));
+	else
+		buf[1] = dnsk_repack_ldr_uimm64(i1, (u32)(na & 0xFFF));
+	return DNSK_RELOC_PATCH;
+}
+/* DNSK_AARCH64_PURE_END */
+
 static void dnsk_rwprobe_scan_refs(void *target)
 {
 	u64 addr = (u64)target;
-	u64 pg, tgt, pc;
-	s64 imm;
+	u64 tgt;
 	u32 i0, i1, *p;
 	int adrp_add = 0, adrp_ldr = 0;
+	enum dnsk_ref_kind kind;
 	void *stext = dnsk_native_api->resolve("_stext");
 	void *etext = dnsk_native_api->resolve("_etext");
 
@@ -177,46 +331,62 @@ static void dnsk_rwprobe_scan_refs(void *target)
 	for (p = stext; (void *)(p + 2) <= etext; p++) {
 		i0 = READ_ONCE(p[0]);
 		i1 = READ_ONCE(p[1]);
-		if ((i0 & 0x9F000000) != 0x90000000)
+		kind = dnsk_ref_pair((u64)p, i0, i1, &tgt);
+		if (kind == DNSK_REF_NONE || !dnsk_ref_in_window(tgt, addr))
 			continue;
-		pc = (u64)p;
-		imm = ((s64)(((i0 >> 5) & 0x7FFFF) << 2) |
-		       ((i0 >> 29) & 3));
-		if (imm & (1 << 20))
-			imm |= ~((1 << 21) - 1);
-		pg = (pc & ~0xFFFUL) + ((u64)imm << 12);
-		if ((i1 & 0xFF800000) == 0x91000000) {
-			tgt = pg + (((i1 >> 10) & 0xFFF) <<
-				    (((i1 >> 22) & 3) == 1 ? 12 : 0));
-			if (tgt >= addr && tgt < addr + 64)
-				adrp_add++;
-		}
-		if ((i1 & 0xFFC00000) == 0xF9400000) {
-			tgt = pg + (((i1 >> 10) & 0xFFF) * 8);
-			if (tgt >= addr && tgt < addr + 64)
-				adrp_ldr++;
-		}
+		if (kind == DNSK_REF_ADD)
+			adrp_add++;
+		else
+			adrp_ldr++;
 	}
 	pr_info("dnsk_rwprobe: refs add=%d ldr=%d range=%px-%px\n",
 		adrp_add, adrp_ldr, stext, etext);
 }
 
-/* Relocate cgroup_subsys[] to a same-content 9-entry array and retarget every
- * ADRP+ADD/LDR pair that referenced the old array.  Same contents, so any
- * missed site still sees the whole original table; this validates the patch
- * machinery before slot 8 carries a real second subsystem.
- * Enabled with dnsk_cgpids.rw_reloc=1. */
+/*
+ * Relocate cgroup_subsys[] to a same-content, one-entry-bigger array and
+ * retarget every ADRP+ADD/LDR pair that referenced the old array.  Enabled
+ * only with dnsk_cgpids.rw_reloc=1; the default (0) never calls this, so the
+ * gated slot-7 injection path is untouched.
+ *
+ * WHAT THIS DOES NOT DO -- do not read `patched > 0` as "the 9th slot works":
+ * it only rewrites *reference pairs* to the array base.  It does NOT rewrite
+ * the CGROUP_SUBSYS_COUNT immediate the compiler folded into loop bounds,
+ * `cmp`/`mov` operands and bitmasks, and it does not touch the shadow arrays
+ * from docs/evidence/rw-memory-mutation-research.md §2.1-B
+ * (cgroup_subsys_name[], *_enabled_key[], *_on_dfl_key[], and the embedded
+ * css_set->subsys[] / cgroup->subsys[] / e_csets[] / nr_dying_subsys[]).
+ * Because the copy has identical content, any missed reader still sees the
+ * whole original table, so this is a *safe mechanism probe*, not a working
+ * 9th slot.
+ *
+ * Why the CGROUP_SUBSYS_COUNT immediate rewrite is deliberately deferred and
+ * not done here:
+ *   - The count has no symbol (the beryl probe read `cgroup_subsys_count`
+ *     as -ENOENT: it is fully folded), so there is no authoritative site
+ *     list.  A literal `#8 -> #9` sweep over _stext.._etext matches countless
+ *     unrelated 8s; patching the wrong immediate corrupts arbitrary code.
+ *   - Patching only *some* bound sites is strictly worse than none: a loop
+ *     widened to 9 would index a still-8-entry shadow array out of bounds,
+ *     while loops left at 8 silently skip the new subsystem.
+ *   - The shipped, gated feature injects into the *existing* slot 7 and never
+ *     changes COUNT, so nothing today consumes the rewritten immediate.
+ *
+ * Runtime detection of the gap (how a future Action catches a missed patch,
+ * without trusting this pass):
+ *   - Reference half (done below): after patching, a second sweep re-reads
+ *     every pair and counts any that still resolves into the old-array
+ *     window.  It logs `residual=<n>` and pr_warn()s on a non-zero count, so a
+ *     missed/again-broken reference is surfaced, never silent.
+ *   - Count half (device only; needs a real 9th subsystem installed): the
+ *     kernel's own controller list (/proc/cgroups) is produced by iterating
+ *     cgroup_subsys[].  Compare its controller lines against the non-NULL,
+ *     enabled entries of cgroup_subsys[]: an entry present in the array but
+ *     absent from /proc/cgroups means a folded CGROUP_SUBSYS_COUNT bound was
+ *     not widened -- the exact symptom of this gap.
+ */
 static bool dnsk_rw_reloc;
 module_param_named(rw_reloc, dnsk_rw_reloc, bool, 0444);
-
-static u32 dnsk_adrp_page(u32 insn, u64 pc, u64 page)
-{
-	s64 delta = ((s64)(page - (pc & ~0xFFFUL))) >> 12;
-	u32 lo = (u32)(delta & 3);
-	u32 hi = (u32)((delta >> 2) & 0x7FFFF);
-
-	return (insn & ~0x60FFFFE0u) | (lo << 29) | (hi << 5);
-}
 
 static int dnsk_rwprobe_reloc(void)
 {
@@ -225,10 +395,11 @@ static int dnsk_rwprobe_reloc(void)
 	void *stext = dnsk_native_api->resolve("_stext");
 	void *etext = dnsk_native_api->resolve("_etext");
 	u64 olda = (u64)old;
-	int i, patched = 0;
+	int i, patched = 0, residual = 0;
 	u32 *p, i0, i1, buf[2];
-	u64 pg, tgt, pc, na, off;
-	s64 imm;
+	u64 tgt;
+	enum dnsk_ref_kind kind;
+	enum dnsk_reloc_result res;
 
 	neo = kzalloc((DNSK_CGROUP_SUBSYS_COUNT + 1) * sizeof(void *),
 		      GFP_KERNEL);
@@ -236,45 +407,21 @@ static int dnsk_rwprobe_reloc(void)
 		return -ENOMEM;
 	for (i = 0; i < DNSK_CGROUP_SUBSYS_COUNT; i++)
 		neo[i] = old[i];
-	if (!stext || !etext || etext <= stext)
+	if (!stext || !etext || etext <= stext) {
+		kfree(neo);
 		return -ENOENT;
+	}
 	for (p = stext; (void *)(p + 2) <= etext; p++) {
 		i0 = READ_ONCE(p[0]);
 		i1 = READ_ONCE(p[1]);
-		if ((i0 & 0x9F000000) != 0x90000000)
+		res = dnsk_reloc_pair((u64)p, i0, i1, olda, (u64)neo, buf);
+		if (res != DNSK_RELOC_PATCH)
 			continue;
-		pc = (u64)p;
-		imm = ((s64)(((i0 >> 5) & 0x7FFFF) << 2) | ((i0 >> 29) & 3));
-		if (imm & (1 << 20))
-			imm |= ~((1 << 21) - 1);
-		pg = (pc & ~0xFFFUL) + ((u64)imm << 12);
-		if ((i1 & 0xFF800000) == 0x91000000)
-			tgt = pg + (((i1 >> 10) & 0xFFF) <<
-				    (((i1 >> 22) & 3) == 1 ? 12 : 0));
-		else if ((i1 & 0xFFC00000) == 0xF9400000)
-			tgt = pg + (((i1 >> 10) & 0xFFF) * 8);
-		else
-			continue;
-		if (tgt < olda || tgt >= olda + 64)
-			continue;
-		na = (u64)neo + (tgt - olda);
-		if (((s64)((na & ~0xFFFUL) - (pc & ~0xFFFUL))) >> 12 <
-		    -(1 << 20) ||
-		    ((s64)((na & ~0xFFFUL) - (pc & ~0xFFFUL))) >> 12 >=
-		    (1 << 20))
-			continue;
-		off = na & 0xFFF;
-		buf[0] = dnsk_adrp_page(i0, pc, na & ~0xFFFUL);
-		if ((i1 & 0xFF800000) == 0x91000000)
-			buf[1] = (i1 & ~0x00FFFC00u) | (((u32)off & 0xFFF) << 10);
-		else
-			buf[1] = (i1 & ~0x003FFC00u) |
-				 ((((u32)off >> 3) & 0xFFF) << 10);
 		{
 			struct dnsk_rw_req req = { 0 };
 
 			req.opcode = DNSK_RW_WRITE;
-			req.addr = (void *)pc;
+			req.addr = (void *)p;
 			req.src = buf;
 			req.len = sizeof(buf);
 			req.flags = DNSK_RW_F_TEXT;
@@ -282,8 +429,25 @@ static int dnsk_rwprobe_reloc(void)
 				patched++;
 		}
 	}
-	pr_info("dnsk_rwprobe: reloc %px->%px patched=%d\n",
-		old, neo, patched);
+	/*
+	 * Verification sweep: count every pair that STILL resolves into the old
+	 * array window.  A non-zero residual means a reference the reloc failed
+	 * to retarget (unhandled encoding, or a failed F_TEXT write).  This is
+	 * the runtime detection for the *reference* half of the gap; it does not
+	 * cover CGROUP_SUBSYS_COUNT immediates (see the comment above).
+	 */
+	for (p = stext; (void *)(p + 2) <= etext; p++) {
+		i0 = READ_ONCE(p[0]);
+		i1 = READ_ONCE(p[1]);
+		kind = dnsk_ref_pair((u64)p, i0, i1, &tgt);
+		if (kind != DNSK_REF_NONE && dnsk_ref_in_window(tgt, olda))
+			residual++;
+	}
+	pr_info("dnsk_rwprobe: reloc %px->%px patched=%d residual=%d\n",
+		old, neo, patched, residual);
+	if (residual)
+		pr_warn("dnsk_rwprobe: %d reference(s) still target %px, reloc incomplete\n",
+			residual, old);
 	if (!patched) {
 		kfree(neo);
 		return -ENOENT;

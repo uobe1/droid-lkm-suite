@@ -26,3 +26,32 @@ Scope and limits:
 
 Acceptance is Docker 29.x `--pids-limit` plus a Native-vs-Virtual differential
 contract against an AOSP/DDK oracle with `CONFIG_CGROUP_PIDS=y`.
+
+## Native slot injection and the disabled `rw_reloc` probe
+
+`native.c` also has an O-side native path: it installs a real `cgroup_subsys`
+for pids into the spare `net_prio` slot 7 and lets the kernel's own cgroup core
+drive it. That is the shipped path; `native=0` keeps the virtual controller
+above.
+
+`native.c` additionally carries a **default-off mechanism prototype**,
+`dnsk_cgpids.rw_reloc=1`. It copies `cgroup_subsys[]` to a one-entry-bigger,
+same-content array and retargets every `ADRP+ADD` / `ADRP+LDR` reference pair
+that pointed at the old array. Because the copy has identical contents, a missed
+reader still sees the whole original table, so it is a *safe mechanism probe*,
+**not** a working 9th subsystem:
+
+- it does **not** rewrite the `CGROUP_SUBSYS_COUNT` immediate the compiler
+  folded into loop bounds, masks and `cmp` operands. The count is an enum
+  constant with no symbol, so there is no authoritative site list; the rewrite is
+  deferred on purpose (reason and a runtime detection method are in the in-code
+  comment, and in `docs/notes/On-cgpids-reloc-2026-11-21.md`, local material);
+- it does **not** touch the shadow arrays sized by `CGROUP_SUBSYS_COUNT`
+  (`cgroup_subsys_name[]`, `*_enabled_key[]`, `*_on_dfl_key[]`, and the embedded
+  `css_set->subsys[]` / `cgroup->subsys[]` / `e_csets[]` / `nr_dying_subsys[]`).
+
+The decode/encode helpers and the reference-pair decision are pure functions in
+a kernel-free block of `native.c`, covered by `tests/host/test_aarch64_refs.py`
+(the host test extracts that exact C text, compiles it and drives it through
+ctypes). `rw_reloc` has **not** been built into a kernel module or run on a
+device; that needs one Action gate.
