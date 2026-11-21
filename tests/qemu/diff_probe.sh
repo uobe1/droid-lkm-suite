@@ -226,7 +226,9 @@ if "$BB" mount -t tmpfs tmpfs /tmp/xf 2>/dev/null; then
 	[ -x /acl_test ] && {
 		ACL_TMP=$(/acl_test /tmp/xf inherit 2>&1)
 		emit "ACL_RC=$?"
-		printf '%s\n' "$ACL_TMP" | grep -E '^ACL_' || emit "ACL_VALUES=none"
+		printf '%s\n' "$ACL_TMP" |
+			sed -e 's/^\(ACL_[A-Za-z0-9_]*\) /\1=/' |
+			grep -E '^ACL_' || emit "ACL_VALUES=none"
 		# The existing-file path is separate from default-ACL inheritance.
 		ACL_EX=$(/acl_test /tmp/xf existing 2>&1)
 		emit "ACL_EXISTING_RC=$?"
@@ -708,14 +710,26 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ] && have_mod netfilter && have_mod ipset; then
 		# starts its counters.
 		"$IPT" -t filter -A OUTPUT -j SET --add-set dnskcounters src 2>/dev/null
 		"$IPT" -t filter -Z OUTPUT 2>/dev/null
-		"$BB" ping -c "$E4_MIN" -i 1 127.0.0.1 >/dev/null 2>&1; prc=$?
+		# SET --add-set does not accumulate on an element that already exists:
+		# it inserts on the first matching packet and leaves the counters alone
+		# afterwards (measured: 3 same-source pings -> packets 1).  Use three
+		# distinct loopback sources so each packet inserts its own element, and
+		# sum the per-element counters.
+		for esrc in 127.0.0.2 127.0.0.3 127.0.0.4; do
+			"$BB" ping -c 1 -i 1 -I "$esrc" 127.0.0.1 >/dev/null 2>&1
+		done
+		prc=$?
 		emit "E4_PING_RC=$prc"
-		raw_ip=$("$IPS" list dnskcounters 2>/dev/null | "$BB" grep -m1 'packets')
+		raw_ip=$("$IPS" list dnskcounters 2>/dev/null | "$BB" tr '\n' '|')
 		emit "E4_IPSET_RAW=$(printf '%s' "$raw_ip" | "$BB" tr -s ' ' '_')"
-		ipk=$(printf '%s' "$raw_ip" | "$BB" awk '{ for (i = 1; i < NF; i++)
-			if ($i == "packets") { print $(i + 1); exit } }')
-		iby=$(printf '%s' "$raw_ip" | "$BB" awk '{ for (i = 1; i < NF; i++)
-			if ($i == "bytes") { print $(i + 1); exit } }')
+		emit "E4_IPSET_ELEMS=$("$IPS" list dnskcounters 2>/dev/null |
+			"$BB" grep -c 'packets')"
+		ipk=$("$IPS" list dnskcounters 2>/dev/null | "$BB" awk '
+			{ for (i = 1; i < NF; i++) if ($i == "packets") s += $(i + 1) }
+			END { print s + 0 }')
+		iby=$("$IPS" list dnskcounters 2>/dev/null | "$BB" awk '
+			{ for (i = 1; i < NF; i++) if ($i == "bytes") s += $(i + 1) }
+			END { print s + 0 }')
 		emit "E4_IPSET_PKTS=${ipk:-0}"
 		emit "E4_IPSET_BYTES=${iby:-0}"
 		[ "${ipk:-0}" -ge "$E4_MIN" ] || emit "E4_INSUFFICIENT=IPSET_COUNTERS"
