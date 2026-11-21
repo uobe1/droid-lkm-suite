@@ -87,7 +87,9 @@ static int (*dnsk_acl_update_mode)(struct mnt_idmap *idmap,
 				   struct posix_acl **acl);
 static void (*dnsk_set_cached_acl)(struct inode *inode, int type,
 				   struct posix_acl *acl);
-static void (*dnsk_set_ctime_current)(struct inode *inode);
+/* Verbatim prototype: fs/inode.c:2672 returns struct timespec64 by value. */
+typedef struct timespec64 (*dnsk_set_ctime_fn)(struct inode *inode);
+static dnsk_set_ctime_fn dnsk_set_ctime_current;
 
 /*
  * Route B (native only): ACLs live exclusively in inode->i_acl, exactly like
@@ -155,8 +157,7 @@ int dnsk_tmpfsx_acl_init(void *update_mode, void *set_cached_acl,
 		return -EINVAL;
 	dnsk_acl_update_mode = (typeof(dnsk_acl_update_mode))update_mode;
 	dnsk_set_cached_acl = (typeof(dnsk_set_cached_acl))set_cached_acl;
-	dnsk_set_ctime_current = (typeof(dnsk_set_ctime_current))
-		set_ctime_current;
+	dnsk_set_ctime_current = (dnsk_set_ctime_fn)set_ctime_current;
 	methods->set_acl = (void *)dnsk_set_acl;
 	return 0;
 }
