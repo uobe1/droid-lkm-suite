@@ -26,5 +26,5 @@ jobs:
         run: python3 scripts/gen-api-docs.py --check
       - name: Tracked Markdown style
         run: python3 scripts/check-docs-style.py
-      - name: Droid-Hook host contract
-        run: cd droid-hook/tests/host && python3 -m unittest test_dh_contract.py
+      - name: Droid-Hook host gate
+        run: cd droid-hook && make check
