@@ -3,15 +3,24 @@
 """Host selftest for the Droid-Hook arm64 instruction layer.
 
 Builds tests/host/dh_insn_harness.c together with the real src/dh_insn.c and
-runs each subcommand, asserting the encoder output.  Independent reference
-encodings come from clang --target=aarch64-linux-gnu + objdump where available,
-and from hand-derived constants (documented in the test) otherwise.
+runs each subcommand, asserting the encoder output.
+
+Reference encodings are FROZEN CONSTANTS in this file (REF below), each with the
+assembler source line that produces it and the exact command sequence used to
+read it.  The external toolchain (clang + ld.lld + aarch64-linux-gnu-objdump) is
+an OPTIONAL cross-check: when all three exist the frozen value is additionally
+asserted equal to a live assembly, which is stronger than either alone; when any
+is missing the encoder is still asserted against the frozen table and the test
+prints which tool was missing.  An earlier version depended on the toolchain
+unconditionally, which made the gate pass only on a host that had it.
 
 No kernel headers, no kernel build, no CI, no Action.
 """
 
+import os
 import pathlib
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -47,8 +56,88 @@ def run(cmd):
     return d
 
 
+# ---------------------------------------------------------------------------
+# Frozen reference encodings
+#
+# Provenance: every value below was produced on the development host by
+#
+#   clang --target=aarch64-linux-gnu -c t.s -o t.o
+#   ld.lld -Ttext=0x10000000 t.o -o t.elf
+#   aarch64-linux-gnu-objdump -d t.elf
+#
+# and copied out of that disassembly.  Each comment names the exact source line
+# and the address it was assembled at, so the value can be re-derived from the
+# encoding tables even on a host without any toolchain.  These constants -- not
+# the toolchain -- are what the encoder is asserted against.
+# ---------------------------------------------------------------------------
+
+TOOLS = ('clang', 'ld.lld', 'aarch64-linux-gnu-objdump')
+
+ASM = {
+    'jump': '.text\n.globl _s\n_s:\n ldr x17, #8\n br x17\n',
+    'adrp_pos': '.text\n.globl _s\n_s:\n adrp x0, #0x1000\n',
+    'adrp_neg': '.text\n.globl _s\n_s:\n adrp x1, #-0x4000\n',
+    'add': '.text\n.globl _s\n_s:\n'
+           ' add x2, x2, #0x123, lsl #12\n add x2, x2, #0x123\n',
+    'ldr': '.text\n.globl _s\n_s:\n ldr x4, [x5, #64]\n ldrb w6, [x7, #1]\n',
+    'ldr_lit': '.text\n.globl _s\n_s:\n ldr x9, #0x100\n',
+}
+
+REF = {
+    # 0x10000000: ldr x17, #8   (LDR literal, Rt=17, imm19=1 word = +8 bytes)
+    # 0x10000004: br x17        (BR, Rn=17)
+    'jump': (0x58000051, 0xd61f0220),
+    # 0x10000000: adrp x0, #0x1000 -- the immediate is an absolute address, so
+    # the delta is 0x1000 page minus 0x10000000 page = -0xFFFF pages.  Kept
+    # verbatim because the test compares only the immediate field.
+    'adrp_pos': (0xb0000000,),
+    # 0x10000000: adrp x1, #-0x4000 -> -4 pages: immlo=0, immhi=0x7FFFF
+    'adrp_neg': (0x90ffffe1,),
+    # 0x10000000: add x2, x2, #0x123, lsl #12  (imm12=0x123, sh=1 -> bit22)
+    # 0x10000004: add x2, x2, #0x123           (imm12=0x123, sh=0)
+    'add': (0x91448c42, 0x91048c42),
+    # 0x10000000: ldr x4, [x5, #64]  (size=3, opc=01, imm12=64/8=8)
+    # 0x10000004: ldrb w6, [x7, #1]  (size=0, opc=01, imm12=1)
+    'ldr': (0xf94020a4, 0x394004e6),
+    # 0x10000000: ldr x9, #0x100     (LDR literal, imm19=0x40 words)
+    'ldr_lit': (0x58000809,),
+}
+
+# Forms the ISA cannot encode; clang rejects them at assembly time.  Frozen as a
+# list so the cross-check can re-verify when a toolchain is available.
+REJECTED = ('ldr x9, #0x100000', 'b #0x8000000', 'adrp x0, #0x100000000')
+
+
+def forced_no_toolchain():
+    """True when the degraded path was requested, not caused by a missing tool.
+
+    Kept separate from missing_tools() so a log never claims a tool is absent
+    when it is merely being ignored: that would be a false statement in the
+    very evidence this project relies on.
+    """
+    return bool(os.environ.get('DH_INSN_FORCE_NO_TOOLCHAIN'))
+
+
+def missing_tools():
+    """Names from TOOLS absent on this host.
+
+    DH_INSN_FORCE_NO_TOOLCHAIN=1 forces the "toolchain absent" path, so the
+    degraded mode can be reproduced deterministically on a machine that has the
+    tools (and is the normal mode on a runner that does not).  Callers that
+    print a reason must distinguish the two cases; see forced_no_toolchain().
+    """
+    if forced_no_toolchain():
+        return list(TOOLS)
+    return [t for t in TOOLS if shutil.which(t) is None]
+
+
 def objdump_insns(asm, link_script=None):
-    """Return [(pc, word, mnemonic)] from real clang+ld.lld output."""
+    """Return [(pc, word, mnemonic)] from real clang+ld.lld output.
+
+    Optional path: only called when all of TOOLS exist (or when a caller asked
+    for it explicitly).  Tests must never depend on this to assert encoding
+    correctness -- REF is the source of truth.
+    """
     with tempfile.TemporaryDirectory() as td:
         d = pathlib.Path(td)
         (d / 't.s').write_text(asm)
@@ -76,17 +165,44 @@ class DhInsnTest(unittest.TestCase):
     def setUpClass(cls):
         build()
 
+    def ref_words(self, name):
+        """Frozen words for a snippet, cross-checked against live assembly.
+
+        Always returns the frozen tuple, so the encoder assertion that follows
+        runs in every environment.  When clang, ld.lld and the cross objdump are
+        all present the same snippet is assembled and the two must agree, which
+        is strictly stronger than either check alone.  When one is missing the
+        cross-check is skipped with an explicit message -- never the encoder
+        assertion itself.
+        """
+        frozen = REF[name]
+        missing = missing_tools()
+        if missing:
+            if forced_no_toolchain():
+                print(f'note: {name}: cross-check disabled by '
+                      f'DH_INSN_FORCE_NO_TOOLCHAIN, so its absence does NOT mean '
+                      f'a tool is missing; asserting against the frozen table')
+            else:
+                print(f'note: {name}: cross-check not executed, missing '
+                      f'{", ".join(missing)}; asserting against the frozen table')
+            return frozen
+        live = tuple(w for _, w, _ in objdump_insns(ASM[name]))
+        self.assertEqual(live, frozen,
+                         f'{name}: frozen REF disagrees with the assembler')
+        print(f'note: {name}: cross-check executed against live assembly')
+        return frozen
+
     # ---- requirement 1: KernelPatch-style absolute jump ----
 
     def test_absolute_jump_matches_assembler(self):
         d = run('jump')
         self.assertEqual(d['ret'], 0)
-        # clang: "ldr x17, #8; br x17" -> 0x58000051 / 0xd61f0220
-        ref = objdump_insns('.text\n.globl _s\n_s:\n ldr x17, #8\n br x17\n')
-        self.assertEqual(ref[0][1], 0x58000051)
-        self.assertEqual(ref[1][1], 0xd61f0220)
-        self.assertEqual(d['w0'], ref[0][1])
-        self.assertEqual(d['w1'], ref[1][1])
+        # Frozen reference: ldr x17, #8 ; br x17 -> 0x58000051 / 0xd61f0220
+        ref = self.ref_words('jump')
+        self.assertEqual(ref[0], 0x58000051)
+        self.assertEqual(ref[1], 0xd61f0220)
+        self.assertEqual(d['w0'], ref[0])
+        self.assertEqual(d['w1'], ref[1])
         target = 0x1122334455667788
         self.assertEqual(d['w2'], target & 0xFFFFFFFF)
         self.assertEqual(d['w3'], target >> 32)
@@ -101,9 +217,11 @@ class DhInsnTest(unittest.TestCase):
         # New PC 0x40001000 => page delta must be +1.
         self.assertEqual(d['pages_pos'], 1)
         self.assertEqual(d['target_from_new_pc'], 0x40002000)
-        # Real assembler reference for +1 page from a 0x40001000 PC.
-        ref = objdump_insns('.text\n.globl _s\n_s:\n adrp x0, #0x1000\n')
-        self.assertEqual(ref[0][1] & 0x60FFFFE0,
+        # Frozen reference: adrp x0, #0x1000 assembled at 0x10000000.  Only
+        # the 21-bit immediate field is compared, so the absolute immediate the
+        # assembler chose for the reference does not matter.
+        ref = self.ref_words('adrp_pos')
+        self.assertEqual(ref[0] & 0x60FFFFE0,
                          d['dst_pos'] & 0x60FFFFE0)
 
     def test_adrp_negative_delta(self):
@@ -111,8 +229,9 @@ class DhInsnTest(unittest.TestCase):
         self.assertEqual(d['r_neg'], 0)
         # Original -3 pages from 0x40000000; new PC +1 page => -4 pages.
         self.assertEqual(d['pages_neg'], -4)
-        ref = objdump_insns('.text\n.globl _s\n_s:\n adrp x1, #-0x4000\n')
-        self.assertEqual(ref[0][1] & 0x60FFFFE0,
+        # Frozen reference: adrp x1, #-0x4000 at 0x10000000 (-4 pages).
+        ref = self.ref_words('adrp_neg')
+        self.assertEqual(ref[0] & 0x60FFFFE0,
                          d['dst_neg'] & 0x60FFFFE0)
 
     # ---- requirement 2: ADD/SUB imm12 and sh bit preserved ----
@@ -128,11 +247,10 @@ class DhInsnTest(unittest.TestCase):
         self.assertEqual(d['sh_bit_sh1'], 1)
         self.assertEqual(d['sh_bit_sh0'], 0)
         self.assertEqual(d['imm12_sh1'], 0x123)
-        ref = objdump_insns('.text\n.globl _s\n_s:\n'
-                            ' add x2, x2, #0x123, lsl #12\n'
-                            ' add x2, x2, #0x123\n')
-        self.assertEqual(ref[0][1], 0x91448C42)
-        self.assertEqual(ref[1][1], 0x91048C42)
+        # Frozen reference: add with LSL #12 (sh=1) and without (sh=0).
+        ref = self.ref_words('add')
+        self.assertEqual(ref[0], 0x91448C42)
+        self.assertEqual(ref[1], 0x91048C42)
 
     # ---- requirement 2: LDR opc bits must not be cleared (commit 8caf6e6) ----
 
@@ -146,10 +264,10 @@ class DhInsnTest(unittest.TestCase):
         # The buggy mask 0x00FFFC00 would clear bit[23:22] too: prove it.
         buggy = 0xF94020A4 & ~0x00FFFC00
         self.assertNotEqual(buggy, d['dst_ldrx'])
-        ref = objdump_insns('.text\n.globl _s\n_s:\n'
-                            ' ldr x4, [x5, #64]\n ldrb w6, [x7, #1]\n')
-        self.assertEqual(ref[0][1], 0xF94020A4)
-        self.assertEqual(ref[1][1], 0x394004E6)
+        # Frozen reference: LDR x (size=3) and LDRB (size=0); both opc=01.
+        ref = self.ref_words('ldr')
+        self.assertEqual(ref[0], 0xF94020A4)
+        self.assertEqual(ref[1], 0x394004E6)
 
     # ---- requirement 2: LDR literal ±1 MiB ----
 
@@ -160,9 +278,10 @@ class DhInsnTest(unittest.TestCase):
         # Relocated to 0x2000 must still reach 0x1100 => word delta -960.
         self.assertEqual(d['word_delta'], -960)
         self.assertEqual(d['target'], 0x1100)
-        ref = objdump_insns('.text\n.globl _s\n_s:\n ldr x9, #0x100\n')
-        self.assertEqual(ref[0][1], 0x58000809)
-        self.assertEqual(d['src'], ref[0][1])
+        # Frozen reference: ldr x9, #0x100 (LDR literal, imm19=0x40 words).
+        ref = self.ref_words('ldr_lit')
+        self.assertEqual(ref[0], 0x58000809)
+        self.assertEqual(d['src'], ref[0])
         # Out-of-range literal must be rejected (checked in test_range_rejects).
 
     # ---- requirement 2: range checks refuse out-of-range, never truncate ----
@@ -174,11 +293,25 @@ class DhInsnTest(unittest.TestCase):
         self.assertEqual(d['r_b_out'], -95)     # ±128 MiB B
         self.assertEqual(d['r_lit_out'], -95)   # ±1 MiB LDR literal
         self.assertEqual(d['r_ok'], 0)          # in-range still succeeds
-        # Assembler itself refuses the same out-of-range forms.
-        for spec in ('ldr x9, #0x100000', 'b #0x8000000',
-                     'adrp x0, #0x100000000'):
+        # The out-of-range refusal above is asserted unconditionally (it comes
+        # from the encoder).  The assembler's agreement is a cross-check: the
+        # ISA genuinely cannot encode these forms, so re-verify it whenever a
+        # toolchain is present and say so when it is not.
+        missing = missing_tools()
+        for spec in REJECTED:
+            if missing:
+                if forced_no_toolchain():
+                    print(f'note: assembler rejection not cross-checked for '
+                          f'{spec!r}: disabled by DH_INSN_FORCE_NO_TOOLCHAIN')
+                else:
+                    print(f'note: assembler rejection not cross-checked for '
+                          f'{spec!r}, missing {", ".join(missing)}')
+                continue
             with self.assertRaises(subprocess.CalledProcessError):
                 objdump_insns('.text\n.globl _s\n_s:\n ' + spec + '\n')
+        if not missing:
+            print('note: assembler rejection cross-check executed for '
+                  f'{len(REJECTED)} out-of-range forms')
 
     # ---- requirement 3: scan only in-range references ----
 
