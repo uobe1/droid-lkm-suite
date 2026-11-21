@@ -14,8 +14,9 @@
 #                       setns; every other namespace creation stays native
 #   PID/IPC namespace   creation, nesting, setns, SysV IPC + mqueue error codes
 #   tmpfs xattr/ACL     user.*/trusted.* set/get/list/remove, inheritance,
-#                       mask after chmod, existing-file ACL, legacy -o acl,
-#                       and the -o noacl control (security.* is left out: the
+#                       mask after chmod, existing-file ACL, and the B
+#                       contract that -o acl/-o noacl must be rejected (native
+#                       mm/shmem.c has no Opt_acl at all; security.* is left out: the
 #                       oracle has SELinux off, the device side runs the device
 #                       policy permissive, so that would compare environments)
 #   cgroup pids         registration, files, max write/read/read-back/reset,
@@ -256,11 +257,16 @@ else
 	emit "TMPFS_MOUNT=failed"
 fi
 
-# The legacy mount(2) parser accepts `-o acl` independently of the new mount
-# API; tmpfsx implements both, so both are part of the differential.
+# Native tmpfs has no "acl"/"noacl" mount option at all (no Opt_acl in
+# mm/shmem.c), so the B contract is that both mounts must fail with EINVAL.
+# The success branch is kept only as a regression detector: if it ever runs on
+# the module side, the module is still carrying the superset option.
 "$BB" mkdir -p /tmp/xa
 if "$BB" mount -t tmpfs -o acl tmpfs /tmp/xa 2>/tmp/xae; then
 	emit "TMPFSX_ACL_LEGACY_MOUNT=ok"
+	# B contract says this must fail: a successful mount means the module still
+	# carries the superset mount option.
+	emit "TMPFSX_ACL_LEGACY_MOUNT_B=violated"
 	[ -x /acl_test ] && {
 		LEG=$(/acl_test /tmp/xa existing 2>&1)
 		emit "TMPFSX_ACL_LEGACY_EXISTING_RC=$?"
@@ -287,7 +293,13 @@ if "$BB" mount -t tmpfs -o acl tmpfs /tmp/xa 2>/tmp/xae; then
 	}
 	"$BB" umount /tmp/xa 2>/dev/null
 else
-	emit "TMPFSX_ACL_LEGACY_MOUNT=err:$(norm < /tmp/xae | head -1)"
+	acl_err=$(norm < /tmp/xae | head -1)
+	emit "TMPFSX_ACL_LEGACY_MOUNT=err:$acl_err"
+	emit "TMPFSX_ACL_LEGACY_MOUNT_B=ok"
+	case "$acl_err" in
+	*"Invalid argument"*) emit "TMPFSX_ACL_LEGACY_MOUNT_ERRNO=22" ;;
+	*) emit "TMPFSX_ACL_LEGACY_MOUNT_ERRNO=other" ;;
+	esac
 fi
 
 # The other side of the mount-option contract: `-o noacl` must turn ACL support
@@ -295,6 +307,7 @@ fi
 "$BB" mkdir -p /tmp/xn
 if "$BB" mount -t tmpfs -o noacl tmpfs /tmp/xn 2>/tmp/xne; then
 	emit "TMPFSX_NOACL_MOUNT=ok"
+	emit "TMPFSX_NOACL_MOUNT_B=violated"
 	[ -x /acl_test ] && {
 		NACL=$(/acl_test /tmp/xn existing 2>&1)
 		emit "TMPFSX_NOACL_ACL_RC=$?"
@@ -303,7 +316,13 @@ if "$BB" mount -t tmpfs -o noacl tmpfs /tmp/xn 2>/tmp/xne; then
 	}
 	"$BB" umount /tmp/xn 2>/dev/null
 else
-	emit "TMPFSX_NOACL_MOUNT=err:$(norm < /tmp/xne | head -1)"
+	noacl_err=$(norm < /tmp/xne | head -1)
+	emit "TMPFSX_NOACL_MOUNT=err:$noacl_err"
+	emit "TMPFSX_NOACL_MOUNT_B=ok"
+	case "$noacl_err" in
+	*"Invalid argument"*) emit "TMPFSX_NOACL_MOUNT_ERRNO=22" ;;
+	*) emit "TMPFSX_NOACL_MOUNT_ERRNO=other" ;;
+	esac
 fi
 
 else

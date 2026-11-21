@@ -195,6 +195,20 @@ classify() {
 		cl=B
 		why="kernel-side state differs while userspace may already agree: the module restored the syscall result without restoring the kernel's own bookkeeping.  Matching this needs the kernel path to run natively, not a better returning stub"
 		;;
+	# E4 counters are formal results now: a difference means the real-packet
+	# path moved the kernel's accounting differently on the two sides.  The
+	# skip/abort markers are formal too -- a differing skip list means the two
+	# sides ran different section sets, which must never be read as agreement.
+	# cgpids contract values plus the per-section skip marker.  The skip marker
+	# is compared like any other key: both sides must skip the same sections.
+	PIDS_*|SKIP)
+		cl=A
+		why="cgroup pids contract values (max/peak/events/current/fork errno, hang markers) and the per-section SKIP marker must agree"
+		;;
+	E4_*|SKIPPED_SECTIONS|PROBE_ABORT|XT_PLUGIN_*)
+		cl=A
+		why="E4 counter / section-gating markers must agree: a difference means the packet path or the loaded-section set differs, not a cosmetic line"
+		;;
 	XT_*|IPSET_*|IPSET|IPTABLES|IP6TABLES|IPT_BACKEND|RULE_COUNT|IP6T_*|\
 	NETNS_*)
 		cl=A

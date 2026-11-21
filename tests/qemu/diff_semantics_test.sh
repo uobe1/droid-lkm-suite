@@ -312,7 +312,9 @@ assert_file_has "cgpids helper reports fork errno" "$ROOT/tests/qemu/pids_probe.
 
 tmpfsx_keys='XATTR_RC ACL_RC TMPFSX_MOUNT1_RC TMPFSX_MOUNT2_RC
 TMPFSX_ACL_LEGACY_EXISTING_RC TMPFSX_ACL_LEGACY_INHERIT_RC
-TMPFSX_NOACL_MOUNT'
+TMPFSX_NOACL_MOUNT
+TMPFSX_ACL_LEGACY_MOUNT_B TMPFSX_ACL_LEGACY_MOUNT_ERRNO
+TMPFSX_NOACL_MOUNT_B TMPFSX_NOACL_MOUNT_ERRNO'
 for k in $tmpfsx_keys; do
 	assert_file_has "tmpfsx probe covers $k" "$PROBE" "\"$k"
 done
@@ -321,6 +323,11 @@ assert_file_has "tmpfsx probe forwards ACL_* values" "$PROBE" "'\^ACL_'"
 assert_file_has "tmpfsx probe covers existing-file ACL" "$PROBE" 'ACL_EXISTING_'
 assert_file_has "tmpfsx probe forwards granular xattr keys" "$PROBE" "'\^XATTR_'"
 assert_file_has "tmpfsx probe covers the noacl control" "$PROBE" 'TMPFSX_NOACL_MOUNT'
+# B contract: native tmpfs has no acl/noacl mount option, so both mounts must
+# fail with EINVAL.  These keys carry that contract explicitly instead of
+# relying on a present-vs-absent diff.
+assert_file_has "tmpfsx probe asserts -o acl is rejected" "$PROBE" 'TMPFSX_ACL_LEGACY_MOUNT_B=ok'
+assert_file_has "tmpfsx probe asserts -o noacl is rejected" "$PROBE" 'TMPFSX_NOACL_MOUNT_B=ok'
 for k in XATTR_SET_RC XATTR_GET_VALUE XATTR_GET_AFTER_REMOVE_RC \
 	XATTR_REMOVE_RC XATTR_LIST_HAS_PROBE XATTR_TRUSTED_SET_RC; do
 	assert_file_has "xattr_probe covers $k" "$ROOT/tests/qemu/xattr_probe.c" "$k"
