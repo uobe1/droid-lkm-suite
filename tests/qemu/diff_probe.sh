@@ -859,8 +859,10 @@ if "$BB" mount -t tmpfs tmpfs /tmp/tx 2>/dev/null; then
 	fi
 fi
 
-emit "SKIPPED_SECTIONS=[${SKIPPED_SECTIONS:-}]"
 else
 	skip_sec "tmpfsx-teardown"
 fi
+# Must stay outside every gate: the summary exists precisely for the case where
+# gates fired.
+emit "SKIPPED_SECTIONS=[${SKIPPED_SECTIONS:-}]"
 emit "PROBE_DONE"
