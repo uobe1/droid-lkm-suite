@@ -720,7 +720,11 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ] && have_mod netfilter && have_mod ipset; then
 		done
 		prc=$?
 		emit "E4_PING_RC=$prc"
-		raw_ip=$("$IPS" list dnskcounters 2>/dev/null | "$BB" tr '\n' '|')
+		# Emit only the member lines, sorted: the list header carries a random
+		# "initval" hash seed and the member order follows the hash table, so
+		# the full listing differs between two identical kernels.
+		raw_ip=$("$IPS" list dnskcounters 2>/dev/null | "$BB" grep 'packets' |
+			"$BB" sort | "$BB" tr '\n' '|')
 		emit "E4_IPSET_RAW=$(printf '%s' "$raw_ip" | "$BB" tr -s ' ' '_')"
 		emit "E4_IPSET_ELEMS=$("$IPS" list dnskcounters 2>/dev/null |
 			"$BB" grep -c 'packets')"
