@@ -590,7 +590,11 @@ jobs:
             --arch aarch64 --no-cache --allow-untrusted --no-scripts \
             --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
             add e2fsprogs
-          cp tests/qemu/diff_probe.sh tests/qemu/init-diff-oracle oracle-rootfs/
+          # rdinit=/init: the guest init must land at /init, so rename it here.
+          # Copying it under its source name leaves /init missing and the
+          # boot dies before QEMU is even reached (chmod fails first).
+          cp tests/qemu/diff_probe.sh oracle-rootfs/
+          cp tests/qemu/init-diff-oracle oracle-rootfs/init
           chmod 0755 oracle-rootfs/init oracle-rootfs/diff_probe.sh
 
           build_rootfs lkm-rootfs
@@ -610,7 +614,9 @@ jobs:
             --repository https://dl-cdn.alpinelinux.org/alpine/v3.20/main \
             add e2fsprogs
           cp selinux_load insmod_force lkm-rootfs/
-          cp tests/qemu/diff_probe.sh tests/qemu/init-diff-lkm lkm-rootfs/
+          # Same rename as the oracle side: rdinit=/init requires /init.
+          cp tests/qemu/diff_probe.sh lkm-rootfs/
+          cp tests/qemu/init-diff-lkm lkm-rootfs/init
           chmod 0755 lkm-rootfs/init lkm-rootfs/diff_probe.sh
           cp tests/qemu/assets/ksud lkm-rootfs/ksud
           chmod 0755 lkm-rootfs/ksud
