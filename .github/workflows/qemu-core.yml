@@ -445,6 +445,7 @@ jobs:
           run-id: ${{ inputs.module_run_id }}
           github-token: ${{ github.token }}
       - name: Validate the downloaded Images
+        id: validate_images
         run: |
           set -euxo pipefail
           test -s device/Image
@@ -454,16 +455,9 @@ jobs:
           # the wrong run id would otherwise compare "feature absent" against
           # "feature absent" and look green.
           #
-          # The net items are checked too, for the same reason: an oracle
+          # Required group: features this gate always compares.  An oracle
           # without IP_SET/addrtype/recent makes every net assertion "absent"
-          # on both sides.
-          #
-          # IP6_NF_NAT is deliberately NOT checked: the IPv6 NAT assertion is
-          # opt-in (dnsk_diff_net6) and no built oracle carries IPv6 NAT, so
-          # requiring it here would reject the only reusable oracle.  The gate
-          # run reports IP6T_NAT=skipped_no_oracle_ip6nat on both sides, which
-          # means "not verified", not "verified equal".  Add it here only after
-          # an oracle with IP6_NF_NAT=y exists.
+          # on both sides, which is exactly the false green above.
           for c in USER_NS PID_NS IPC_NS CGROUP_PIDS DEVTMPFS CGROUPS \
                    TMPFS_XATTR TMPFS_POSIX_ACL SYSVIPC POSIX_MQUEUE \
                    IP_SET NETFILTER_XT_MATCH_ADDRTYPE \
@@ -473,6 +467,27 @@ jobs:
               exit 1
             }
           done
+          # Conditional group: IPv6 NAT.  The oracle artifact itself declares
+          # whether it was built with IP6_NF_NAT, so no extra workflow input can
+          # be mis-set and no oracle gets rejected for lacking it.  When the
+          # whole family is present the probes are enabled and checked;
+          # otherwise the gate prints an explicit UNVERIFIED line and the probe
+          # emits the same "skipped" value on both sides.  A skip is never
+          # counted as agreement.
+          if grep -q "^CONFIG_IP6_NF_NAT=y" oracle/kernel.config; then
+            for c in IP6_NF_IPTABLES IP6_NF_FILTER IP6_NF_NAT \
+                     IP6_NF_TARGET_MASQUERADE; do
+              grep -q "^CONFIG_${c}=y" oracle/kernel.config || {
+                echo "oracle declares IP6_NF_NAT but CONFIG_${c} is not y" >&2
+                exit 1
+              }
+            done
+            echo "IP6_NF_NAT: VERIFIED (oracle carries CONFIG_IP6_NF_NAT); IPv6 NAT probes enabled"
+            echo "ip6nat=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "IP6_NF_NAT: UNVERIFIED (oracle built without CONFIG_IP6_NF_NAT); not counted as agreement"
+            echo "ip6nat=no" >> "$GITHUB_OUTPUT"
+          fi
       - name: Install QEMU and toolchain
         run: |
           APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
@@ -624,6 +639,7 @@ jobs:
       - name: Boot the oracle and the device kernel
         env:
           INCLUDE_NET: ${{ inputs.include_net }}
+          IP6NAT: ${{ steps.validate_images.outputs.ip6nat }}
         run: |
           set +e
           COMMON="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
@@ -633,6 +649,12 @@ jobs:
             # one TCG boot times out.  The list is comma-separated because a
             # kernel arg cannot contain a space; the LKM init splits it back.
             NET_FLAG="dnsk_diff_net=1 dnsk_diff_load=netfilter,ipset"
+          fi
+          # Enable the IPv6 NAT assertion only when the oracle really carries
+          # it; otherwise both sides skip it and the validate step has already
+          # printed the UNVERIFIED line.
+          if [ "$IP6NAT" = "yes" ]; then
+            NET_FLAG="$NET_FLAG dnsk_diff_net6=1"
           fi
           timeout 600 qemu-system-aarch64 -M virt -cpu max -m 2048 -smp 2 \
             -nographic -no-reboot -kernel oracle/Image \
