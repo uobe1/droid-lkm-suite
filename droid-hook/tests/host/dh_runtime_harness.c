@@ -21,9 +21,23 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Mock memory the "kernel" reads/writes. */
+/* Mock memory the "kernel" reads/writes.
+ *
+ * The pool is page-aligned so its page offset is deterministic, but the
+ * pointer handed to the adapter can be shifted by DH_MOCK_SHIFT bytes at
+ * compile time.  That reproduces the linker-dependent base offsets seen in
+ * the field (0, 64 and 96 mod 256) on demand, so the split assertions can be
+ * proven alignment-independent instead of assuming one layout.
+ */
 #define MOCK_MEM_SIZE 4096
-static u8 mock_mem[MOCK_MEM_SIZE];
+#define MOCK_POOL_SIZE (MOCK_MEM_SIZE + 512)
+#ifndef DH_MOCK_SHIFT
+#define DH_MOCK_SHIFT 0
+#endif
+static _Alignas(4096) u8 mock_pool[MOCK_POOL_SIZE];
+static u8 *mock_mem = mock_pool + DH_MOCK_SHIFT;
+_Static_assert(DH_MOCK_SHIFT >= 0 && DH_MOCK_SHIFT < 512,
+	       "DH_MOCK_SHIFT must stay inside the pool slack");
 static u8 scratch[MOCK_MEM_SIZE];
 
 /* Call log. */
@@ -42,7 +56,7 @@ static int fail_errno = -5;   /* EIO-ish, distinct from DH_E_* */
 
 static void reset_mock(void)
 {
-	memset(mock_mem, 0xA5, sizeof(mock_mem));
+	memset(mock_mem, 0xA5, MOCK_MEM_SIZE);
 	memset(scratch, 0, sizeof(scratch));
 	memset(log, 0, sizeof(log));
 	nr_log = 0;
@@ -195,6 +209,7 @@ static int scenario_init(void)
 	printf("INIT=%d\n", dh_core_backend_init(&be, &st, &api));
 	dump_backend();
 	printf("PAGE=%zu\n", dh_core_backend_page_size(&st));
+	printf("CHUNK_MAX=%d\n", DNSK_RW_MAX);
 	return 0;
 }
 
@@ -294,12 +309,42 @@ static int scenario_flags(const char *which)
 	return 0;
 }
 
-static int scenario_split(const char *mode)
+/* Parse an optional decimal/hex argument; dflt when absent or malformed. */
+static long arg_long(const char *s, long dflt)
+{
+	char *end = NULL;
+	long v;
+
+	if (s == NULL)
+		return dflt;
+	v = strtol(s, &end, 0);
+	if (end == s || *end != '\0')
+		return dflt;
+	return v;
+}
+
+/* split <mode> [start_off] [len] [fail_at]
+ *
+ * Prints everything the Python gate needs to derive the expected chunk
+ * sequence instead of hardcoding it: PAGE, CHUNK_MAX, BASE_ALIGN (mock_mem
+ * modulo the page), START and LEN.
+ */
+static int scenario_split(const char *mode, const char *a_off,
+			  const char *a_len, const char *a_fail)
 {
 	struct dh_rw_req req;
-	u8 big[600];
-	size_t i;
+	static u8 big[600];
+	size_t i, page, sum, start_off, len;
+	long start_l = arg_long(a_off, 8);
+	long len_l = arg_long(a_len, (long)sizeof(big));
+	long fail_l = arg_long(a_fail, -1);
 	int rc;
+
+	if (start_l < 0 || len_l <= 0 || (size_t)len_l > sizeof(big) ||
+	    (size_t)start_l + (size_t)len_l > MOCK_MEM_SIZE)
+		return 2;
+	start_off = (size_t)start_l;
+	len = (size_t)len_l;
 
 	reset_mock();
 	api_reset();
@@ -307,26 +352,40 @@ static int scenario_split(const char *mode)
 	memset(&st, 0, sizeof(st));
 	if (dh_core_backend_init(&be, &st, &api) != DH_OK)
 		return 3;
-	for (i = 0; i < sizeof(big); i++)
+	for (i = 0; i < len; i++)
 		big[i] = (u8)(i & 0xff);
+
+	page = dh_core_backend_page_size(&st);
+	printf("PAGE=%zu\n", page);
+	printf("CHUNK_MAX=%d\n", DNSK_RW_MAX);
+	printf("BASE_ALIGN=%zu\n",
+	       (size_t)((unsigned long)mock_mem & (page - 1)));
+	printf("START=%zu LEN=%zu\n", start_off, len);
 
 	memset(&req, 0, sizeof(req));
 	req.opcode = strcmp(mode, "read") == 0 ? DNSK_RW_READ : DNSK_RW_WRITE;
-	req.addr = mock_mem + 8;
+	req.addr = mock_mem + start_off;
 	req.src = big;
 	req.dst = scratch;
-	req.len = sizeof(big);
+	req.len = len;
 
-	if (strcmp(mode, "fail") == 0)
-		fail_at = 3;      /* fail during save_originals: no write starts */
+	if (fail_l > 0)
+		fail_at = (int)fail_l;
+	else if (strcmp(mode, "fail") == 0)
+		fail_at = 3;      /* legacy default: fail during save_originals */
 	else if (strcmp(mode, "fail_write") == 0)
-		fail_at = 5;      /* fail on the 2nd WRITE chunk after 1 wrote */
+		fail_at = 5;      /* legacy default: fail on the 2nd WRITE */
 
 	rc = be.rw(&req);
 	printf("RC=%d\n", rc);
+	printf("MEM_FIRST=%u\n", (unsigned)mock_mem[start_off]);
+	printf("MEM_LAST=%u\n", (unsigned)mock_mem[start_off + len - 1]);
 	printf("MEM8=%u\n", (unsigned)mock_mem[8]);
-	printf("MEM160=%u\n", (unsigned)mock_mem[160]);
 	printf("MEM263=%u\n", (unsigned)mock_mem[263]);
+	sum = 0;
+	for (i = 0; i < len; i++)
+		sum += mock_mem[start_off + i];
+	printf("MEM_SUM=%lu\n", (unsigned long)sum);
 	printf("SCRATCH0=%u\n", (unsigned)scratch[0]);
 	dump_log();
 	return 0;
@@ -391,7 +450,10 @@ int main(int argc, char **argv)
 	if (strcmp(argv[1], "flags") == 0)
 		return argc > 2 ? scenario_flags(argv[2]) : 2;
 	if (strcmp(argv[1], "split") == 0)
-		return argc > 2 ? scenario_split(argv[2]) : 2;
+		return argc > 2 ? scenario_split(argv[2],
+						 argc > 3 ? argv[3] : NULL,
+						 argc > 4 ? argv[4] : NULL,
+						 argc > 5 ? argv[5] : NULL) : 2;
 	if (strcmp(argv[1], "probe") == 0)
 		return scenario_probe();
 	if (strcmp(argv[1], "patch_pointer") == 0)
