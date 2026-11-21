@@ -136,6 +136,8 @@ jobs:
             -e IP_SET -e IP_SET_HASH_IP -e IP_SET_HASH_NET -e NETFILTER_XT_SET \
             -e NETFILTER_XT_MATCH_ADDRTYPE -e NETFILTER_XT_TARGET_REJECT \
             -e NETFILTER_XT_MATCH_RECENT \
+            -e IP6_NF_IPTABLES -e IP6_NF_FILTER -e IP6_NF_NAT \
+            -e IP6_NF_TARGET_MASQUERADE \
             -e TMPFS -e TMPFS_XATTR -e TMPFS_POSIX_ACL -e FS_POSIX_ACL \
             -e FUSE_FS -e OVERLAY_FS \
             -e VETH -e BRIDGE -e VIRTIO_NET -e VIRTIO_PCI -e VIRTIO_BLK \
@@ -403,7 +405,12 @@ jobs:
   diff:
     if: ${{ inputs.mode == 'diff' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Hard wall-clock cap: a run longer than 30 minutes is not allowed, so this
+    # job is killed at 30 instead of the old 60.  This is the structural guard:
+    # overrunning becomes a failed run, not a rule violation.  The per-boot
+    # `timeout 600` is kept as-is; tightening it would only kill a legitimately
+    # slow boot without adding any compliance.
+    timeout-minutes: 30
     steps:
       - name: Require both Image run ids and the module run
         env:
@@ -446,8 +453,21 @@ jobs:
           # must have every feature compiled in, CGROUP_PIDS included.  Passing
           # the wrong run id would otherwise compare "feature absent" against
           # "feature absent" and look green.
+          #
+          # The net items are checked too, for the same reason: an oracle
+          # without IP_SET/addrtype/recent makes every net assertion "absent"
+          # on both sides.
+          #
+          # IP6_NF_NAT is deliberately NOT checked: the IPv6 NAT assertion is
+          # opt-in (dnsk_diff_net6) and no built oracle carries IPv6 NAT, so
+          # requiring it here would reject the only reusable oracle.  The gate
+          # run reports IP6T_NAT=skipped_no_oracle_ip6nat on both sides, which
+          # means "not verified", not "verified equal".  Add it here only after
+          # an oracle with IP6_NF_NAT=y exists.
           for c in USER_NS PID_NS IPC_NS CGROUP_PIDS DEVTMPFS CGROUPS \
-                   TMPFS_XATTR TMPFS_POSIX_ACL SYSVIPC POSIX_MQUEUE; do
+                   TMPFS_XATTR TMPFS_POSIX_ACL SYSVIPC POSIX_MQUEUE \
+                   IP_SET NETFILTER_XT_MATCH_ADDRTYPE \
+                   NETFILTER_XT_MATCH_RECENT; do
             grep -q "^CONFIG_${c}=y" oracle/kernel.config || {
               echo "oracle artifact is not a full native oracle (CONFIG_${c} is not y)" >&2
               exit 1
@@ -609,7 +629,10 @@ jobs:
           COMMON="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
           NET_FLAG=""
           if [ "$INCLUDE_NET" = "true" ]; then
-            NET_FLAG="dnsk_diff_net=1"
+            # The net gate must load netfilter+ipset only: all six modules in
+            # one TCG boot times out.  The list is comma-separated because a
+            # kernel arg cannot contain a space; the LKM init splits it back.
+            NET_FLAG="dnsk_diff_net=1 dnsk_diff_load=netfilter,ipset"
           fi
           timeout 600 qemu-system-aarch64 -M virt -cpu max -m 2048 -smp 2 \
             -nographic -no-reboot -kernel oracle/Image \

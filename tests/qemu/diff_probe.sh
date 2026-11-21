@@ -500,14 +500,77 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ]; then
 		"$IP6T" -t filter -A INPUT -p tcp --dport 9 -j REJECT --reject-with tcp-reset 2>/dev/null
 		emit "XT_REJECT6=$?"
 		# IP6_NF_NAT + IP6_NF_TARGET_MASQUERADE are module-supplied on the
-		# device, so the nat table must exist and accept the rule.
-		"$IP6T" -t nat -A POSTROUTING -o lo -j MASQUERADE 2>/dev/null
-		emit "IP6T_NAT=$?"
+		# device.  The oracle side only has them when the image was built with
+		# IP6_NF_NAT=y; no live oracle artifact carries it yet, so the probe
+		# must be symmetric: both sides skip unless DNSK_DIFF_NET6=1, or the
+		# missing oracle feature would look like an LKM difference.
+		if [ "${DNSK_DIFF_NET6:-0}" = 1 ]; then
+			"$IP6T" -t nat -A POSTROUTING -o lo -j MASQUERADE 2>/dev/null
+			emit "IP6T_NAT=$?"
+		else
+			emit "IP6T_NAT=skipped_no_oracle_ip6nat"
+		fi
 		"$IP6T" -t filter -F INPUT 2>/dev/null
 		"$IP6T" -t nat -F 2>/dev/null
 		"$IP6T" -t nat -X 2>/dev/null
 	else
 		emit "IP6TABLES=absent"
+	fi
+
+	# E4: the kernel's own accounting must move, not just the return code.
+	# The exact numbers depend on skb/header sizing, so the contract compared
+	# here is "moved"; pinning a byte count would compare two kernels' link
+	# layers, not the ipset/xtables semantics under test.
+	if [ -n "$IPS" ] && [ -n "$IPT" ]; then
+		"$IPS" create dnskcounters hash:ip counters 2>/dev/null
+		"$IPS" add dnskcounters 127.0.0.1 2>/dev/null
+		before=$("$IPS" list dnskcounters 2>/dev/null |
+			"$BB" awk '/packets/ { for (i = 1; i < NF; i++)
+				if ($i == "packets") { print $(i + 1); exit } }')
+		"$IPT" -t filter -A OUTPUT -j SET --add-set dnskcounters src 2>/dev/null
+		"$IPT" -t filter -Z OUTPUT 2>/dev/null
+		"$BB" nc -w1 127.0.0.1 9 </dev/null >/dev/null 2>&1
+		after=$("$IPS" list dnskcounters 2>/dev/null |
+			"$BB" awk '/packets/ { for (i = 1; i < NF; i++)
+				if ($i == "packets") { print $(i + 1); exit } }')
+		if [ -n "$before" ] && [ -n "$after" ] && [ "$after" -gt "$before" ]; then
+			emit "IPSET_COUNTERS_MOVED=yes"
+		else
+			emit "IPSET_COUNTERS_MOVED=no"
+		fi
+		# Rule counters are kernel state too: after one packet, the SET rules
+		# in OUTPUT must show a non-zero packet count on both sides.
+		emit "IPT_COUNTERS_RULES_HIT=$("$IPT" -v -L OUTPUT 2>/dev/null |
+			"$BB" awk 'NR > 2 && $1 + 0 > 0 { n++ } END { print n + 0 }')"
+		if [ -e /proc/net/xt_recent/dnskprobe ] &&
+			"$BB" grep -q 'src=127.0.0.1' /proc/net/xt_recent/dnskprobe; then
+			emit "XT_RECENT_ENTRY=present"
+		else
+			emit "XT_RECENT_ENTRY=absent"
+		fi
+		"$IPT" -t filter -D OUTPUT -j SET --add-set dnskcounters src 2>/dev/null
+		"$IPS" destroy dnskcounters 2>/dev/null
+	fi
+
+	# E3: failure paths.  ipset/iptables translate kernel errors into text, so
+	# the contract compared here is "same text on both sides"; a numeric errno
+	# would need a netlink probe.  Every line is emitted on both sides.
+	if [ -n "$IPS" ]; then
+		emit "IPSET_ERR_DUP=$("$IPS" add dnskprobe 10.9.8.7 2>&1 |
+			"$BB" tr '\n' ' ')"
+		emit "IPSET_ERR_RANGE=$("$IPS" add dnskprobe 10.9.8.0/33 2>&1 |
+			"$BB" tr '\n' ' ')"
+		emit "IPSET_ERR_NAME=$("$IPS" create dnskprobe hash:ip 2>&1 |
+			"$BB" tr '\n' ' ')"
+		emit "IPSET_ERR_TYPE=$("$IPS" create dnskprobe2 hash:ip,port 2>&1 |
+			"$BB" tr '\n' ' ')"
+		"$IPS" destroy dnskprobe2 2>/dev/null
+	fi
+	if [ -n "$IPT" ]; then
+		emit "XT_ADDRTYPE_ERR=$("$IPT" -A INPUT -m addrtype --dst-type BOGUS \
+			2>&1 | "$BB" tr '\n' ' ')"
+		emit "XT_SET_ERR_MISSING=$("$IPT" -A INPUT -m set \
+			--match-set nosuchset src 2>&1 | "$BB" tr '\n' ' ')"
 	fi
 
 	if [ -n "$IPS" ]; then

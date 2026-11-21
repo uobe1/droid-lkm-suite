@@ -29,8 +29,25 @@ fi
 "$BB" mount -t cgroup2 cgroup2 /sys/fs/cgroup 2>/dev/null
 
 # Opt in to the deferred netfilter/ipset probes (see the load list below).
-case " $("$BB" cat /proc/cmdline 2>/dev/null) " in
+CMDLINE=" $("$BB" cat /proc/cmdline 2>/dev/null) "
+case "$CMDLINE" in
 *" dnsk_diff_net=1 "*) export DNSK_DIFF_NET=1 ;;
+esac
+# The net gate loads netfilter+ipset only: all six modules in one TCG boot
+# times out, and netfilter alone dominates symbol resolution.  The list is
+# comma-separated on the cmdline because a kernel arg cannot contain a space;
+# LOADLIST is iterated with word splitting, so translate it back here.
+case "$CMDLINE" in
+*" dnsk_diff_load="*)
+	DNSK_DIFF_LOAD=$(printf '%s' "$CMDLINE" |
+		sed -n 's/.* dnsk_diff_load=\([^ ]*\).*/\1/p' | tr ',' ' ')
+	export DNSK_DIFF_LOAD
+	;;
+esac
+# The IPv6 NAT assertion is opt-in as well: it needs an oracle built with
+# IP6_NF_NAT, and no live oracle artifact has that yet.
+case "$CMDLINE" in
+*" dnsk_diff_net6=1 "*) export DNSK_DIFF_NET6=1 ;;
 esac
 
 fail() {

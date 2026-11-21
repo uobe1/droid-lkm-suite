@@ -36,8 +36,14 @@ fi
 # Net probes are opt-in: the differential gate defers netfilter/ipset until the
 # net baseline has no missing items.  The QEMU diff job sets the cmdline flag
 # only when the user asks for the net comparison.
-case " $("$BB" cat /proc/cmdline 2>/dev/null) " in
+CMDLINE=" $("$BB" cat /proc/cmdline 2>/dev/null) "
+case "$CMDLINE" in
 *" dnsk_diff_net=1 "*) export DNSK_DIFF_NET=1 ;;
+esac
+# Must match the LKM init: an assertion gated on one side only would show up as
+# a difference instead of being skipped on both sides.
+case "$CMDLINE" in
+*" dnsk_diff_net6=1 "*) export DNSK_DIFF_NET6=1 ;;
 esac
 
 # The probe needs a writable /dev/null for shell redirection.
