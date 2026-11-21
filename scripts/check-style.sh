@@ -25,7 +25,6 @@ run() {
 # API drift is checked once by `make docs-check` (and docs-check.yml in CI);
 # do not repeat it here, that would be a second run of the same gate.
 run "tracked Markdown style" python3 scripts/check-docs-style.py
-run "Droid-Hook host gate" sh -c 'cd droid-hook && make check'
 
 # Optional linters: absence is explicitly reported, never treated as success.
 for tool in shellcheck ruff clang-format markdownlint; do

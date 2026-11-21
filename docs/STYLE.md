@@ -62,8 +62,8 @@
 ## 生成文档
 
 - API 文档必须由脚本生成, 不手写
-- 唯一来源: `core/include/*.h` 与 `droid-hook/include/*.h` 的 kernel-doc 注释,
-  以及 `tools/dnskctl` / `tools/dnsk_preflight.c` 的 Doxygen 注释
+- 唯一来源: `core/include/*.h` 的 kernel-doc 注释, 以及 `tools/dnskctl` /
+  `tools/dnsk_preflight.c` 的 Doxygen 注释
 - `scripts/gen-api-docs.py` 只解析注释, 不读实现, 格式串或 `usage()` here-doc
 - 生成物为 `docs/api/kernel.md` 与 `docs/api/userspace.md`, 提交到仓库
 - `make docs` 重新生成; `make docs-check` 或 `make check` 校验漂移

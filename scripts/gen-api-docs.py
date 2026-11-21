@@ -28,8 +28,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-KERNEL_HEADERS = sorted((ROOT / 'core' / 'include').glob('*.h')) + \
-    sorted((ROOT / 'droid-hook' / 'include').glob('*.h'))
+KERNEL_HEADERS = sorted((ROOT / 'core' / 'include').glob('*.h'))
 USERSPACE_SOURCES = [ROOT / 'tools' / 'dnskctl', ROOT / 'tools' / 'dnsk_preflight.c']
 
 
@@ -206,7 +205,7 @@ def build_kernel():
     out = [
         '# Kernel API',
         '',
-        '本页由 `make docs` 从 `core/include/*.h` 与 `droid-hook/include/*.h` 的 kernel-doc 注释自动生成, 不要手工编辑.',
+        '本页由 `make docs` 从 `core/include/*.h` 的 kernel-doc 注释自动生成, 不要手工编辑.',
         '',
         '注释是唯一来源; 本页与头文件不一致时以头文件为准, 并重新生成.',
         '',
