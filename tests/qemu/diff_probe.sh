@@ -231,7 +231,7 @@ if "$BB" mount -t tmpfs tmpfs /tmp/xf 2>/dev/null; then
 		ACL_EX=$(/acl_test /tmp/xf existing 2>&1)
 		emit "ACL_EXISTING_RC=$?"
 		printf '%s\n' "$ACL_EX" |
-			sed -n 's/^ACL_/ACL_EXISTING_/p'
+			sed -e 's/^\(ACL_[A-Za-z0-9_]*\) /\1=/' -e 's/^ACL_/ACL_EXISTING_/' | grep -E '^ACL_EXISTING_'
 	}
 	# A native tmpfs lists an ACL exactly once (from the inode cache).  An
 	# xattr-ized ACL is also a real xattr, so listxattr() reports the same name
@@ -263,11 +263,25 @@ if "$BB" mount -t tmpfs -o acl tmpfs /tmp/xa 2>/tmp/xae; then
 		LEG=$(/acl_test /tmp/xa existing 2>&1)
 		emit "TMPFSX_ACL_LEGACY_EXISTING_RC=$?"
 		printf '%s\n' "$LEG" |
-			sed -n 's/^ACL_/ACL_LEGACY_EXISTING_/p'
+			sed -e 's/^\(ACL_[A-Za-z0-9_]*\) /\1=/' -e 's/^ACL_/ACL_LEGACY_EXISTING_/' | grep -E '^ACL_LEGACY_EXISTING_'
 		LEG=$(/acl_test /tmp/xa inherit 2>&1)
 		emit "TMPFSX_ACL_LEGACY_INHERIT_RC=$?"
 		printf '%s\n' "$LEG" |
-			sed -n 's/^ACL_/ACL_LEGACY_INHERIT_/p'
+			sed -e 's/^\(ACL_[A-Za-z0-9_]*\) /\1=/' -e 's/^ACL_/ACL_LEGACY_INHERIT_/' | grep -E '^ACL_LEGACY_INHERIT_'
+	}
+	# The plain mount above has no SB_POSIXACL on the device (that is itself a
+	# finding), so the duplicate-ACL check also runs on this "-o acl" mount,
+	# where the module's ACL path is actually active.
+	[ -x /listxattr_probe ] && {
+		for lxp in /tmp/xa/adir /tmp/xa/file; do
+			[ -e "$lxp" ] || continue
+			case "$lxp" in
+			*/adir) pfx=ACL_LEGACY_DIR_ ;;
+			*) pfx=ACL_LEGACY_FILE_ ;;
+			esac
+			/listxattr_probe "$lxp" 2>&1 |
+				sed -n "s/^/${pfx}/p"
+		done
 	}
 	"$BB" umount /tmp/xa 2>/dev/null
 else
@@ -283,7 +297,7 @@ if "$BB" mount -t tmpfs -o noacl tmpfs /tmp/xn 2>/tmp/xne; then
 		NACL=$(/acl_test /tmp/xn existing 2>&1)
 		emit "TMPFSX_NOACL_ACL_RC=$?"
 		printf '%s\n' "$NACL" |
-			sed -n 's/^ACL_/ACL_NOACL_/p'
+			sed -e 's/^\(ACL_[A-Za-z0-9_]*\) /\1=/' -e 's/^ACL_/ACL_NOACL_/' | grep -E '^ACL_NOACL_'
 	}
 	"$BB" umount /tmp/xn 2>/dev/null
 else
