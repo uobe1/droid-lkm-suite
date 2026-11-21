@@ -662,43 +662,50 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ] && have_mod netfilter && have_mod ipset; then
 		emit "IP6TABLES=absent"
 	fi
 
-	# E4: the kernel's own accounting must move, not just the return code.
-	# The exact numbers depend on skb/header sizing, so the contract compared
-	# here is "moved"; pinning a byte count would compare two kernels' link
-	# layers, not the ipset/xtables semantics under test.
+	# E4: real packets must drive the kernel's own counters.  Run 44915299860
+	# showed all three E4 keys insufficient: a single loopback connect does not
+	# prove accounting, and the xt_recent rule sat behind an addrtype ACCEPT so
+	# it never saw a packet at all.  Now every item pushes >= 3 real packets and
+	# requires the kernel's own counter to reach E4_MIN, emitted as a formal key.
+	E4_MIN=3
 	if [ -n "$IPS" ] && [ -n "$IPT" ]; then
 		"$IPS" create dnskcounters hash:ip counters 2>/dev/null
 		"$IPS" add dnskcounters 127.0.0.1 2>/dev/null
-		before=$("$IPS" list dnskcounters 2>/dev/null |
-			"$BB" awk '/packets/ { for (i = 1; i < NF; i++)
-				if ($i == "packets") { print $(i + 1); exit } }')
 		"$IPT" -t filter -A OUTPUT -j SET --add-set dnskcounters src 2>/dev/null
 		"$IPT" -t filter -Z OUTPUT 2>/dev/null
-		"$BB" nc -w1 127.0.0.1 9 </dev/null >/dev/null 2>&1
-		after=$("$IPS" list dnskcounters 2>/dev/null |
+		"$BB" ping -c "$E4_MIN" -i 1 127.0.0.1 >/dev/null 2>&1; prc=$?
+		emit "E4_PING_RC=$prc"
+		ipk=$("$IPS" list dnskcounters 2>/dev/null |
 			"$BB" awk '/packets/ { for (i = 1; i < NF; i++)
 				if ($i == "packets") { print $(i + 1); exit } }')
-		if [ -n "$before" ] && [ -n "$after" ] && [ "$after" -gt "$before" ]; then
-			emit "IPSET_COUNTERS_MOVED=yes"
+		iby=$("$IPS" list dnskcounters 2>/dev/null |
+			"$BB" awk '/bytes/ { for (i = 1; i < NF; i++)
+				if ($i == "bytes") { print $(i + 1); exit } }')
+		emit "E4_IPSET_PKTS=${ipk:-0}"
+		emit "E4_IPSET_BYTES=${iby:-0}"
+		[ "${ipk:-0}" -ge "$E4_MIN" ] || emit "E4_INSUFFICIENT=IPSET_COUNTERS"
+		# Rule counters, exact numbers.
+		irow=$("$IPT" -v -x -L OUTPUT 2>/dev/null |
+			"$BB" awk '/--add-set dnskcounters/ { print $1, $2; exit }')
+		iptp=$(printf '%s' "$irow" | "$BB" awk '{ print $1 + 0 }')
+		iptb=$(printf '%s' "$irow" | "$BB" awk '{ print $2 + 0 }')
+		emit "E4_IPT_PKTS=${iptp:-0}"
+		emit "E4_IPT_BYTES=${iptb:-0}"
+		[ "${iptp:-0}" -ge "$E4_MIN" ] || emit "E4_INSUFFICIENT=IPT_COUNTERS"
+		# xt_recent: a fresh name, inserted at the head of INPUT so the earlier
+		# addrtype ACCEPT cannot short-circuit it, then >= 3 real packets.
+		"$IPT" -t filter -I INPUT 1 -m recent --name dnskrecent --set 2>/dev/null
+		"$BB" ping -c "$E4_MIN" -i 1 127.0.0.1 >/dev/null 2>&1
+		if [ -e /proc/net/xt_recent/dnskrecent ] &&
+			"$BB" grep -q 'src=127.0.0.1' /proc/net/xt_recent/dnskrecent; then
+			emit "E4_RECENT_SRC=present"
+			emit "E4_RECENT_ENTRIES=$("$BB" grep -c 'src=' \
+				/proc/net/xt_recent/dnskrecent 2>/dev/null)"
 		else
-			emit "IPSET_COUNTERS_MOVED=no"
-			emit "E4_INSUFFICIENT=IPSET_COUNTERS"
-		fi
-		# Rule counters are kernel state too: after one packet, the SET rules
-		# in OUTPUT must show a non-zero packet count on both sides.
-		hit=$("$IPT" -v -L OUTPUT 2>/dev/null |
-			"$BB" awk 'NR > 2 && $1 + 0 > 0 { n++ } END { print n + 0 }')
-		emit "IPT_COUNTERS_RULES_HIT=$hit"
-		# Two SET rules are installed in OUTPUT; fewer means the packet path
-		# did not really exercise the counters.
-		[ "${hit:-0}" -ge 2 ] || emit "E4_INSUFFICIENT=IPT_COUNTERS"
-		if [ -e /proc/net/xt_recent/dnskprobe ] &&
-			"$BB" grep -q 'src=127.0.0.1' /proc/net/xt_recent/dnskprobe; then
-			emit "XT_RECENT_ENTRY=present"
-		else
-			emit "XT_RECENT_ENTRY=absent"
+			emit "E4_RECENT_SRC=absent"
 			emit "E4_INSUFFICIENT=XT_RECENT_ENTRY"
 		fi
+		"$IPT" -t filter -D INPUT -m recent --name dnskrecent --set 2>/dev/null
 		"$IPT" -t filter -D OUTPUT -j SET --add-set dnskcounters src 2>/dev/null
 		"$IPS" destroy dnskcounters 2>/dev/null
 	fi
