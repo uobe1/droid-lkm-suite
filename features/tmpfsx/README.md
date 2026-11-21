@@ -16,14 +16,26 @@ Current prototype:
 - Pinned until reboot once handlers are installed (superblocks keep a
   pointer into this module).
 
-POSIX ACL inode operations (`get_inode_acl`/`get_acl`/`set_acl`) are wired.
-When the kernel lacks native tmpfs ACL xattr handlers, the module installs
-its own `system.posix_acl_access`/`default` handlers that use the kernel's
-`posix_acl_from_xattr`/`posix_acl_to_xattr`, `posix_acl_release` and
-`set_posix_acl` via core resolution.  `acl`/`noacl` are recorded per
-fs_context from both the new mount API (`parse_param`) and legacy `mount(2)`
-(`parse_monolithic`, options filtered before the original parser);
-`shmem_fill_super` applies `SB_POSIXACL`.  LSM-specific differential checks
-are still missing.  Status is `DEVELOPMENT`; do not claim Native semantics.
+POSIX ACL (route B, native only — decision 2026-11-21): ACLs live
+exclusively in the kernel's `inode->i_acl` cache, mirroring
+`simple_set_acl()` (`posix_acl_update_mode` + `set_cached_acl` +
+`inode_set_ctime_current`; a removed ACL negative-caches NULL).  There is
+no `simple_xattr` persistence for ACLs and no `system.posix_acl_*` entry in
+the module's `s_xattr` handler table: setxattr/getxattr on ACL names are
+routed by the VFS itself (`do_set_acl`/`do_get_acl`) to `i_op->set_acl`,
+and `listxattr` reports ACL names through generic `posix_acl_listxattr()`,
+so each ACL is reported exactly once.  Default ACL inheritance on create
+reuses the kernel's `simple_acl_create()`.  Reads need no override: the
+kernel's `__get_acl()` negative-caches when both `get_acl`/`get_inode_acl`
+slots are NULL.  Only `i_op->set_acl` is written (required by
+`set_posix_acl`, fs/posix_acl.c:937-938).  `acl`/`noacl` mount options are
+no longer accepted — the module does not intercept them and the stock tmpfs
+parser rejects them with `EINVAL`, matching native tmpfs (which has no
+`acl`/`noacl` parameter at all; this is an intentional behaviour change
+from the earlier xattr-based route).  `SB_POSIXACL` is set unconditionally
+for every superblock the module touches, matching
+`shmem_fill_super()` under `CONFIG_TMPFS_POSIX_ACL=y`
+(mm/shmem.c:4721-4722).  Status is `DEVELOPMENT`; do not claim Native
+semantics until the device gate re-runs.
 
 Build: `make -C features/tmpfsx KDIR=... modules`.

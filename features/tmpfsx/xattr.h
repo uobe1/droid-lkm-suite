@@ -64,8 +64,6 @@ int dnsk_tmpfsx_setattr_dops(struct mnt_idmap *idmap, struct dentry *dentry,
 			     struct iattr *attr);
 
 struct dnsk_acl_methods {
-	void *get_inode_acl;
-	void *get_acl;
 	void *set_acl;
 };
 
@@ -74,10 +72,8 @@ extern const struct xattr_handler *dnsk_tmpfsx_handlers[6];
 int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
 			   dnsk_xattr_list_fn list,
 			   dnsk_xattrs_free_fn free_fn);
-int dnsk_tmpfsx_acl_init(void *from_xattr, void *to_xattr, void *user_ns,
-			 void *release_acl, void *set_posix_acl,
-			 void *update_mode, void *set_cached_acl,
-			 void *get_cached_acl,
+int dnsk_tmpfsx_acl_init(void *update_mode, void *set_cached_acl,
+			 void *set_ctime_current,
 			 struct dnsk_acl_methods *methods);
 void dnsk_tmpfsx_evict_inode(struct inode *inode);
 ssize_t dnsk_tmpfsx_listxattr(struct dentry *dentry, char *buffer,

@@ -128,11 +128,7 @@ static void dnsk_del_acl_hooks(void)
 	dnsk_api->hook_del("tmpfsx.fc.parse_param");
 	dnsk_tmpfsx_mount_exit();
 	dnsk_api->hook_del("tmpfsx.dops.set_acl");
-	dnsk_api->hook_del("tmpfsx.dops.get_acl");
-	dnsk_api->hook_del("tmpfsx.dops.get_inode_acl");
 	dnsk_api->hook_del("tmpfsx.iops.set_acl");
-	dnsk_api->hook_del("tmpfsx.iops.get_acl");
-	dnsk_api->hook_del("tmpfsx.iops.get_inode_acl");
 	dnsk_api->hook_del("tmpfsx.dops.create");
 	dnsk_api->hook_del("tmpfsx.dops.mkdir");
 	dnsk_api->hook_del("tmpfsx.dops.symlink");
@@ -158,10 +154,8 @@ static int dnsk_add_kprobe_hook(const char *key, const char *symbol, void *fn)
 static int dnsk_resolve_symbols(void)
 {
 	void *xattr_set, *xattr_get, *xattr_list, *xattrs_free;
-	void *acl_from, *acl_to, *user_ns, *acl_release, *acl_set;
-	void *acl_update_mode, *acl_set_cached;
+	void *acl_update_mode, *acl_set_cached, *acl_set_ctime;
 	void *acl_sac, *acl_chmod, *simple_setattr_fn;
-	void *acl_get_cached;
 	void *native_acl_access, *native_acl_default;
 	void *fc_ops, *parse_param, *parse_monolithic;
 	int ret;
@@ -181,17 +175,12 @@ static int dnsk_resolve_symbols(void)
 	xattr_get = dnsk_api->resolve("simple_xattr_get");
 	xattr_list = dnsk_api->resolve("simple_xattr_list");
 	xattrs_free = dnsk_api->resolve("simple_xattrs_free");
-	acl_from = dnsk_api->resolve("posix_acl_from_xattr");
-	acl_to = dnsk_api->resolve("posix_acl_to_xattr");
-	user_ns = dnsk_api->resolve("init_user_ns");
-	acl_release = dnsk_api->resolve("posix_acl_release");
-	acl_set = dnsk_api->resolve("set_posix_acl");
 	acl_update_mode = dnsk_api->resolve("posix_acl_update_mode");
 	acl_set_cached = dnsk_api->resolve("set_cached_acl");
+	acl_set_ctime = dnsk_api->resolve("inode_set_ctime_current");
 	acl_sac = dnsk_api->resolve("simple_acl_create");
 	acl_chmod = dnsk_api->resolve("posix_acl_chmod");
 	simple_setattr_fn = dnsk_api->resolve("simple_setattr");
-	acl_get_cached = dnsk_api->resolve("get_cached_acl");
 	native_acl_access = dnsk_api->resolve("posix_acl_access_xattr_handler");
 	native_acl_default = dnsk_api->resolve("posix_acl_default_xattr_handler");
 	fc_ops = dnsk_api->resolve("shmem_fs_context_ops");
@@ -234,13 +223,10 @@ static int dnsk_resolve_symbols(void)
 	    READ_ONCE(*(void **)((char *)dnsk_iops +
 				 offsetof(struct inode_operations, set_acl)))) {
 		pr_info("dnsk_tmpfsx: native ACL present; keeping native\n");
-	} else if (acl_from && acl_to && user_ns && acl_release && acl_set &&
-		   acl_update_mode && acl_set_cached && acl_sac && acl_chmod &&
-		   acl_get_cached) {
-		ret = dnsk_tmpfsx_acl_init(acl_from, acl_to, user_ns,
-					   acl_release, acl_set,
-					   acl_update_mode, acl_set_cached,
-					   acl_get_cached, &dnsk_acl_ops);
+	} else if (acl_update_mode && acl_set_cached && acl_set_ctime &&
+		   acl_sac && acl_chmod) {
+		ret = dnsk_tmpfsx_acl_init(acl_update_mode, acl_set_cached,
+					   acl_set_ctime, &dnsk_acl_ops);
 		if (ret)
 			return ret;
 		dnsk_acl_slots.create = (dnsk_create_fn)READ_ONCE(
@@ -282,7 +268,7 @@ static struct dnsk_feature_desc dnsk_tmpfsx_desc = {
 	.name = "tmpfsx",
 	.version = "0.1",
 	.status = DNSK_STATUS_DEVELOPMENT,
-	.caps = "tmpfs xattr + ACL handlers; acl/noacl via fs_context and legacy mount",
+	.caps = "tmpfs xattr handlers; ACL cache-only (route B), SB_POSIXACL default",
 	.owner = THIS_MODULE,
 };
 
@@ -330,35 +316,15 @@ static int __init dnsk_tmpfsx_init(void)
 	dnsk_dops_ready = true;
 
 	if (dnsk_acl_ready) {
-		ret = dnsk_add_acl_hook("tmpfsx.iops.get_inode_acl", dnsk_iops,
-					offsetof(struct inode_operations,
-						 get_inode_acl),
-					dnsk_acl_ops.get_inode_acl);
-		if (ret)
-			goto out_acl;
-		ret = dnsk_add_acl_hook("tmpfsx.iops.get_acl", dnsk_iops,
-					offsetof(struct inode_operations,
-						 get_acl),
-					dnsk_acl_ops.get_acl);
-		if (ret)
-			goto out_acl;
+		/*
+		 * Route B: only the set_acl slot is ours; ACL reads stay on
+		 * the kernel's inode->i_acl cache (__get_acl() negative-caches
+		 * when both get_acl/get_inode_acl are NULL).
+		 */
 		ret = dnsk_add_acl_hook("tmpfsx.iops.set_acl", dnsk_iops,
 					offsetof(struct inode_operations,
 						 set_acl),
 					dnsk_acl_ops.set_acl);
-		if (ret)
-			goto out_acl;
-		ret = dnsk_add_acl_hook("tmpfsx.dops.get_inode_acl",
-					dnsk_dops,
-					offsetof(struct inode_operations,
-						 get_inode_acl),
-					dnsk_acl_ops.get_inode_acl);
-		if (ret)
-			goto out_acl;
-		ret = dnsk_add_acl_hook("tmpfsx.dops.get_acl", dnsk_dops,
-					offsetof(struct inode_operations,
-						 get_acl),
-					dnsk_acl_ops.get_acl);
 		if (ret)
 			goto out_acl;
 		ret = dnsk_add_acl_hook("tmpfsx.dops.set_acl", dnsk_dops,
