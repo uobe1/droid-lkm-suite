@@ -23,14 +23,20 @@ static bool ready;
 static unsigned int errors;
 static bool activate;
 static bool gki;
+static char *trigger = "entry";
+static bool trigger_active;
 module_param(ready, bool, 0400);
 module_param(errors, uint, 0400);
 module_param(activate, bool, 0400);
 module_param(gki, bool, 0400);
+module_param(trigger, charp, 0400);
+module_param(trigger_active, bool, 0400);
 MODULE_PARM_DESC(ready, "Existing devices populated and device lifecycle hooks active");
 MODULE_PARM_DESC(errors, "Device node update errors, excluding existing or removed nodes");
 MODULE_PARM_DESC(activate, "Install device lifecycle hooks after preflight");
 MODULE_PARM_DESC(gki, "Allow the compiled android16-6.12 GKI family");
+MODULE_PARM_DESC(trigger, "Device lifecycle trigger: entry (default) or bus");
+MODULE_PARM_DESC(trigger_active, "True when trigger=bus is installed and active");
 
 static bool ds_gki_supported(void)
 {
@@ -59,6 +65,13 @@ static void update_node(struct device *dev, bool create)
 		errors++;
 		pr_err("%s %s: %d\n", create ? "create" : "remove", dev_name(dev), ret);
 	}
+}
+
+void ds_devtmpfs_update_node(struct device *dev, bool create)
+{
+	mutex_lock(&nodes_lock);
+	update_node(dev, create);
+	mutex_unlock(&nodes_lock);
 }
 
 int ds_device_add(struct device *dev)
@@ -131,10 +144,20 @@ static int __init ds_init(void)
 {
 	struct kallrecon_hint hint = { .timeout_ms = 15000 };
 	struct file_system_type *existing;
+	bool bus_trigger;
 	int ret;
 
 	if (!ds_gki_supported())
 		return -EOPNOTSUPP;
+	if (!trigger) {
+		pr_err("invalid trigger: NULL\n");
+		return -EINVAL;
+	}
+	if (strcmp(trigger, "entry") && strcmp(trigger, "bus")) {
+		pr_err("invalid trigger: %s\n", trigger);
+		return -EINVAL;
+	}
+	bus_trigger = !strcmp(trigger, "bus");
 	if (!activate) {
 		pr_info("inactive: activate=1 and gki=1 are required\n");
 		return 0;
@@ -146,7 +169,7 @@ static int __init ds_init(void)
 	find_kallsyms_base();
 	if (kallrecon_fail_reason() != KALLRECON_OK || !klnum_val)
 		return -ENODATA;
-	ret = ds_hooks_prepare();
+	ret = ds_hooks_prepare(bus_trigger);
 	if (ret) return ret;
 	ret = ds_devtmpfs_start();
 	if (ret) return ret;
@@ -161,6 +184,9 @@ static int __init ds_init(void)
 		ds_devtmpfs_stop();
 		return ret;
 	}
+	trigger_active = bus_trigger;
+	if (bus_trigger)
+		pr_info("trigger=bus active\n");
 	ret = populate_existing();
 	if (ret) { errors++; pr_err("initial device enumeration failed: %d\n", ret); }
 	ready = !ret && !errors;
@@ -178,8 +204,8 @@ static void __exit ds_exit(void)
 	 *
 	 * The private mount is deliberately not torn down here: its superblock is
 	 * shared with every "devtmpfs" mount in the system, and a synchronous
-	 * teardown from module_exit cannot make those go away.  The self reference
-	 * taken at init is what normally prevents this path from running at all.
+	 * teardown from module_exit cannot make those go away.  The type is
+	 * unregistered and the worker stopped, so no module text stays reachable.
 	 */
 	if (ds_hooks_uninstall())
 		pr_err("hook teardown failed; device hooks may still be installed\n");

@@ -9,10 +9,13 @@ int ds_devtmpfs_create_node(struct device *dev);
 int ds_devtmpfs_delete_node(struct device *dev);
 int ds_device_add(struct device *dev);
 void ds_device_del(struct device *dev);
-int ds_hooks_prepare(void);
+int ds_hooks_prepare(bool bus_trigger);
 int ds_hooks_install(void);
 int ds_hooks_uninstall(void);
 extern bool ds_hooks_active;
+void ds_devtmpfs_update_node(struct device *dev, bool create);
 int ds_device_add_original(struct device *dev);
 void ds_device_del_original(struct device *dev);
+void ds_bus_notify(struct device *dev, unsigned int value);
+void ds_bus_notify_original(struct device *dev, unsigned int value);
 #endif

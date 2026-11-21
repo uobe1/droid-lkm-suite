@@ -17,3 +17,11 @@ ds_device_del_original:
 brk #0
 .endr
 .size ds_device_del_original, .-ds_device_del_original
+.balign 16
+.global ds_bus_notify_original
+.type ds_bus_notify_original, %function
+ds_bus_notify_original:
+.rept 8
+brk #0
+.endr
+.size ds_bus_notify_original, .-ds_bus_notify_original

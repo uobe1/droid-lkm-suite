@@ -4,9 +4,11 @@
 #include <linux/kallsyms.h>
 #include <linux/rcupdate.h>
 #include <linux/stop_machine.h>
+#include <linux/string.h>
 #include <asm/patching.h>
 #include "core.h"
 #include "port.h"
+#include "trigger_plan.h"
 
 struct ds_hook {
 	const char *name;
@@ -20,7 +22,12 @@ struct ds_hook {
 static struct ds_hook hooks[] = {
 	{ "device_add", (unsigned long)ds_device_add, 0, {0}, {0}, (u32 *)ds_device_add_original },
 	{ "device_del", (unsigned long)ds_device_del, 0, {0}, {0}, (u32 *)ds_device_del_original },
+	{ "bus_notify", (unsigned long)ds_bus_notify, 0, {0}, {0}, (u32 *)ds_bus_notify_original },
 };
+
+static struct ds_hook *active_hooks[ARRAY_SIZE(hooks)];
+static unsigned int active_count;
+static bool bus_trigger;
 
 static bool movable_prologue(u32 op)
 {
@@ -90,13 +97,53 @@ static int write_hook(struct ds_hook *hook, bool restore)
 	return 0;
 }
 
+/*
+ * Bus-trigger wrapper (trigger=bus, opt-in):
+ *
+ *   BUS_NOTIFY_ADD_DEVICE: create the node *before* the bus notifier chain,
+ *	which is also before kobject_uevent(KOBJ_ADD) and bus_probe_device().
+ *	This matches the native call site in device_add() (core.c:3666 vs :3672).
+ *
+ *   BUS_NOTIFY_DEL_DEVICE: run the native bus notifier chain first (notifiers
+ *	still see the node, as native does), then remove the node. Native removes
+ *	it a little later, after dpm_sysfs_remove(); the visible notifier order is
+ *	the same.
+ *
+ * All other events are passed through unchanged. The node operation itself is
+ * still the route-E worker queue (devtmpfs_submit_req), not a second path.
+ */
+/* DNSK_BUS_NOTIFY_BEGIN */
+void ds_bus_notify(struct device *dev, unsigned int value)
+{
+	bool is_add = value == BUS_NOTIFY_ADD_DEVICE;
+	bool is_del = value == BUS_NOTIFY_DEL_DEVICE;
+	unsigned int plan = ds_trigger_plan(is_add, is_del);
+
+	if (plan & DS_TRIGGER_CREATE_BEFORE) {
+		ds_devtmpfs_update_node(dev, true);
+		if (bus_trigger)
+			pr_info("bus trigger: add %s before-notify\n", dev_name(dev));
+	}
+
+	ds_bus_notify_original(dev, value);
+
+	if (plan & DS_TRIGGER_DELETE_AFTER) {
+		ds_devtmpfs_update_node(dev, false);
+		if (bus_trigger)
+			pr_info("bus trigger: del %s after-notify\n", dev_name(dev));
+	}
+}
+/* DNSK_BUS_NOTIFY_END */
+
 static int install_stopped(void *unused)
 {
 	unsigned int i, j;
 	int ret;
-	for (i = 0; i < ARRAY_SIZE(hooks); i++) {
-		struct ds_hook *h = &hooks[i];
+
+	for (i = 0; i < active_count; i++) {
+		struct ds_hook *h = active_hooks[i];
 		u32 code[8];
+
 		memcpy(code, h->saved, sizeof(h->saved));
 		code[4] = 0x58000050;
 		code[5] = 0xd61f0200;
@@ -104,14 +151,15 @@ static int install_stopped(void *unused)
 		code[7] = upper_32_bits(h->address + sizeof(h->saved));
 		for (j = 0; j < ARRAY_SIZE(code); j++) {
 			ret = aarch64_insn_patch_text_nosync(&h->original[j], code[j]);
-			if (ret) return ret; /* No native entry changed yet. */
+			if (ret)
+				return ret; /* No native entry changed yet. */
 		}
 	}
-	for (i = 0; i < ARRAY_SIZE(hooks); i++) {
-		ret = write_hook(&hooks[i], false);
+	for (i = 0; i < active_count; i++) {
+		ret = write_hook(active_hooks[i], false);
 		if (ret) {
 			for (j = 0; j <= i; j++)
-				if (write_hook(&hooks[j], true))
+				if (write_hook(active_hooks[j], true))
 					panic("droidspaces_devtmpfs: rollback failed");
 			return ret;
 		}
@@ -119,15 +167,27 @@ static int install_stopped(void *unused)
 	return 0;
 }
 
-int ds_hooks_prepare(void)
+int ds_hooks_prepare(bool use_bus)
 {
 	unsigned int i;
-	if (IS_ENABLED(CONFIG_ARM64_BTI_KERNEL)) return -EOPNOTSUPP;
+	int ret;
+
+	if (IS_ENABLED(CONFIG_ARM64_BTI_KERNEL))
+		return -EOPNOTSUPP;
+	bus_trigger = use_bus;
+	active_count = 0;
 	for (i = 0; i < ARRAY_SIZE(hooks); i++) {
-		int ret = prepare_hook(&hooks[i]);
-		if (ret) return ret;
+		bool want = use_bus ? !strcmp(hooks[i].name, "bus_notify")
+				    : strcmp(hooks[i].name, "bus_notify");
+
+		if (!want)
+			continue;
+		ret = prepare_hook(&hooks[i]);
+		if (ret)
+			return ret;
+		active_hooks[active_count++] = &hooks[i];
 	}
-	return 0;
+	return active_count ? 0 : -ENOENT;
 }
 
 /* Set once install succeeds; teardown keys off it so a failed install never
@@ -148,8 +208,8 @@ static int uninstall_stopped(void *unused)
 	unsigned int i;
 	int ret;
 
-	for (i = 0; i < ARRAY_SIZE(hooks); i++) {
-		ret = write_hook(&hooks[i], true);
+	for (i = 0; i < active_count; i++) {
+		ret = write_hook(active_hooks[i], true);
 		if (ret)
 			panic("droidspaces_devtmpfs: uninstall restore failed at index %u: %d\n",
 			      i, ret);
