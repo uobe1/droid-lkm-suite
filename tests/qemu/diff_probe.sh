@@ -692,33 +692,39 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ] && have_mod netfilter && have_mod ipset; then
 		emit "IP6TABLES=absent"
 	fi
 
-	# E4: real packets must drive the kernel's own counters.  Run 44915299860
-	# showed all three E4 keys insufficient: a single loopback connect does not
-	# prove accounting, and the xt_recent rule sat behind an addrtype ACCEPT so
-	# it never saw a packet at all.  Now every item pushes >= 3 real packets and
-	# requires the kernel's own counter to reach E4_MIN, emitted as a formal key.
+	# E4: real packets must drive the kernel's own counters.  Two earlier
+	# attempts came back insufficient (runs 44915299860, 44922016749):
+	#   - the set was pre-populated with 127.0.0.1, and SET --add-set does not
+	#     account when the element already exists, so packets stayed 0;
+	#   - the iptables rule line was matched with "--add-set", but -L prints the
+	#     option as "add-set <set> src" without the leading dashes, so the parse
+	#     returned 0 even when the counter had moved.
+	# Both are fixed below and the raw lines are emitted so a future miss is
+	# diagnosable from the log instead of guessed.
 	E4_MIN=3
 	if [ -n "$IPS" ] && [ -n "$IPT" ]; then
 		"$IPS" create dnskcounters hash:ip counters 2>/dev/null
-		"$IPS" add dnskcounters 127.0.0.1 2>/dev/null
+		# Deliberately empty: the first matching packet inserts the element and
+		# starts its counters.
 		"$IPT" -t filter -A OUTPUT -j SET --add-set dnskcounters src 2>/dev/null
 		"$IPT" -t filter -Z OUTPUT 2>/dev/null
 		"$BB" ping -c "$E4_MIN" -i 1 127.0.0.1 >/dev/null 2>&1; prc=$?
 		emit "E4_PING_RC=$prc"
-		ipk=$("$IPS" list dnskcounters 2>/dev/null |
-			"$BB" awk '/packets/ { for (i = 1; i < NF; i++)
-				if ($i == "packets") { print $(i + 1); exit } }')
-		iby=$("$IPS" list dnskcounters 2>/dev/null |
-			"$BB" awk '/bytes/ { for (i = 1; i < NF; i++)
-				if ($i == "bytes") { print $(i + 1); exit } }')
+		raw_ip=$("$IPS" list dnskcounters 2>/dev/null | "$BB" grep -m1 'packets')
+		emit "E4_IPSET_RAW=$(printf '%s' "$raw_ip" | "$BB" tr -s ' ' '_')"
+		ipk=$(printf '%s' "$raw_ip" | "$BB" awk '{ for (i = 1; i < NF; i++)
+			if ($i == "packets") { print $(i + 1); exit } }')
+		iby=$(printf '%s' "$raw_ip" | "$BB" awk '{ for (i = 1; i < NF; i++)
+			if ($i == "bytes") { print $(i + 1); exit } }')
 		emit "E4_IPSET_PKTS=${ipk:-0}"
 		emit "E4_IPSET_BYTES=${iby:-0}"
 		[ "${ipk:-0}" -ge "$E4_MIN" ] || emit "E4_INSUFFICIENT=IPSET_COUNTERS"
-		# Rule counters, exact numbers.
-		irow=$("$IPT" -v -x -L OUTPUT 2>/dev/null |
-			"$BB" awk '/--add-set dnskcounters/ { print $1, $2; exit }')
-		iptp=$(printf '%s' "$irow" | "$BB" awk '{ print $1 + 0 }')
-		iptb=$(printf '%s' "$irow" | "$BB" awk '{ print $2 + 0 }')
+		# Match on the set name, not on "--add-set": -L prints "add-set".
+		raw_ipt=$("$IPT" -v -x -L OUTPUT 2>/dev/null |
+			"$BB" awk '/dnskcounters/ { print; exit }')
+		emit "E4_IPT_RAW=$(printf '%s' "$raw_ipt" | "$BB" tr -s ' ' '_')"
+		iptp=$(printf '%s' "$raw_ipt" | "$BB" awk '{ print $1 + 0 }')
+		iptb=$(printf '%s' "$raw_ipt" | "$BB" awk '{ print $2 + 0 }')
 		emit "E4_IPT_PKTS=${iptp:-0}"
 		emit "E4_IPT_BYTES=${iptb:-0}"
 		[ "${iptp:-0}" -ge "$E4_MIN" ] || emit "E4_INSUFFICIENT=IPT_COUNTERS"
