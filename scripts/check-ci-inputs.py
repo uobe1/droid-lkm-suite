@@ -274,6 +274,95 @@ def check_copied_outputs_exist(texts: dict[Path, str]) -> None:
                         )
 
 
+
+SCRIPT_CALL_RE = re.compile(r"\b(?:sh|bash|source)\s+(?:\.\s+)?([^\s;&|]+)")
+INPUT_USE_RE = re.compile(r"inputs\.([A-Za-z_][A-Za-z0-9_-]*)")
+NEEDS_RE = re.compile(r"^\s+needs:\s*(.+)$")
+
+
+def dispatch_inputs(text: str) -> set[str]:
+    """Names declared under on.workflow_dispatch.inputs."""
+    declared: set[str] = set()
+    inside_dispatch = False
+    inside_inputs = False
+    base_indent = 0
+    for raw in text.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip())
+        stripped = raw.strip()
+        if stripped.startswith("workflow_dispatch:"):
+            inside_dispatch = True
+            base_indent = indent
+            continue
+        if inside_dispatch and indent <= base_indent and not stripped.startswith("inputs:"):
+            inside_dispatch = False
+            inside_inputs = False
+        if inside_dispatch and stripped.startswith("inputs:"):
+            inside_inputs = True
+            inputs_indent = indent
+            continue
+        if inside_inputs and indent == inputs_indent + 2 and stripped.endswith(":"):
+            declared.add(stripped[:-1].strip())
+        elif inside_inputs and indent <= inputs_indent:
+            inside_inputs = False
+    return declared
+
+
+def check_dispatch_inputs(texts: dict[Path, str]) -> None:
+    """Every inputs.X used must be declared, so a typo cannot silently no-op."""
+    for path, text in texts.items():
+        declared = dispatch_inputs(text)
+        used = set(INPUT_USE_RE.findall(text))
+        if not used and not declared:
+            continue
+        for name in sorted(used - declared):
+            problems.append(
+                f"{rel(path)}: references inputs.{name} but workflow_dispatch "
+                f"declares only {sorted(declared) or 'nothing'}"
+            )
+
+
+def check_script_references(texts: dict[Path, str]) -> None:
+    """sh/bash/source of a repository script must resolve."""
+    for path, text in texts.items():
+        for line in logical_lines(text):
+            if line.strip().startswith("#"):
+                continue
+            for match in SCRIPT_CALL_RE.finditer(line):
+                token = match.group(1)
+                if "$" in token or token in ("-c", "-e", "-x") or token.startswith("-"):
+                    continue
+                if not token.startswith(SOURCE_ROOTS):
+                    continue
+                if not (ROOT / token).is_file():
+                    problems.append(
+                        f"{rel(path)}: runs {token} but that script is missing"
+                    )
+
+
+def check_needs(texts: dict[Path, str]) -> None:
+    """A needs: entry must name a job that exists in the same workflow."""
+    for path, text in texts.items():
+        jobs = set(workflow_jobs(text))
+        in_jobs = False
+        for raw in text.splitlines():
+            if raw.strip() == "jobs:":
+                in_jobs = True
+                continue
+            if not in_jobs:
+                continue
+            match = NEEDS_RE.match(raw)
+            if not match:
+                continue
+            value = match.group(1).strip().strip("[]")
+            for name in [v.strip().strip("'\"") for v in value.split(",") if v.strip()]:
+                if name and name not in jobs:
+                    problems.append(
+                        f"{rel(path)}: needs {name!r} but jobs are {sorted(jobs)}"
+                    )
+
+
 def main() -> int:
     texts = workflow_texts()
     check_yaml(texts)
@@ -281,6 +370,9 @@ def main() -> int:
     check_compile_and_copy(texts)
     check_artifacts(texts)
     check_copied_outputs_exist(texts)
+    check_dispatch_inputs(texts)
+    check_script_references(texts)
+    check_needs(texts)
     if problems:
         print(f"check-ci-inputs: {len(problems)} problem(s)")
         for item in problems:
