@@ -6,9 +6,10 @@
 # that the node exists before ADD notify and after DEL notify.  Finally reload
 # with the default trigger=entry and prove the same probe sees no node.
 #
-# Cloned from the diff job's LKM side: ksud late-load is required because the
+# Cloned from the diff job's LKM side: ksud insmod is required because the
 # module imports unexported symbols (override_creds, set_fs_root,
-# shmem_init_fs_context, ...).
+# shmem_init_fs_context, ...).  trigger_probe.ko only uses exported symbols, so
+# it is loaded with plain busybox insmod.
 
 BB=/bin/busybox
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
@@ -34,10 +35,13 @@ fail() {
 
 echo "DNSK_TRIGGER_BUS_BOOT $(cat /proc/sys/kernel/osrelease)"
 
-# ksud resolves this module's unexported imports; plain insmod cannot.
-/ksud late-load --kmi android16-6.12 --allow-shell || fail ksud_late_load
-
-"$BB" insmod "$KO/dnsk_devtmpfs.ko" gki=1 activate=1 trigger=bus ||
+# dnsk_devtmpfs imports nine symbols that are not exported (set_fs_pwd,
+# kern_path_create, kern_path_locked, done_path_create, vfs_getattr, vfs_mknod,
+# revert_creds, aarch64_insn_patch_text_nosync, kallsyms_lookup_name), so a
+# plain insmod can never resolve them.  ksud insmod binds them from
+# /proc/kallsyms; `late-load` takes no module path, which is why the previous
+# attempt died with 57 "Unknown symbol" lines.
+/ksud insmod "$KO/dnsk_devtmpfs.ko" gki=1 activate=1 trigger=bus ||
 	fail devtmpfs_bus_insmod
 [ "$(cat "$PARAM/trigger" 2>/dev/null)" = "bus" ] || fail trigger_not_bus
 [ "$(cat "$PARAM/trigger_active" 2>/dev/null)" = "1" ] || fail trigger_not_active
@@ -62,7 +66,7 @@ echo "DNSK_TRIGGER_BUS_READY"
 # boots without trigger=bus, and nothing persistent is changed.
 "$BB" umount /dev 2>/dev/null
 if "$BB" rmmod dnsk_devtmpfs 2>/dev/null; then
-	"$BB" insmod "$KO/dnsk_devtmpfs.ko" gki=1 activate=1 ||
+	/ksud insmod "$KO/dnsk_devtmpfs.ko" gki=1 activate=1 ||
 		fail devtmpfs_entry_insmod
 	[ "$(cat "$PARAM/trigger" 2>/dev/null)" = "entry" ] ||
 		fail trigger_not_entry
