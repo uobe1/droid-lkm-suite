@@ -21,6 +21,8 @@ static dnsk_xattr_set_fn dnsk_simple_xattr_set;
 static dnsk_xattr_get_fn dnsk_simple_xattr_get;
 static dnsk_xattr_list_fn dnsk_simple_xattr_list;
 static dnsk_xattrs_free_fn dnsk_simple_xattrs_free;
+static int (*dnsk_inode_listsecurity)(struct inode *inode, char *buffer,
+				      size_t buffer_size);
 
 static int dnsk_xattr_get(const struct xattr_handler *handler,
 			  struct dentry *dentry, struct inode *inode,
@@ -51,6 +53,61 @@ static int dnsk_xattr_set(const struct xattr_handler *handler,
 	return IS_ERR(ret) ? PTR_ERR(ret) : 0;
 }
 
+/*
+ * The device's GKI 6.12.30 build ships fs/xattr.c without the `err = 0;`
+ * reset that precedes the simple_xattr tree walk in simple_xattr_list():
+ *
+ *	remaining_size -= err;
+ *	read_lock(&xattrs->lock);		<- device image
+ *
+ * The ACK tree the native oracle is built from has the reset, so the tree
+ * walk is correctly ignored when it lists nothing.  Without it, and with an
+ * empty simple_xattr tree, `err` still holds the length returned by
+ * security_inode_listsecurity() and the function ends in
+ * `return err ? err : size - remaining_size;` - i.e. it reports only the LSM
+ * label length and silently drops the POSIX ACL names that
+ * posix_acl_listxattr() just accounted for.
+ *
+ * Observable effect: listxattr(path, NULL, 0) returns 17 for an inode whose
+ * real list is "system.posix_acl_default" (25) + "security.selinux" (17) =
+ * 42, and the follow-up listxattr(path, buf, 17) fails inside
+ * posix_acl_listxattr() with -ERANGE before writing anything.
+ *
+ * The fix is deliberately expressed as "re-add bytes only when the kernel's
+ * return is exactly the LSM label length".  On a kernel with the reset the
+ * total always exceeds that length as soon as an ACL is cached, so the
+ * adjustment is inert; on the affected kernel it is applied identically to
+ * the sizing pass and to the fill pass, so the two calls agree by
+ * construction and both equal the number of bytes the fill wrote.
+ */
+static ssize_t dnsk_acl_name_bytes(struct inode *inode)
+{
+	ssize_t bytes = 0;
+
+	if (!IS_POSIXACL(inode))
+		return 0;
+	if (inode->i_acl)
+		bytes += sizeof(XATTR_NAME_POSIX_ACL_ACCESS);
+	if (inode->i_default_acl)
+		bytes += sizeof(XATTR_NAME_POSIX_ACL_DEFAULT);
+	return bytes;
+}
+
+static ssize_t dnsk_listxattr_account(struct inode *inode, ssize_t ret)
+{
+	ssize_t acl_bytes, lsm_bytes;
+
+	if (ret < 0 || !dnsk_inode_listsecurity)
+		return ret;
+	acl_bytes = dnsk_acl_name_bytes(inode);
+	if (!acl_bytes)
+		return ret;
+	lsm_bytes = dnsk_inode_listsecurity(inode, NULL, 0);
+	if (lsm_bytes < 0 || ret != lsm_bytes)
+		return ret;
+	return ret + acl_bytes;
+}
+
 ssize_t dnsk_tmpfsx_listxattr(struct dentry *dentry, char *buffer,
 			      size_t size)
 {
@@ -58,8 +115,10 @@ ssize_t dnsk_tmpfsx_listxattr(struct dentry *dentry, char *buffer,
 	struct shmem_inode_info *info = container_of(inode,
 						     struct shmem_inode_info,
 						     vfs_inode);
+	ssize_t ret;
 
-	return dnsk_simple_xattr_list(inode, &info->xattrs, buffer, size);
+	ret = dnsk_simple_xattr_list(inode, &info->xattrs, buffer, size);
+	return dnsk_listxattr_account(inode, ret);
 }
 
 static const struct xattr_handler dnsk_xattr_user_handler = {
@@ -134,12 +193,14 @@ void dnsk_tmpfsx_evict_inode(struct inode *inode)
 
 int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
 			   dnsk_xattr_list_fn list,
-			   dnsk_xattrs_free_fn free_fn)
+			   dnsk_xattrs_free_fn free_fn, void *listsecurity)
 {
 	dnsk_simple_xattr_set = set;
 	dnsk_simple_xattr_get = get;
 	dnsk_simple_xattr_list = list;
 	dnsk_simple_xattrs_free = free_fn;
+	dnsk_inode_listsecurity =
+		(typeof(dnsk_inode_listsecurity))listsecurity;
 	dnsk_tmpfsx_handlers[0] = &dnsk_xattr_security_handler;
 	dnsk_tmpfsx_handlers[1] = &dnsk_xattr_trusted_handler;
 	dnsk_tmpfsx_handlers[2] = &dnsk_xattr_user_handler;

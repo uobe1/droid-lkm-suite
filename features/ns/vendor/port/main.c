@@ -163,6 +163,14 @@ static int __init ds_port_init(void)
 			return ret;
 #endif
 		}
+		/*
+		 * Tasks created before the hooks went live have a NULL ipc_ns
+		 * (CONFIG_SYSVIPC=n leaves the field untouched).  Give them the
+		 * backend's initial namespace so pidfd setns(CLONE_NEWIPC) can
+		 * join them like it does on the native oracle.
+		 */
+		if (ds_ipc_backfill_install())
+			pr_err("ipc namespace backfill failed\n");
 		pr_info("experimental namespace hooks active; unload once %s are drained\n",
 			"live namespaces");
 	} else {
@@ -193,6 +201,8 @@ static void __exit ds_port_exit(void)
 			atomic_read(&ds_pid_live), atomic_read(&ds_ipc_live),
 			atomic_read(&ds_ipc_task_live));
 	dnsk_ns_core_unregister();
+	/* Clear the backfilled pointers while the hooks can still fail closed. */
+	ds_ipc_backfill_restore();
 	ret = ds_hooks_uninstall();
 	if (ret)
 		pr_err("hook teardown failed: %d\n", ret);

@@ -154,6 +154,7 @@ static int dnsk_add_kprobe_hook(const char *key, const char *symbol, void *fn)
 static int dnsk_resolve_symbols(void)
 {
 	void *xattr_set, *xattr_get, *xattr_list, *xattrs_free;
+	void *listsecurity;
 	void *acl_update_mode, *acl_set_cached, *acl_set_ctime;
 	void *acl_sac, *acl_chmod, *simple_setattr_fn;
 	void *native_acl_access, *native_acl_default;
@@ -174,6 +175,7 @@ static int dnsk_resolve_symbols(void)
 	xattr_set = dnsk_api->resolve("simple_xattr_set");
 	xattr_get = dnsk_api->resolve("simple_xattr_get");
 	xattr_list = dnsk_api->resolve("simple_xattr_list");
+	listsecurity = dnsk_api->resolve("security_inode_listsecurity");
 	xattrs_free = dnsk_api->resolve("simple_xattrs_free");
 	acl_update_mode = dnsk_api->resolve("posix_acl_update_mode");
 	acl_set_cached = dnsk_api->resolve("set_cached_acl");
@@ -213,9 +215,12 @@ static int dnsk_resolve_symbols(void)
 	ret = dnsk_tmpfsx_xattr_init((dnsk_xattr_set_fn)xattr_set,
 				     (dnsk_xattr_get_fn)xattr_get,
 				     (dnsk_xattr_list_fn)xattr_list,
-				     (dnsk_xattrs_free_fn)xattrs_free);
+				     (dnsk_xattrs_free_fn)xattrs_free,
+				     listsecurity);
 	if (ret)
 		return ret;
+	if (!listsecurity)
+		pr_warn("dnsk_tmpfsx: security_inode_listsecurity unresolved; listxattr ACL size accounting stays unpatched\n");
 	if ((native_acl_access && native_acl_default) ||
 	    READ_ONCE(*(void **)((char *)dnsk_iops +
 				 offsetof(struct inode_operations,

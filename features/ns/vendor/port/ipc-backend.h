@@ -13,6 +13,17 @@ struct ds_ipc_task {
 };
 extern atomic_t ds_ipc_task_live;
 extern bool ds_ipc_active;
+extern bool ds_ipc_quiescing;
+
+/*
+ * Put the backend's initial IPC namespace into the kernel's own init_nsproxy
+ * and into every nsproxy that exists when the hooks go live, so tasks created
+ * before the module can be joined with pidfd setns(CLONE_NEWIPC).  The restore
+ * side clears those pointers again and must run before the hooks are removed
+ * (it raises ds_ipc_quiescing first).
+ */
+int ds_ipc_backfill_install(void);
+void ds_ipc_backfill_restore(void);
 
 /* Only the task itself (or its parent before wake_up_new_task) owns this state. */
 struct ds_ipc_task *ds_ipc_task_find(struct task_struct *task);

@@ -18,8 +18,11 @@
 #include <linux/sched/task.h>
 
 #include <linux/module.h>
+#include <linux/sched/signal.h>
+#include <linux/err.h>
 #include "ipc-util.h"
 #include "port.h"
+#include "core.h"
 
 /* These globals do not exist on the target with both IPC backends disabled. */
 DEFINE_SPINLOCK(mq_lock);
@@ -30,6 +33,12 @@ struct ipc_namespace init_ipc_ns = {
 	.ns.ops = &ipcns_operations,
 };
 atomic_t ds_ipc_live = ATOMIC_INIT(0);
+/*
+ * Set while the backfill is being taken apart.  It makes the hooked
+ * copy_ipcs()/ipcns_install() fail closed instead of handing out a reference
+ * to a namespace whose task-side pointers are being removed.
+ */
+bool ds_ipc_quiescing;
 
 /*
  * The work queue is used to avoid the cost of synchronize_rcu in kern_unmount.
@@ -127,6 +136,8 @@ fail:
 struct ipc_namespace *copy_ipcs(unsigned long flags,
 	struct user_namespace *user_ns, struct ipc_namespace *ns)
 {
+	if (READ_ONCE(ds_ipc_quiescing))
+		return (flags & CLONE_NEWIPC) ? ERR_PTR(-EINVAL) : NULL;
 	if (!(flags & CLONE_NEWIPC))
 		return get_ipc_ns(ns ? ns : &init_ipc_ns);
 	return create_ipc_ns(user_ns, ns);
@@ -258,6 +269,8 @@ static int ipcns_install(struct nsset *nsset, struct ns_common *new)
 {
 	struct nsproxy *nsproxy = nsset->nsproxy;
 	struct ipc_namespace *ns = to_ipc_ns(new);
+	if (READ_ONCE(ds_ipc_quiescing))
+		return -EINVAL;
 	if (!ns_capable(ns->user_ns, CAP_SYS_ADMIN) ||
 	    !ns_capable(nsset->cred->user_ns, CAP_SYS_ADMIN))
 		return -EPERM;
@@ -280,6 +293,111 @@ const struct proc_ns_operations ipcns_operations = {
 	.install	= ipcns_install,
 	.owner		= ipcns_owner,
 };
+
+/*
+ * CONFIG_SYSVIPC=n makes init_nsproxy.ipc_ns NULL at compile time (its
+ * initializer is guarded by CONFIG_POSIX_MQUEUE/CONFIG_SYSVIPC) and the stock
+ * copy_ipcs() stub just propagates that NULL to every task created before this
+ * module runs.  Such a task is not a member of some other IPC namespace - the
+ * kernel cannot create one - so its real namespace is the backend's initial
+ * namespace, the same object copy_ipcs() and ds_current_ipc_ns() already fall
+ * back to.  Installing it into the kernel's own init_nsproxy and into every
+ * pre-existing nsproxy makes those tasks joinable by pidfd setns without
+ * inventing a second namespace.
+ *
+ * The walk iterates under RCU and holds task_lock() while it touches a
+ * nsproxy.  switch_task_namespaces() takes the same lock around its pointer
+ * swap and the put of the old nsproxy, so the pointer stays valid for the
+ * whole read-modify-write and no lock ordering against tasklist_lock is
+ * introduced.  A nsproxy shared by several tasks is filled exactly once: the
+ * first task that reaches it takes the reference, later ones see it set.  A
+ * task forked while the walk runs either shares an nsproxy the walk will
+ * reach or gets a fresh non-NULL one from the hooked copy_ipcs(), so nothing
+ * is missed by not freezing task creation.
+ */
+static struct nsproxy *ds_init_nsproxy;
+static bool ds_ipc_backfill_installed;
+
+int ds_ipc_backfill_install(void)
+{
+	struct task_struct *task;
+	int filled = 0;
+
+	if (ds_ipc_backfill_installed)
+		return 0;
+	ds_init_nsproxy = (struct nsproxy *)
+		kallsyms_name_to_addr("init_nsproxy");
+	if (!ds_init_nsproxy) {
+		pr_err("ipc: init_nsproxy unresolved, refusing to backfill\n");
+		return -ENOENT;
+	}
+
+	rcu_read_lock();
+	for_each_process(task) {
+		struct nsproxy *nsproxy;
+
+		task_lock(task);
+		nsproxy = task->nsproxy;
+		if (nsproxy && !READ_ONCE(nsproxy->ipc_ns)) {
+			WRITE_ONCE(nsproxy->ipc_ns, get_ipc_ns(&init_ipc_ns));
+			filled++;
+		}
+		task_unlock(task);
+	}
+	rcu_read_unlock();
+	if (!READ_ONCE(ds_init_nsproxy->ipc_ns)) {
+		WRITE_ONCE(ds_init_nsproxy->ipc_ns, get_ipc_ns(&init_ipc_ns));
+		filled++;
+	}
+
+	ds_ipc_backfill_installed = true;
+	pr_info("ipc: backfilled %d pre-existing nsproxy IPC namespaces\n",
+		filled);
+	return 0;
+}
+
+void ds_ipc_backfill_restore(void)
+{
+	struct task_struct *task;
+	int cleared = 0;
+	int cleared_before_put;
+
+	if (!ds_ipc_backfill_installed)
+		return;
+	/*
+	 * Order matters: the flag goes up while the hooks are still installed,
+	 * so every task created from here on gets a NULL ipc_ns instead of a
+	 * fresh reference.  Clearing the pointers first and unhooking second
+	 * therefore leaves no task holding a reference the walk did not put.
+	 */
+	WRITE_ONCE(ds_ipc_quiescing, true);
+
+	rcu_read_lock();
+	for_each_process(task) {
+		struct nsproxy *nsproxy;
+
+		task_lock(task);
+		nsproxy = task->nsproxy;
+		if (nsproxy && READ_ONCE(nsproxy->ipc_ns) == &init_ipc_ns) {
+			WRITE_ONCE(nsproxy->ipc_ns, NULL);
+			cleared++;
+		}
+		task_unlock(task);
+	}
+	rcu_read_unlock();
+
+	cleared_before_put = cleared;
+	if (READ_ONCE(ds_init_nsproxy->ipc_ns) == &init_ipc_ns) {
+		WRITE_ONCE(ds_init_nsproxy->ipc_ns, NULL);
+		put_ipc_ns(&init_ipc_ns);
+	}
+	while (cleared--)
+		put_ipc_ns(&init_ipc_ns);
+
+	ds_ipc_backfill_installed = false;
+	pr_info("ipc: cleared %d backfilled nsproxy IPC namespaces\n",
+		cleared_before_put);
+}
 
 void ds_ipc_flush(void)
 {

@@ -38,4 +38,17 @@ for every superblock the module touches, matching
 (mm/shmem.c:4721-4722).  Status is `DEVELOPMENT`; do not claim Native
 semantics until the device gate re-runs.
 
+`listxattr` size accounting: the device's GKI 6.12.30 build of
+`simple_xattr_list()` (fs/xattr.c) enters its `simple_xattr` rb-tree walk
+without first resetting `err`; the ACK tree the native oracle is built from
+has that reset.  With an empty xattr tree and a cached ACL the device kernel
+therefore answers the sizing call with only the LSM label length, and the
+fill of that size fails with `-ERANGE` inside `posix_acl_listxattr()`.
+`dnsk_tmpfsx_listxattr()` adds the ACL name bytes back only when the kernel's
+return is exactly the LSM label length; the sizing call and the fill call go
+through the same helper, so both report the same total and it equals the
+bytes the fill actually wrote.  The condition cannot hold on a kernel that has
+the reset (the total then always exceeds the label length), so the same
+module serves the device and the oracle without a build switch.
+
 Build: `make -C features/tmpfsx KDIR=... modules`.

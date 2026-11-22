@@ -71,7 +71,7 @@ extern const struct xattr_handler *dnsk_tmpfsx_handlers[6];
 
 int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
 			   dnsk_xattr_list_fn list,
-			   dnsk_xattrs_free_fn free_fn);
+			   dnsk_xattrs_free_fn free_fn, void *listsecurity);
 int dnsk_tmpfsx_acl_init(void *update_mode, void *set_cached_acl,
 			 void *set_ctime_current,
 			 struct dnsk_acl_methods *methods);
