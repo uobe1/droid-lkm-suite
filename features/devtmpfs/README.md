@@ -11,9 +11,10 @@ userspace or display-only bypass.
 - Activation does not self-pin; `module_exit` restores the hooks and
   unregisters the type. Existing devtmpfs mounts keep their superblock but stop
   receiving updates.
-- Status: R / development; equivalence with a native `CONFIG_DEVTMPFS=y`
-  kernel is pending an item-by-item differential (see below). No release/tag
-  claim.
+- Status: R / development. The default `trigger=entry` path shows zero
+  differences in the whole-suite semantic differential, but `trigger=bus`
+  ordering and gaps #2-#6 are still unverified, so no Native (N) claim and no
+  release/tag claim.
 
 ## Runtime prerequisite and route E
 
@@ -39,7 +40,10 @@ Known residual differences against a kernel built with `CONFIG_DEVTMPFS=y`:
    updates from hooks. The default `trigger=entry` keeps the old ordering
    (node after uevent/driver probe, gone before `bus_notify(DEL)`); the opt-in
    `trigger=bus` moves the add node before the notifier chain and the del node
-   after it. Gap #1 is implemented but not yet Action-verified.
+   after it. Gap #1 is implemented but **not verified**: the bus gate run
+   `44975808897` failed during load with 57 `dnsk_devtmpfs: Unknown symbol`
+   lines, i.e. the loader did not resolve the module's imports, so the trigger
+   assertions never ran. That is a loader-side failure, not a module verdict.
 2. The worker runs with the loader's credentials instead of the kernel's
    credentials, so SELinux/AVC decisions can differ.
 3. No automatic `/dev` mount and no `devtmpfs.mount=` handling. The device
@@ -53,6 +57,25 @@ Known residual differences against a kernel built with `CONFIG_DEVTMPFS=y`:
    updates; a reload creates a new instance.
 
 The dual `file_system_type` pair and the 0755 root mode match native.
+
+## Current state (2026-11-22)
+
+- Route E is in place: the module supplies a real `file_system_type`, mounts it
+  with `vfs_kern_mount()`, registers it with `register_filesystem()`, and the
+  kernel VFS creates/deletes real dentries and inodes.
+- Whole-suite semantic differential (run `44975808897`): every `DEVTMPFS_*` key
+  matched the native oracle. That covers the default `trigger=entry` path on
+  the measured surface only.
+- Gap #1 (`trigger=bus` ordering) is unverified: the dedicated bus job
+  (`44975808897`) failed at module load with 57 `Unknown symbol` lines, before
+  any trigger assertion. Fix the loader invocation (`ksud late-load` plus
+  `insmod`) and rerun before writing any closure.
+- Gaps #2-#6 remain: worker credentials, automatic `/dev` mount and
+  `devtmpfs.mount=`, kthread namespace/root, thread name/log/parameters, and
+  unload/reload instance behaviour.
+- O is the mechanism classification (kernel VFS executes the semantics); R is
+  the verification status. Do not read the zero-difference differential as a
+  Native declaration.
 
 ## trigger=entry|bus
 

@@ -38,4 +38,25 @@ for every superblock the module touches, matching
 (mm/shmem.c:4721-4722).  Status is `DEVELOPMENT`; do not claim Native
 semantics until the device gate re-runs.
 
+Route B is **coded and merged, not yet gate-verified**.  The last full-module
+differential (`44975808897`, 2026-11-22) still showed 8 differences; 6 of them
+are probe defects now fixed and awaiting a rerun, so tmpfsx's own residual is
+**unjudged** rather than known-good:
+
+- 4 × `ACL_DIR_*` keys produced no value because `listxattr_probe.c` returned
+  `ERANGE` instead of retrying (`ACL_DIR_LISTXATTR_RC=34` on the LKM side);
+- 2 × `ACL_FILE_LISTXATTR_*` counted `security.selinux`, violating the probe's
+  existing `security.*` exclusion.
+
+Expected after the rerun: those keys produce real values and the differences
+drop to the 2 known userns `B` keys (`SETNS_PIDFD_IPC_*`) — that rerun is what
+decides whether tmpfsx can move from `R` to `O`.  A device run of the first B
+build also surfaced a CFI rejection on `inode_set_ctime_current` (the pointer
+was declared returning `void` while the kernel returns `struct timespec64` by
+value); fixed in `31cf70a` and not yet re-gated.  Acceptance keys to check on
+the rerun: `TMPFSX_ACL_LEGACY_MOUNT_B=ok` + `_ERRNO=22`,
+`TMPFSX_NOACL_MOUNT_B=ok` + `_ERRNO=22`, `ACL_DIR_ACL_DEFAULT_COUNT=1`,
+`ACL_FILE_ACL_ACCESS_COUNT=1`, no duplicate ACL names in `listxattr`, and
+`diff_rc=0`.
+
 Build: `make -C features/tmpfsx KDIR=... modules`.
