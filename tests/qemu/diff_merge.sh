@@ -33,6 +33,20 @@ mkdir -p "$outdir" || exit 2
 table=$outdir/merged-table.txt
 : > "$table"
 
+# The guest serial console applies ONLCR, so marker lines can end in CR.  Strip
+# it once, up front: an unstripped "SKIPPED_SECTIONS=[...]" line does not match
+# the anchors below and would make the coverage check silently pass.
+i=0
+norm_list=""
+for log in "$@"; do
+	i=$((i + 1))
+	n="$outdir/round$i.log"
+	tr -d '\r' < "$log" > "$n" || exit 2
+	norm_list="$norm_list $n"
+done
+# shellcheck disable=SC2086
+set -- $norm_list
+
 # key prefix -> owning module.  Order matters: the first match wins, so the
 # specific families come before the generic ones.
 module_of() {
@@ -90,8 +104,33 @@ EOF
 	done
 done
 
-[ -n "$skipped" ] && all_gate=FAIL
 [ -n "$missing" ] && all_gate=FAIL
+
+# The differential now splits modules across matrix rounds, so each round
+# legitimately skips the other round's sections ("SKIPPED_SECTIONS" is non-empty
+# per round by construction).  The invariant that actually matters is coverage
+# across rounds: every section must have RUN in at least one round.  A section
+# skipped in every round is a real hole.
+ALL_SECTIONS="user-namespace pid-ipc-namespace sysvipc-mqueue tmpfsx-xattr-acl
+cgpids devtmpfs kernel-side/ns kernel-side/sysvipc kernel-side/devtmpfs
+kernel-side/mqueue kernel-side/cgpids userns-idmap-setns mqueue-isolation
+tmpfsx-teardown"
+uncovered=""
+for sec in $ALL_SECTIONS; do
+	ran=0
+	for log in "$@"; do
+		if ! grep -q '^SKIPPED_SECTIONS=' "$log" 2>/dev/null; then
+			continue    # no load-health marker: cannot claim this round ran it
+		fi
+		rsk=$(sed -n 's/^SKIPPED_SECTIONS=\[\(.*\)\]$/\1/p' "$log" 2>/dev/null | tail -1)
+		case ",$rsk," in
+		*",$sec,"*) : ;;          # skipped in this round
+		*) ran=1; break ;;        # ran in this round
+		esac
+	done
+	[ "$ran" -eq 1 ] || uncovered="${uncovered}${uncovered:+,}$sec"
+done
+[ -n "$uncovered" ] && all_gate=FAIL
 
 echo
 echo "== merged key table =="
@@ -106,6 +145,7 @@ echo
 echo "MERGED_ROUNDS=$rounds"
 echo "MERGED_DIFFERENCES=$diffs"
 echo "MERGED_SKIPPED_SECTIONS=[$skipped]"
+echo "MERGED_UNCOVERED_SECTIONS=[$uncovered]"
 echo "MERGED_MISSING_SECTIONS=[$missing]"
 echo "MERGED_GATE=$all_gate"
 

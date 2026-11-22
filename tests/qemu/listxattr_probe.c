@@ -61,7 +61,32 @@ int main(int argc, char **argv)
 	if (!buf)
 		return 3;
 
-	n = listxattr(argv[1], buf, (size_t)n);
+	/*
+	 * The name set can grow between the sizing call and the fetch: a tmpfs
+	 * ACL that is materialised lazily adds system.posix_acl_* to the list, and
+	 * listxattr() then fails with ERANGE.  Retry with a larger buffer instead
+	 * of reporting ERANGE, which would hide the very keys this probe exists to
+	 * measure (observed as ACL_DIR_LISTXATTR_RC=34 on the module side).
+	 */
+	for (int attempt = 0; attempt < 4; attempt++) {
+		n = listxattr(argv[1], buf, (size_t)n);
+		if (n >= 0)
+			break;
+		if (errno != ERANGE) {
+			printf("LISTXATTR_RC=%d\n", errno);
+			free(buf);
+			return 0;
+		}
+		n = listxattr(argv[1], NULL, 0);
+		if (n < 0) {
+			printf("LISTXATTR_RC=%d\n", errno);
+			free(buf);
+			return 0;
+		}
+		buf = realloc(buf, (size_t)n);
+		if (!buf)
+			return 3;
+	}
 	if (n < 0) {
 		printf("LISTXATTR_RC=%d\n", errno);
 		free(buf);
@@ -80,16 +105,33 @@ int main(int argc, char **argv)
 
 	qsort(names, (size_t)count, sizeof(names[0]), cmp_name);
 
-	printf("LISTXATTR_COUNT=%d\n", count);
-	printf("LISTXATTR_NAMES=");
-	for (i = 0; i < count; i++) {
-		printf("%s%s", i ? "," : "", names[i]);
-		if (!strcmp(names[i], "system.posix_acl_access"))
-			access++;
-		if (!strcmp(names[i], "system.posix_acl_default"))
-			deflt++;
+	/*
+	 * Skip security.* (in practice security.selinux): the differential runs the
+	 * oracle with selinux=0 and the device with a policy loaded, so a label
+	 * difference says nothing about tmpfs ACL/xattr semantics.  This matches the
+	 * convention already documented in diff_probe.sh.  The count is reported
+	 * separately so the exclusion stays visible instead of silent.
+	 */
+	{
+		int shown = 0, skipped = 0;
+
+		printf("LISTXATTR_NAMES=");
+		for (i = 0; i < count; i++) {
+			if (!strncmp(names[i], "security.", 9)) {
+				skipped++;
+				continue;
+			}
+			printf("%s%s", shown ? "," : "", names[i]);
+			shown++;
+			if (!strcmp(names[i], "system.posix_acl_access"))
+				access++;
+			if (!strcmp(names[i], "system.posix_acl_default"))
+				deflt++;
+		}
+		printf("\n");
+		printf("LISTXATTR_COUNT=%d\n", shown);
+		printf("LISTXATTR_SECURITY_SKIPPED=%d\n", skipped);
 	}
-	printf("\n");
 	printf("ACL_ACCESS_COUNT=%d\n", access);
 	printf("ACL_DEFAULT_COUNT=%d\n", deflt);
 
