@@ -60,6 +60,10 @@ on:
         required: false
         type: string
         default: ""
+      with_bus:
+        description: diff mode only - also run the devtmpfs trigger=bus gate as a parallel job in the same run
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -410,8 +414,24 @@ jobs:
   # device-image run (device-boot artifact) and oracle_image_run_id names a
   # qemu-core run (qemu-6.12 artifact), so the two expensive Images are reused
   # independently.  Feature modules come from a ci-fast run.
+  # One run must answer every module, so the differential runs both module
+  # groups as parallel matrix instances instead of one group per run:
+  #   core : ns + tmpfsx + cgpids + devtmpfs
+  #   net  : netfilter + ipset  (needs the net probe flag and the xt plugins)
+  # Splitting keeps each guest boot inside the 30-minute job cap; the summary
+  # job merges both into one key table.
   diff:
     if: ${{ inputs.mode == 'diff' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: core
+            load: ns,tmpfsx,cgpids,devtmpfs
+            net: "false"
+          - name: net
+            load: netfilter,ipset
+            net: "true"
     runs-on: ubuntu-latest
     # Hard wall-clock cap: a run longer than 30 minutes is not allowed, so this
     # job is killed at 30 instead of the old 60.  This is the structural guard:
@@ -575,7 +595,7 @@ jobs:
           aarch64-linux-gnu-gcc -static -O2 -o dnsk-preflight tools/dnsk_preflight.c
       - name: Assemble oracle and LKM initramfs
         env:
-          INCLUDE_NET: ${{ inputs.include_net }}
+          INCLUDE_NET: ${{ matrix.net }}
         run: |
           set -euxo pipefail
           curl -fsSL -o alpine.tar.gz \
@@ -666,9 +686,9 @@ jobs:
           ls -l oracle/Image device/Image oracle-initramfs.cpio.gz lkm-initramfs.cpio.gz
       - name: Boot the oracle and the device kernel
         env:
-          INCLUDE_NET: ${{ inputs.include_net }}
+          INCLUDE_NET: ${{ matrix.net }}
           IP6NAT: ${{ steps.validate_images.outputs.ip6nat }}
-          DIFF_LOAD_IN: ${{ inputs.diff_load }}
+          DIFF_LOAD_IN: ${{ matrix.load }}
         run: |
           set +e
           COMMON="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0"
@@ -713,16 +733,61 @@ jobs:
           sh tests/qemu/diff_semantics.sh oracle.log lkm.log | tee diff.log
           rc=${PIPESTATUS[0]}
           set -e
+          # Carry the load-health markers into diff.log so the summary job can
+          # prove every loaded module really produced keys, from one file.
+          for k in SKIPPED_SECTIONS MISSING_SECTIONS; do
+            for side in oracle lkm; do
+              v=$(grep -m1 "^${k}=" "$side.log" 2>/dev/null || true)
+              [ -n "$v" ] && printf '%s\n' "$v" >> diff.log
+            done
+          done
           echo "diff_rc=$rc"
           exit "$rc"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: qemu-diff-log-${{ inputs.include_net }}
+          name: qemu-diff-log-${{ matrix.name }}
           path: |
             oracle.log
             lkm.log
             diff.log
+          if-no-files-found: warn
+
+  # Merge the matrix rounds into one key table.  This is what makes a single
+  # run answer every module: the gate is "one run, one table", not "one run per
+  # module group".
+  summary:
+    needs: [diff]
+    if: ${{ inputs.mode == 'diff' && always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download both round logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: qemu-diff-log-*
+          path: rounds
+      - name: Merge into one table
+        run: |
+          set +e
+          set -x
+          find rounds -name diff.log -print
+          sh tests/qemu/diff_merge.sh merged \
+            $(find rounds -name diff.log | sort) | tee merged-table.log
+          rc=${PIPESTATUS[0]}
+          set +x
+          echo "merge_rc=$rc"
+          # A red merge is the expected outcome while gaps remain; the table is
+          # still uploaded so the gap list is the deliverable.
+          exit "$rc"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qemu-diff-merged
+          path: |
+            merged-table.log
+            merged/merged-table.txt
           if-no-files-found: warn
 
   # Devtmpfs trigger=bus gate: boot the *device* Image and prove with a
@@ -730,7 +795,7 @@ jobs:
   # LKM side because the module needs ksud-resolved unexported symbols and the
   # device kernel's vermagic.
   bus:
-    if: ${{ inputs.mode == 'active-devtmpfs-bus' }}
+    if: ${{ inputs.mode == 'active-devtmpfs-bus' || (inputs.mode == 'diff' && inputs.with_bus) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

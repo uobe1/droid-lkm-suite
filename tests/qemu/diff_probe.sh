@@ -41,7 +41,12 @@ set -u
 BB=/bin/busybox
 SIDE=${1:-unknown}
 
-emit() { printf '%s\n' "$*"; }
+EMIT_LOG=${EMIT_LOG:-/tmp/dnsk_emit.log}
+: > "$EMIT_LOG"
+emit() {
+	printf '%s\n' "$*"
+	printf '%s\n' "$*" >> "$EMIT_LOG"
+}
 norm() { sed -e 's/\b[0-9]\{4,\}\b/<NUM>/g'; }
 
 # Which modules are under test in this boot.  The QEMU diff job puts the same
@@ -1002,5 +1007,26 @@ else
 fi
 # Must stay outside every gate: the summary exists precisely for the case where
 # gates fired.
+# Every loaded module must have produced keys.  A module that loaded but whose
+# section never ran would otherwise look like "no differences" -- the same
+# false green the section gates were added to prevent, from the other side.
+sec_has() { "$BB" grep -q "$1" "$EMIT_LOG" 2>/dev/null; }
+MISSING_SECTIONS=
+need_sec() { # $1=module $2..=key prefixes that prove the section ran
+	m="$1"; shift
+	for pfx in "$@"; do
+		sec_has "^${pfx}" && return 0
+	done
+	emit "MISSING_SECTION=$m"
+	MISSING_SECTIONS="${MISSING_SECTIONS}${MISSING_SECTIONS:+,}$m"
+}
+have_mod ns && need_sec ns PIDNS_ IPCNS_ USERNS_
+have_mod devtmpfs && need_sec devtmpfs DEVTMPFS_
+have_mod cgpids && need_sec cgpids PIDS_
+have_mod tmpfsx && need_sec tmpfsx XATTR_ ACL_ TMPFSX_
+have_mod netfilter && need_sec netfilter XT_ IP6T_ NETNS_RULE
+have_mod ipset && need_sec ipset IPSET_
+emit "MISSING_SECTIONS=[${MISSING_SECTIONS:-}]"
+
 emit "SKIPPED_SECTIONS=[${SKIPPED_SECTIONS:-}]"
 emit "PROBE_DONE"
