@@ -108,8 +108,12 @@ echo "== classification =="
 # sides and a marker printed by only one side would vanish from the report.
 # -F keeps probe values from being interpreted as a regular expression.
 lookup() {
-	grep -m1 -F -x -- "$1" "$2" 2>/dev/null ||
-		grep -m1 -F -- "$1=" "$2" 2>/dev/null
+	# The second branch must be anchored at the start of the line: without ^ it
+	# matches a longer key that merely ENDS in this one, e.g. key "XATTR_RC"
+	# matched "ACL_DIR_LISTXATTR_RC=0" and produced a bogus difference whose
+	# two "values" belonged to a different key entirely.
+	grep -m1 -x -F -- "$1" "$2" 2>/dev/null ||
+		grep -m1 -- "^$1=" "$2" 2>/dev/null
 }
 
 # classify <key> <oracle-line> <lkm-line>; prints one classification line and
@@ -205,7 +209,7 @@ classify() {
 		cl=A
 		why="cgroup pids contract values (max/peak/events/current/fork errno, hang markers) and the per-section SKIP marker must agree"
 		;;
-	E4_*|SKIPPED_SECTIONS|PROBE_ABORT|XT_PLUGIN_*)
+	E4_*|SKIPPED_SECTIONS|MISSING_SECTION|MISSING_SECTIONS|PROBE_ABORT|XT_PLUGIN_*)
 		cl=A
 		why="E4 counter / section-gating markers must agree: a difference means the packet path or the loaded-section set differs, not a cosmetic line"
 		;;
