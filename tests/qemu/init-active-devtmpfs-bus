@@ -44,7 +44,14 @@ echo "DNSK_TRIGGER_BUS_BOOT $(cat /proc/sys/kernel/osrelease)"
 /ksud insmod "$KO/dnsk_devtmpfs.ko" gki=1 activate=1 trigger=bus ||
 	fail devtmpfs_bus_insmod
 [ "$(cat "$PARAM/trigger" 2>/dev/null)" = "bus" ] || fail trigger_not_bus
-[ "$(cat "$PARAM/trigger_active" 2>/dev/null)" = "1" ] || fail trigger_not_active
+# trigger_active is a bool module parameter, so sysfs prints Y/N (not 1/0); the
+# previous assertion compared against 1 and failed on a module that had already
+# entered bus mode (dmesg: "trigger=bus active").
+ta=$(cat "$PARAM/trigger_active" 2>/dev/null)
+case $ta in
+Y|1) : ;;
+*) fail "trigger_active=$ta" ;;
+esac
 echo "DNSK_TRIGGER_BUS_READY"
 
 # The node window belongs to the bus notifier, so devtmpfs has to be mounted
@@ -70,8 +77,11 @@ if "$BB" rmmod dnsk_devtmpfs 2>/dev/null; then
 		fail devtmpfs_entry_insmod
 	[ "$(cat "$PARAM/trigger" 2>/dev/null)" = "entry" ] ||
 		fail trigger_not_entry
-	[ "$(cat "$PARAM/trigger_active" 2>/dev/null)" = "0" ] ||
-		fail trigger_active_not_zero
+	ta=$(cat "$PARAM/trigger_active" 2>/dev/null)
+	case $ta in
+	N|0) : ;;
+	*) fail "trigger_active_after_rollback=$ta" ;;
+	esac
 	"$BB" dmesg | "$BB" grep -qF 'droidspaces_devtmpfs: trigger=bus active' &&
 		fail bus_marker_survived_rollback
 	"$BB" mount -t devtmpfs devtmpfs /dev || fail devtmpfs_mount2
