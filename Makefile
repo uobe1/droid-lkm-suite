@@ -17,6 +17,7 @@ clean:
 
 check: docs-check
 	sh ./scripts/check-style.sh
+	python3 scripts/check-ci-inputs.py
 
 # ---------------------------------------------------------------------------
 # API documentation
