@@ -72,6 +72,11 @@ echo "DNSK_TRIGGER_BUS_READY"
 # probe as the control.  A failed rmmod is not fatal here: the next run simply
 # boots without trigger=bus, and nothing persistent is changed.
 "$BB" umount /dev 2>/dev/null
+# dmesg is a ring buffer: the first load's "trigger=bus active" line stays there
+# after a reload, so scoping matters.  Record the line count and only inspect
+# what the rollback reload adds -- otherwise the stale line reads as "the bus
+# marker survived", which is exactly the false failure this gate hit once.
+dmesg_before=$("$BB" dmesg 2>/dev/null | "$BB" wc -l)
 if "$BB" rmmod dnsk_devtmpfs 2>/dev/null; then
 	/ksud insmod "$KO/dnsk_devtmpfs.ko" gki=1 activate=1 ||
 		fail devtmpfs_entry_insmod
@@ -82,7 +87,8 @@ if "$BB" rmmod dnsk_devtmpfs 2>/dev/null; then
 	N|0) : ;;
 	*) fail "trigger_active_after_rollback=$ta" ;;
 	esac
-	"$BB" dmesg | "$BB" grep -qF 'droidspaces_devtmpfs: trigger=bus active' &&
+	"$BB" dmesg 2>/dev/null | "$BB" tail -n "+$((dmesg_before + 1))" |
+		"$BB" grep -qF 'droidspaces_devtmpfs: trigger=bus active' &&
 		fail bus_marker_survived_rollback
 	"$BB" mount -t devtmpfs devtmpfs /dev || fail devtmpfs_mount2
 	"$BB" insmod "$KO/trigger_probe.ko" || fail trigger_probe_insmod2
