@@ -231,6 +231,7 @@ classify() {
 }
 
 : > "$tmpd/unrecognised"
+: > "$tmpd/excluded"
 : > "$tmpd/classified"
 
 # Every key that appears on either side, bare markers included.
@@ -247,6 +248,17 @@ classify() {
 		echo '<empty-key>' >> "$tmpd/unrecognised"
 		continue
 	fi
+	# Keys that are diagnostic only: printed by the probe for a human reader but
+	# never part of the contract.  SECURITY_SKIPPED counts how many security.*
+	# names the helper dropped, which necessarily differs because the oracle runs
+	# selinux=0 and the device runs a policy.  Excluding it is a decided scope
+	# call, not a way to hide a failure, so the exclusion is reported.
+	case $k in
+	*_LISTXATTR_SECURITY_SKIPPED)
+		echo "$k" >> "$tmpd/excluded"
+		continue
+		;;
+	esac
 	o=$(lookup "$k" "$tmpd/o.norm")
 	l=$(lookup "$k" "$tmpd/l.norm")
 	[ "$o" = "$l" ] && continue
@@ -263,6 +275,8 @@ echo
 echo "== summary =="
 echo "differences: $n (A=${a:-0} C=${c:-0} B=${b:-0})"
 echo "unrecognised keys: $unrecognised"
+excluded=$(sort -u "$tmpd/excluded" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
+printf 'EXCLUDED_NOT_COMPARED=[%s]\n' "$excluded"
 if [ "$unrecognised" -gt 0 ]; then
 	printf 'UNRECOGNISED_KEYS=[%s]\n' \
 		"$(sort -u "$tmpd/unrecognised" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
