@@ -12,6 +12,7 @@ on:
           - active-netfilter
           - active-devtmpfs
           - active-devtmpfs-bus
+          - active-unload-concurrent
           - active-ipset
           - cgpids
           - tmpfsx
@@ -234,7 +235,7 @@ jobs:
 
   boot:
     needs: image
-    if: ${{ inputs.mode != 'diff' && inputs.mode != 'active-devtmpfs-bus' && always() && (needs.image.result == 'success' || inputs.image_run_id != '') }}
+    if: ${{ inputs.mode != 'diff' && inputs.mode != 'active-devtmpfs-bus' && inputs.mode != 'active-unload-concurrent' && always() && (needs.image.result == 'success' || inputs.image_run_id != '') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -936,4 +937,152 @@ jobs:
         if: always()
         with:
           name: qemu-bus-log
+          path: qemu.log
+
+  # Concurrent-unload gate: keep ns entry points busy (ns_hammer) while the
+  # module is removed, which is the condition that crashed the real device.
+  unloadc:
+    if: ${{ inputs.mode == 'active-unload-concurrent' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Require the device Image and the module run
+        env:
+          DEVICE_RUN: ${{ inputs.image_run_id }}
+          MODULE_RUN: ${{ inputs.module_run_id }}
+        run: |
+          set -euo pipefail
+          : "${DEVICE_RUN:?image_run_id must name the device-image run providing device-boot}"
+          : "${MODULE_RUN:?module_run_id must name the ci-fast run providing core-android16-6.12}"
+      - uses: actions/checkout@v4
+      - name: Download the device Image
+        uses: actions/download-artifact@v4
+        with:
+          name: device-boot
+          path: device
+          run-id: ${{ inputs.image_run_id }}
+          github-token: ${{ github.token }}
+      - name: Download the modules
+        uses: actions/download-artifact@v4
+        with:
+          name: core-android16-6.12
+          path: modules
+          run-id: ${{ inputs.module_run_id }}
+          github-token: ${{ github.token }}
+      - name: Validate the downloaded artifacts
+        run: |
+          set -euxo pipefail
+          test -s device/Image
+          test -s device/release.txt
+          test -s modules/dnsk_ns.ko
+          test -s modules/dnsk_core.ko
+          ls -l device modules
+      - name: Install QEMU and toolchain
+        run: |
+          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
+          PKGS="qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu kmod"
+          sudo timeout 900 apt-get $APT_OPTS update
+          sudo timeout 900 apt-get $APT_OPTS install -y --no-install-recommends $PKGS
+      - name: Patch module vermagic for the device Image
+        env:
+          MODULE_LAYOUT_CRC: ${{ inputs.module_layout_crc }}
+        run: |
+          set -euxo pipefail
+          RELEASE=$(awk '{print $1}' device/release.txt 2>/dev/null || true)
+          test -n "$RELEASE"
+          VERMAGIC="$RELEASE SMP preempt mod_unload modversions aarch64"
+          echo "target vermagic: $VERMAGIC"
+          for ko in modules/*.ko; do
+            aarch64-linux-gnu-objcopy --dump-section .modinfo=modinfo.bin "$ko"
+            python3 - "$VERMAGIC" <<'PY'
+          import sys
+          magic = sys.argv[1].encode()
+          data = open('modinfo.bin', 'rb').read()
+          out = []
+          found = False
+          for entry in data.split(b'\0'):
+              if entry.startswith(b'vermagic='):
+                  out.append(b'vermagic=' + magic)
+                  found = True
+              elif entry:
+                  out.append(entry)
+          if not found:
+              out.append(b'vermagic=' + magic)
+          open('modinfo.new', 'wb').write(b'\0'.join(out) + b'\0')
+          PY
+            aarch64-linux-gnu-objcopy --update-section .modinfo=modinfo.new "$ko"
+            modinfo -F vermagic "$ko"
+            aarch64-linux-gnu-objcopy --dump-section __versions=versions.bin "$ko"
+            python3 - "$MODULE_LAYOUT_CRC" <<'PY'
+          import struct, sys
+          crc = int(sys.argv[1], 16)
+          data = bytearray(open('versions.bin', 'rb').read())
+          found = False
+          for i in range(0, len(data) - 64 + 1, 64):
+              if data[i + 8:i + 64].split(b'\0')[0] == b'module_layout':
+                  struct.pack_into('<Q', data, i, crc)
+                  found = True
+                  break
+          if not found:
+              data += struct.pack('<Q', crc) + b'module_layout'
+              data += b'\0' * (64 - 8 - len(b'module_layout'))
+          print('module_layout entry', 'updated' if found else 'added', hex(crc))
+          open('versions.new', 'wb').write(data)
+          PY
+            aarch64-linux-gnu-objcopy --update-section __versions=versions.new "$ko"
+          done
+      - name: Assemble the busy trigger initramfs
+        run: |
+          set -euxo pipefail
+          curl -fsSL -o alpine.tar.gz \
+            https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.3-aarch64.tar.gz
+          mkdir -p rootfs
+          tar -xzf alpine.tar.gz -C rootfs
+          mkdir -p rootfs/proc rootfs/sys rootfs/dev rootfs/tmp rootfs/mnt
+          chmod 1777 rootfs/tmp
+          MODROOT=rootfs/data/adb/modules/droid_lkm_suite
+          mkdir -p "$MODROOT/kmi/android16-6.12"
+          cp modules/*.ko "$MODROOT/kmi/android16-6.12/"
+          cp ksu/policy.conf ksu/supported_kmis.txt "$MODROOT/" 2>/dev/null || true
+          cp tests/qemu/assets/ksud rootfs/ksud
+          chmod 0755 rootfs/ksud
+          cp -a tests/qemu/assets/android/. rootfs/
+          chmod 0755 rootfs/system/bin/linker64
+          aarch64-linux-gnu-gcc -static -O2 -o ns_hammer tests/qemu/ns_hammer.c
+          cp ns_hammer rootfs/ns_hammer
+          chmod 0755 rootfs/ns_hammer
+          cp tests/qemu/init-active-unload-concurrent rootfs/init
+          chmod 0755 rootfs/init
+          (cd rootfs && find . | cpio -o -H newc | gzip -9) > initramfs.cpio.gz
+          ls -l device/Image initramfs.cpio.gz rootfs/ns_hammer
+      - name: Boot the device Image and run the concurrent unload
+        run: |
+          set +e
+          timeout 420 qemu-system-aarch64 -M virt -cpu max -m 2048 -smp 2 \
+            -nographic -no-reboot -kernel device/Image \
+            -initrd initramfs.cpio.gz \
+            -append "console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr selinux=0 module.sig_enforce=0 dnsk_lkm=1" \
+            2>&1 | tee qemu.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "qemu_rc=$rc"
+          [ "$rc" -eq 0 ] || { echo "QEMU did not exit cleanly" >&2; exit 1; }
+          for m in DNSK_QEMU_OK DNSK_LOAD_ALL_OK DNSK_LSMOD_ALL_PRESENT \
+                   DNSK_UNLOAD_NS_OK DNSK_LSMOD_CLEAN_OK DNSK_SYSFS_CLEAN_OK \
+                   DNSK_UNLOAD_NO_WARN_OK DNSK_POST_NS_RESTORED \
+                   DNSK_UNLOAD_tmpfsx_OK DNSK_UNLOAD_cgpids_OK \
+                   DNSK_UNLOAD_ipset_OK DNSK_UNLOAD_netfilter_OK \
+                   DNSK_UNLOAD_devtmpfs_OK DNSK_UNLOAD_core_OK; do
+            grep -qF "$m" qemu.log || { echo "missing $m" >&2; exit 1; }
+          done
+          echo "EAGAIN_count=$(grep -c DNSK_UNLOAD_NS_EAGAIN qemu.log || true)"
+          if grep -Eq 'Kernel panic|Oops|BUG:|CFI failure|Unknown symbol|invalid module format' qemu.log; then
+            echo "kernel failure in QEMU log" >&2
+            exit 1
+          fi
+          echo "concurrent unload gate ok"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qemu-unloadc-log
           path: qemu.log

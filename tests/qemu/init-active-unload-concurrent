@@ -1,0 +1,139 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Concurrent-unload gate for dnsk_ns.
+#
+# The older lifecycle gate unloaded on an idle system and never reproduced the
+# real-device crash, where a task was inside the module's trampoline when the
+# text was freed.  This gate keeps ns entry points busy (ns_hammer: N children
+# looping unshare(CLONE_NEWIPC|CLONE_NEWPID)+fork) and then calls
+# `rmmod dnsk_ns` *while they run*.
+#
+# With the 148af3f fix, an in-flight entry holds a module reference, so a bare
+# rmmod returns EAGAIN ("busy").  That is the CORRECT behaviour and is recorded
+# (DNSK_UNLOAD_NS_EAGAIN) and retried until it succeeds; it is not a failure.
+# A WARNING/Oops/panic or residue after the successful rmmod is a failure.
+
+BB=/bin/busybox
+export PATH=/usr/bin:/bin:/sbin:/usr/sbin:/data/adb/modules/droid_lkm_suite/bin
+export ANDROID_ROOT=/system ANDROID_DATA=/data
+
+MODDIR=/data/adb/modules/droid_lkm_suite
+KO=$MODDIR/kmi/android16-6.12
+
+fail() {
+	echo "DNSK_QEMU_FAIL $*"
+	"$BB" dmesg 2>/dev/null | tail -40
+	"$BB" poweroff -f
+}
+
+"$BB" mount -t proc proc /proc
+"$BB" mount -t sysfs sysfs /sys
+if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+	"$BB" mount -t tmpfs tmpfs /dev
+	for n in "console 5 1" "null 1 3" "zero 1 5" "urandom 1 9" "tty 5 0"; do
+		set -- $n
+		"$BB" mknod "/dev/$1" c "$2" "$3"
+	done
+fi
+"$BB" mkdir -p /tmp && "$BB" mount -t tmpfs tmpfs /tmp && "$BB" chmod 1777 /tmp
+
+echo "DNSK_UNLOAD_CONC_BOOT $(cat /proc/sys/kernel/osrelease)"
+ls "$KO"/dnsk_*.ko >/dev/null 2>&1 || fail module_layout_missing
+[ -x /ns_hammer ] || fail ns_hammer_missing
+
+# Load every module; ns/devtmpfs/netfilter need gki=1 activate=1, exactly like
+# the device gate.
+/ksud insmod "$KO/dnsk_core.ko" || fail load_core
+for m in devtmpfs netfilter; do
+	/ksud insmod "$KO/dnsk_$m.ko" gki=1 activate=1 || fail "load_$m"
+done
+for m in ipset cgpids tmpfsx; do
+	/ksud insmod "$KO/dnsk_$m.ko" || fail "load_$m"
+done
+/ksud insmod "$KO/dnsk_ns.ko" gki=1 activate=1 || fail load_ns
+echo "DNSK_LOAD_ALL_OK"
+for m in core devtmpfs netfilter ipset cgpids tmpfsx ns; do
+	"$BB" lsmod | "$BB" grep -q "^dnsk_$m " || fail "not_loaded_$m"
+done
+echo "DNSK_LSMOD_ALL_PRESENT"
+
+# Window for every unload-safety judgement: nothing before this line counts.
+cursor=$("$BB" dmesg 2>/dev/null | "$BB" wc -l)
+
+# 4 children x 40s: plenty of overlap with the rmmod retry loop.
+/ns_hammer 4 40 &
+hammer=$!
+sleep 2
+"$BB" dmesg 2>/dev/null | "$BB" grep -q 'DNSK_HAMMER_START' ||
+	echo "DNSK_HAMMER_MARKER_MISSING"
+
+# rmmod dnsk_ns while the hammer runs.  EAGAIN/busy means an entry is in flight;
+# record it and retry.  Only a clean unload ends the loop.
+tries=0
+eagains=0
+ns_ok=0
+while [ "$tries" -lt 40 ]; do
+	err=$("$BB" rmmod dnsk_ns 2>&1)
+	rc=$?
+	if [ "$rc" -eq 0 ]; then
+		echo "DNSK_UNLOAD_NS_OK tries=$tries eagain=$eagains"
+		ns_ok=1
+		break
+	fi
+	case "$err" in
+	*busy*|*Busy*|*BUSY*)
+		eagains=$((eagains + 1))
+		echo "DNSK_UNLOAD_NS_EAGAIN try=$tries"
+		;;
+	*)
+		echo "DNSK_UNLOAD_NS_FAIL rc=$rc err=$err"
+		break
+		;;
+	esac
+	sleep 1
+	tries=$((tries + 1))
+done
+[ "$ns_ok" -eq 1 ] || fail ns_never_unloaded
+
+# Stop the load, then drain the rest in reverse order.
+kill "$hammer" 2>/dev/null
+wait "$hammer" 2>/dev/null
+echo "DNSK_HAMMER_STOPPED"
+
+for m in tmpfsx cgpids ipset netfilter devtmpfs core; do
+	out=$("$BB" rmmod "dnsk_$m" 2>&1)
+	rc=$?
+	[ "$rc" -eq 0 ] || fail "unload_${m}_rc=$rc err=$out"
+	echo "DNSK_UNLOAD_${m}_OK"
+done
+
+# Residue checks.
+if "$BB" lsmod | "$BB" grep -q '^dnsk_'; then
+	"$BB" lsmod | "$BB" grep '^dnsk_'
+	fail lsmod_residue
+fi
+echo "DNSK_LSMOD_CLEAN_OK"
+[ -d /sys/module/dnsk_ns ] && fail sysfs_residue_ns
+[ -d /sys/module/dnsk_core ] && fail sysfs_residue_core
+echo "DNSK_SYSFS_CLEAN_OK"
+
+# Kernel health in the window that covers the concurrent unload.
+hits=$("$BB" dmesg 2>/dev/null | "$BB" tail -n +"$cursor" |
+	"$BB" grep -E 'WARNING: CPU|BUG:|Oops|Unable to handle|Kernel panic|refcount_t:')
+if [ -n "$hits" ]; then
+	echo "DNSK_UNLOAD_WARN"
+	printf '%s\n' "$hits" | tail -20
+	fail warn_window
+fi
+echo "DNSK_UNLOAD_NO_WARN_OK"
+
+# Behaviour restored: with ns gone, IPC/PID namespaces must be uncreatable again.
+"$BB" unshare -i true 2>/dev/null
+[ $? -eq 0 ] && fail ipc_ns_still_creatable
+"$BB" unshare -p -f true 2>/dev/null
+[ $? -eq 0 ] && fail pid_ns_still_creatable
+echo "DNSK_POST_NS_RESTORED"
+
+echo "DNSK_QEMU_OK"
+"$BB" poweroff -f
