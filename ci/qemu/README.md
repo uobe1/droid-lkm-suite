@@ -13,10 +13,10 @@ QEMU tests are evidence, not a formality. The first real harness is
    unloads it, and prints `DNSK_QEMU_OK`; the job fails on panic/Oops.
 
 Feature modules (`ns`, `devtmpfs`, `netfilter`, `ipset`) import non-exported
-kernel internals that the KernelSU loader resolves on the phone. Plain stock
-`insmod` rejects them, so QEMU currently gates core and the runtime-symbol
-path; feature activation is exercised on the KSU device (and needs a
-KSU-enabled VM or an exports-augmented test kernel to run in the cloud).
+kernel internals that need the KernelSU loader. The beryl boot-image QEMU path
+(`vmlinux-to-elf` + `ksud` late-load) gates core, the runtime-symbol path and
+every feature module, including activation and the semantic differential
+(`qemu-core.yml`); a stock-GKI initramfs run covers core only.
 
 Planned matrix:
 

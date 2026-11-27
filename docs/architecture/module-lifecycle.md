@@ -72,8 +72,10 @@ core **不在这两个 owner 上取模块引用**.两个必须理解的结果:
  责任完全在 feature: 清掉每个 hook, 删掉 feature 注册, 归还 core 引用
 - "让 core pin 住 feature 来保证回调有效"是错误方向.pin 会让 feature 的
  refcount 永远不归零, `module_exit` 不运行, 反注册也就永远不会发生--这是
- 自锁, 不是保护.`dnsk_cgpids` 的自持引用就是这种死锁的实例: `rmmod` 永远
- `EAGAIN`, 而唯一会释放引用的 `module_exit` 永远不会被调用
+ 自锁, 不是保护.`dnsk_cgpids` native 的自持引用是**受控**的例外: 它的
+ `cgroup_subsys` 没有 `owner` 字段, 只能自己持引用; `dnskctl` 卸载先调用
+ `dnsk_cgpids_native_quiesce()` 归还槽位并 `module_put`, 之后 `rmmod` 才能
+ 进入 `module_exit`.忘记 quiesce 才会表现为 `EAGAIN`, 不是无法解除的死锁
 
 正确方向相反: feature 持有 core(保证 API 有效), core 不持有 feature
 

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# Core is the only module in M0.  Feature modules are added only after their
-# feasibility gate and build as independent .ko files.
+# The repository root builds core only.  Each feature under features/<name>/
+# has its own Kbuild and builds an independent .ko.
 
 obj-m += dnsk_core.o
 dnsk_core-y := \

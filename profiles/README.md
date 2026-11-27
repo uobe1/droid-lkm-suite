@@ -5,7 +5,8 @@ per-KMI native capability matrix and the current shipping state. It is not a
 claim of validation: `validated` stays false until the QEMU/device evidence is
 attached to a release.
 
-Current stage: M0 core scaffold; `android16-6.12` additionally carries the
-`ns` and `devtmpfs` development modules (ns PID/IPC/SysV/mqueue smoke verified;
-devtmpfs active load/mount smoke verified, pinned by design). All other feature
-entries are `not-shipped`. No entry is validated.
+Current stage: `android16-6.12` development wrap-up. `android16-6.12` carries
+core (M0 done) plus the `ns`, `devtmpfs`, `netfilter`, `ipset`, `cgpids` and
+`tmpfsx` feature modules; `cgpids` and `tmpfsx` are native, the others are in
+development. `ipset` EL0 and E5 unload are not verified. The per-feature source
+of truth is `docs/status.md`. No entry is validated.

@@ -1,4 +1,4 @@
-# dnsk_tmpfsx (M4 spike)
+# dnsk_tmpfsx (native, route B)
 
 Adds tmpfs xattr support when the KMI ships `CONFIG_TMPFS_XATTR=n`.
 
@@ -13,8 +13,9 @@ Current prototype:
   `shmem_dir_inode_operations`; frees stored xattrs from a
   `shmem_evict_inode` kprobe.
 - Refuses to load when the kernel already has native tmpfs xattr.
-- Pinned until reboot once handlers are installed (superblocks keep a
-  pointer into this module).
+- No self-pin: live superblocks keep `s_xattr` pointing at this module, and
+  `module_exit` detaches that pointer from every touched superblock (via
+  `iterate_supers`) before the module text is freed.
 
 POSIX ACL (route B, native only — decision 2026-11-21): ACLs live
 exclusively in the kernel's `inode->i_acl` cache, mirroring
@@ -35,8 +36,9 @@ parser rejects them with `EINVAL`, matching native tmpfs (which has no
 from the earlier xattr-based route).  `SB_POSIXACL` is set unconditionally
 for every superblock the module touches, matching
 `shmem_fill_super()` under `CONFIG_TMPFS_POSIX_ACL=y`
-(mm/shmem.c:4721-4722).  Status is `DEVELOPMENT`; do not claim Native
-semantics until the device gate re-runs.
+(mm/shmem.c:4721-4722).  Route B was re-verified on the
+device on 2026-11-27 (`sizing == fill`, ACL name reported once); E2/E3 evidence
+is still incomplete, so do not treat the whole feature as fully gated.
 
 `listxattr` size accounting: the device's GKI 6.12.30 build of
 `simple_xattr_list()` (fs/xattr.c) enters its `simple_xattr` rb-tree walk

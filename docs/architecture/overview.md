@@ -14,14 +14,16 @@
 | 模块 | 职责 | 状态 |
 |---|---|---|
 | `dnsk_core.ko` | 符号解析, patch, hook 托管, diag, feature 注册, panic 取证, 日志 | M0 完成 (ABI 5) |
-| `dnsk_ns.ko` | PID_NS/IPC_NS/SYSVIPC/POSIX_MQUEUE | not-shipped |
-| `dnsk_devtmpfs.ko` | devtmpfs | not-shipped |
-| `dnsk_netfilter.ko` | nft 目标子集, xt_addrtype/REJECT/RECENT, ip6table_nat | not-shipped |
-| `dnsk_ipset.ko` | ipset 目标类型, xt_set | not-shipped |
-| `dnsk_cgpids.ko` | 虚拟 pids 控制器 (真实计数/强制/文件) | feasibility gate |
-| `dnsk_userns.ko` | 完整 USER_NS + idmapped/overlay/FUSE 扩展 | feasibility gate |
-| `dnsk_tmpfsx.ko` | Native 全量 tmpfs xattr/ACL | feasibility gate |
-| `dnsk_compat.ko` | 厂商模块引用/生命周期修复 | optional |
+| `dnsk_ns.ko` | PID_NS/IPC_NS/SYSVIPC/POSIX_MQUEUE, 含 USER_NS 实现 | development |
+| `dnsk_devtmpfs.ko` | devtmpfs | development |
+| `dnsk_netfilter.ko` | nft 目标子集, xt_addrtype/REJECT/RECENT, ip6table_nat | development |
+| `dnsk_ipset.ko` | ipset 目标类型, xt_set | development (EL0 未验证) |
+| `dnsk_cgpids.ko` | 真实 pids `cgroup_subsys` 注入 net_prio slot 7; `native=0` 时为虚拟控制器 | native |
+| `dnsk_tmpfsx.ko` | Native 全量 tmpfs xattr/ACL (路线 B) | native (E2/E3 未补) |
+| `dnsk_diag.ko` | 只读诊断 `dnsk_ns` 状态, 不装 hook | diagnostic (无门控证据) |
+
+`dnsk_userns.ko` 与 `dnsk_compat.ko` 不是现存模块: USER_NS 在 `dnsk_ns` 内实现,
+兼容修复没有独立模块. 逐项状态以 [status](../status.md) 为准.
 
 ## Core ABI
 
@@ -48,6 +50,7 @@
 - 依赖设备已有的 ramoops/pstore; 重启后 `dnskctl doctor --last-panic` 解析
 - boot guard 在 panic 后进入 safe mode, 只加载 core 诊断; 连续失败写 disable
 - 禁止在 panic 上下文写块设备/文件
+- userspace 崩溃取证 (tombstone/logcat) 仍未实现也未实测, 不得计入已完成的崩溃日志目标
 
 ## 验证
 

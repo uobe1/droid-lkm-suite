@@ -1,4 +1,4 @@
-# dnsk_netfilter (M2 development)
+# dnsk_netfilter (development)
 
 Vendored 6.12 nftables and xtables units in one `dnsk_netfilter.ko`:
 the nftables target subset, `xt_addrtype`, `xt_REJECT` and `xt_RECENT`.
@@ -22,8 +22,9 @@ the nftables target subset, `xt_addrtype`, `xt_REJECT` and `xt_RECENT`.
   after the nft units because they depend only on x_tables core, and keeping
   them last leaves the existing nft registration order unchanged. There is no
   xt/nft ordering dependency.
-- The new units are vendored but not yet covered by device smoke tests; extend
-  `tests/device/netfilter-*.sh` before claiming them supported.
+- `addrtype` and `recent` were exercised on the device (2026-11-27: rules
+  installed, `/proc/net/xt_recent/dnskdev` present, packet counters moved);
+  see `docs/status.md`. `REJECT` registration is covered by the same gate.
 - Native `xt_REJECT`/`xt_recent` must not already be built in or loaded: a
   duplicate target/match name makes registration fail with `-EEXIST`, and an
   existing `/proc/net/xt_recent` directory makes the recent per-net init fail.
@@ -45,5 +46,5 @@ the nftables target subset, `xt_addrtype`, `xt_REJECT` and `xt_RECENT`.
   `xt_target`s, so both are affected by this layout rule.
 - `xt_recent` also dereferences `net->proc_net` directly for
   `/proc/net/xt_recent`. The current preflight covers only `xt_match`/
-  `xt_target`, so a device/VM smoke test that creates and removes a recent
-  table is still needed.
+  `xt_target`, so a missing `net->proc_net` layout check remains an open
+  preflight gap even though the device smoke test passed.

@@ -157,7 +157,9 @@ tracked 文档**不得**链接后三者 (新克隆会 404).只能写纯路径并
 
 ### 6.3 数字与 run id 不进 tracked 文档
 
-它们属于 `docs/notes/` 或 `docs/evidence/`.tracked 文档只写结论与判据
+它们属于 `docs/notes/` 或 `docs/evidence/`.tracked 文档只写结论与判据.
+例外是 `docs/status.md`: 它是状态与证据指针的权威表, 必须保留 run id 以便复核,
+其余 tracked 文档仍按本节执行
 
 ---
 
@@ -185,7 +187,7 @@ tracked 文档**不得**链接后三者 (新克隆会 404).只能写纯路径并
 ### 7.3 文档与代码同步
 
 改了代码就检查哪份文档在描述它.CI 会校验生成页面与头文件一致
-(`make docs-kernel` + `git diff --exit-code`).
+(`make docs-check`; 生成用 `make docs`).
 
 ---
 

@@ -1,4 +1,4 @@
-# dnsk_ns (M1 development)
+# dnsk_ns (development)
 
 Vendored Droidspaces-LKM 6.12 PID/IPC namespace implementation.
 
@@ -9,7 +9,7 @@ Vendored Droidspaces-LKM 6.12 PID/IPC namespace implementation.
   `ns` feature row; without core the namespace implementation still works.
 - `activate=0` loads and unloads cleanly; `tests/device/core-bridge-smoke.sh` verifies
   the bridge and the core pin/unpin order.
-- Unload is safe: activation no longer pins the module.  `ds_port_exit` first
+- Unload uses two-phase quiesce plus in-flight references: `ds_port_exit` first
   quiesces (`ds_ns_quiesce()`: block every IPC/PID entry, take an RCU grace,
   then wait the `ds_ns_inflight` counter to zero) and only then restores the
   hooks and frees code.  Every sleep-capable entry takes a `try_module_get()`
@@ -17,6 +17,12 @@ Vendored Droidspaces-LKM 6.12 PID/IPC namespace implementation.
   module text -- `stop_machine()`/`synchronize_rcu()` alone cannot see a task
   parked in a blocking SYSVIPC/mqueue syscall or the `do_exit` body.  Leftover
   per-task IPC state is inert heap and is reported, not WARNed, on unload.
+- **Unload completion (E5) is not yet proven.** A 2026-11-27 device
+  `rmmod dnsk_ns` panicked before the fix; the fixed QEMU run
+  `46040915897` shows `EAGAIN x60` with no WARN/Oops/panic, but the refcount
+  does not converge after the load stops.  Whether that is benign self-blocking
+  or a leaked `try_module_get` is still undecided, so do not claim that unload
+  restores stock behaviour.
 
 Pre-existing tasks and pidfd setns: with `CONFIG_SYSVIPC=n` the kernel's
 `init_nsproxy.ipc_ns` is NULL by construction (its initializer is guarded by

@@ -5,7 +5,9 @@ Linux 6.12 上游 `CONFIG_IP_SET` + `IP_SET_HASH_IP` + `IP_SET_HASH_NET` +
 Android GKI KMI `android16-6.12`.源码来自 AOSP 固定 tag,见
 [ORIGIN.md](ORIGIN.md).没有 STUB/FAKE 路径;未实现的部分直接报错.
 
-当前状态:开发实现,未验收,不得据此声称已支持.
+当前状态:部分验证.已通过 6.12 构建与符号导出、QEMU `hash:ip`/`hash:net`
+语义、设备 no-compat ABI 修复后的 `insmod` 与 `xt_set` 注册;EL0 建集合、
+设备卸载与容器验收仍未验证,不得据此声称已支持.
 
 ## 构建
 
@@ -106,9 +108,22 @@ make -C features/ipset KDIR=/opt/ddk/kdir/android16-6.12 DNSK_XT_NOCOMPAT=1 modu
   核心,逐层反向回滚,与上游多模块的依赖顺序一致.
 - 加载失败时按相反顺序回滚已注册的单元,不留下半注册状态.
 
-## 测试计划
+## 测试状态
 
-以下全部为待执行项,不能当作已通过.测试环境为 arm64 目标机或 QEMU
+已通过:
+
+- 6.12 构建、`modinfo` 字段与 `modpost` 未导出符号检查
+- QEMU `hash:ip`/`hash:net` 语义
+- 设备 no-compat ABI 修复后的 `insmod` 与 `xt_set` 注册
+
+待验证,不能当作已通过:
+
+- 设备上的 `ipset` 建集合、计数与 iptables/ip6tables 规则 (设备与 Termux
+  均无 `ipset` 工具)
+- 设备 `rmmod` (2026-11-27 逆序卸载被 sysrq panic 打断,无独立证据)
+- 容器验收
+
+以下为待执行清单,已通过项见上.测试环境为 arm64 目标机或 QEMU
 GKI;用户态需要 `ipset` 7.x(protocol 6/7)以及带 `xt_set` 扩展的
 legacy `iptables`/`ip6tables`,Android 自带 rootfs 通常不含这些工具.
 
@@ -140,7 +155,7 @@ legacy `iptables`/`ip6tables`,Android 自带 rootfs 通常不含这些工具.
 
 ## 构建风险
 
-- 本仓库没有本地内核树,未编译;必须先由 DDK 构建证明.
+- 本地没有内核构建树;构建由 DDK/CI 完成,本页只记录已验证的构建结论.
 - 依赖 GKI 导出的 `nfnetlink_subsys_register/unregister`、
   `nfnetlink_unicast`、`nfnl_lock/unlock`、`nf_register_sockopt`/
   `nf_unregister_sockopt`、`xt_register_matches`/`xt_unregister_matches`、

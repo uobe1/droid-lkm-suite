@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Hook registry.  Every syscall/data/kprobe hook is owned by core so that
- * feature modules cannot leave permanent hooks behind on unload.
+ * Hook registry.  Core stores, applies and removes hooks, but it does not pin
+ * the registering module.  A feature must call dnsk_hook_del() for every hook
+ * it added in module_exit(); skipping that leaves a registry entry pointing at
+ * freed module text.
  */
 
 #include <linux/kprobes.h>

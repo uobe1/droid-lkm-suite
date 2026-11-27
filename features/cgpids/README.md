@@ -1,8 +1,23 @@
 # dnsk_cgpids
 
-cgroup v2 virtual pids controller. Native `CONFIG_CGROUP_PIDS` is compiled out
-on the target; a bounded LKM cannot extend `cgroup_subsys[]`, `css_set[]` or
-the subsystem enum. This module provides the observable controller instead:
+pids cgroup 控制器, 有两条路径: 默认的 native 槽位注入 (`native.c`) 与
+`native=0` 时才使用的虚拟控制器 (`virtual.c`).
+
+## Native 槽位注入 (默认)
+
+`native.c` installs a real `cgroup_subsys` for pids into the spare `net_prio`
+slot 7 and lets the kernel's own cgroup core drive it; `/proc/cgroups` lists
+`pids`. The kernel's `cgroup_subsys` has no `owner` field on this KMI, so the
+module holds a reference to itself while the slot is installed. `dnskctl`
+unload first calls `dnsk_cgpids_native_quiesce()`, which hands the slot back
+and drops that reference; only then can `rmmod` reach `module_exit`. A bare
+`rmmod` without quiesce returns `EAGAIN`, and quiesce itself returns `-EBUSY`
+while tasks are still accounted to the slot.
+
+## 虚拟控制器 (`native=0`)
+
+Native `CONFIG_CGROUP_PIDS` is compiled out on the target; the virtual path
+provides the observable controller instead:
 
 - Real `pids.max`, `pids.current`, `pids.peak`, `pids.events`,
   `pids.events.local` files, added on cgroup mkdir.
@@ -16,13 +31,13 @@ the subsystem enum. This module provides the observable controller instead:
 Scope and limits:
 
 - cgroup v2 only. cgroup v1 `--pids-limit` remains unsupported.
-- Not a native `cgroup_subsys`; `/proc/cgroups` and controller IDs do not list
-  pids. This is reported as `VIRTUAL`, never as native.
-- Files are added to cgroups created after module load; pre-existing cgroups
-  are not retrofitted.
-- A cgroup state is created on demand and pins the module until reboot
-  (matching the plan's "cgpids fixed after activation" rule); unload reports
-  "needs reboot" once any state has been created.
+- The virtual path is not a native `cgroup_subsys`; it is reported as
+  `VIRTUAL`, never as native. The default native path does register a real
+  subsystem and does show up in `/proc/cgroups`.
+- Virtual-path files are added to cgroups created after module load;
+  pre-existing cgroups are not retrofitted.
+- Virtual per-cgroup state is freed with `kfree_rcu()`, so no state outlives
+  the module and the virtual path does not pin it.
 
 Acceptance is Docker 29.x `--pids-limit` plus a Native-vs-Virtual differential
 contract against an AOSP/DDK oracle with `CONFIG_CGROUP_PIDS=y`.

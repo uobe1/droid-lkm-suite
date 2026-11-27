@@ -56,7 +56,7 @@ The level a feature module claims in `struct` dnsk_feature_desc.  It is informat
 
 kind of hook requested from the core
 
-Selects which fields of `struct` dnsk_hook_req are meaningful and how core installs and removes the hook.  Core owns every hook it installs, so a feature module cannot leave a permanent hook behind on unload.
+Selects which fields of `struct` dnsk_hook_req are meaningful and how core installs and removes the hook.  Core removes a hook only when dnsk_hook_del() is called with its key; a feature that skips the delete leaves a registry entry pointing at freed module text (use-after-free).
 
 > 来源: `dnsk_core.h` 的 kernel-doc 注释
 

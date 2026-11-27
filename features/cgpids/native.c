@@ -12,8 +12,9 @@
  * This is not a rebuilt kernel: single writes go through core's fixmap
  * patcher, the root css is installed by hand (the boot-only cgroup_init_subsys
  * is gone), and every callback below is a native pids implementation.  The
- * slot choice and struct offsets come from the ABI profile; the module is
- * pinned and cannot be unloaded, matching "fixed until reboot".
+ * slot choice and struct offsets come from the ABI profile.  The module takes a
+ * self reference while the slot is installed; dnsk_cgpids_native_quiesce()
+ * hands the slot back and drops it, after which rmmod can proceed.
  */
 
 #include <linux/atomic.h>
