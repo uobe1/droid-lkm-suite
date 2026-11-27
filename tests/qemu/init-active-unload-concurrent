@@ -82,7 +82,10 @@ while [ "$tries" -lt 40 ]; do
 		break
 	fi
 	case "$err" in
-	*busy*|*Busy*|*BUSY*)
+	# busybox reports EAGAIN as "Resource temporarily unavailable"; glibc
+	# strerror is "Device or resource busy".  Both mean "an entry is in flight",
+	# which is exactly what the module reference is supposed to cause.
+	*busy*|*Busy*|*BUSY*|*temporarily*|*Temporarily*|*unavailable*|*Unavailable*)
 		eagains=$((eagains + 1))
 		echo "DNSK_UNLOAD_NS_EAGAIN try=$tries"
 		;;
