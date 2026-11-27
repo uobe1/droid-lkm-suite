@@ -88,7 +88,8 @@ while [ "$tries" -lt 60 ]; do
 	# which is exactly what the module reference is supposed to cause.
 	*busy*|*Busy*|*BUSY*|*temporarily*|*Temporarily*|*unavailable*|*Unavailable*)
 		eagains=$((eagains + 1))
-		echo "DNSK_UNLOAD_NS_EAGAIN try=$tries"
+		refc=$("$BB" awk '$1=="dnsk_ns"{print $3}' /proc/modules 2>/dev/null)
+		echo "DNSK_UNLOAD_NS_EAGAIN try=$tries refcnt=${refc:-?}"
 		# The hammer holds references for as long as it runs, so a retry can
 		# never win while it is alive.  Prove the block with a few EAGAINs,
 		# then stop the load and let the retry succeed on a drained module.
@@ -107,7 +108,11 @@ while [ "$tries" -lt 60 ]; do
 	sleep 1
 	tries=$((tries + 1))
 done
-[ "$ns_ok" -eq 1 ] || fail ns_never_unloaded
+if [ "$ns_ok" -ne 1 ]; then
+	refc=$("$BB" awk '$1=="dnsk_ns"{print $3}' /proc/modules 2>/dev/null)
+	echo "DNSK_NS_REFCNT_FINAL=${refc:-?} eagain=$eagains hammer_stopped=$hammer_stopped"
+	fail "ns_never_unloaded refcnt=${refc:-?}"
+fi
 
 # Ensure the load is stopped even if the loop won before the threshold.
 if [ "$hammer_stopped" -eq 0 ]; then
