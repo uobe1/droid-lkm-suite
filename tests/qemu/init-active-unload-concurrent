@@ -73,7 +73,8 @@ sleep 2
 tries=0
 eagains=0
 ns_ok=0
-while [ "$tries" -lt 40 ]; do
+hammer_stopped=0
+while [ "$tries" -lt 60 ]; do
 	err=$("$BB" rmmod dnsk_ns 2>&1)
 	rc=$?
 	if [ "$rc" -eq 0 ]; then
@@ -88,6 +89,15 @@ while [ "$tries" -lt 40 ]; do
 	*busy*|*Busy*|*BUSY*|*temporarily*|*Temporarily*|*unavailable*|*Unavailable*)
 		eagains=$((eagains + 1))
 		echo "DNSK_UNLOAD_NS_EAGAIN try=$tries"
+		# The hammer holds references for as long as it runs, so a retry can
+		# never win while it is alive.  Prove the block with a few EAGAINs,
+		# then stop the load and let the retry succeed on a drained module.
+		if [ "$hammer_stopped" -eq 0 ] && [ "$eagains" -ge 8 ]; then
+			kill "$hammer" 2>/dev/null
+			wait "$hammer" 2>/dev/null
+			hammer_stopped=1
+			echo "DNSK_HAMMER_STOPPED after_eagain=$eagains"
+		fi
 		;;
 	*)
 		echo "DNSK_UNLOAD_NS_FAIL rc=$rc err=$err"
@@ -99,10 +109,12 @@ while [ "$tries" -lt 40 ]; do
 done
 [ "$ns_ok" -eq 1 ] || fail ns_never_unloaded
 
-# Stop the load, then drain the rest in reverse order.
-kill "$hammer" 2>/dev/null
-wait "$hammer" 2>/dev/null
-echo "DNSK_HAMMER_STOPPED"
+# Ensure the load is stopped even if the loop won before the threshold.
+if [ "$hammer_stopped" -eq 0 ]; then
+	kill "$hammer" 2>/dev/null
+	wait "$hammer" 2>/dev/null
+	echo "DNSK_HAMMER_STOPPED"
+fi
 
 for m in tmpfsx cgpids ipset netfilter devtmpfs core; do
 	out=$("$BB" rmmod "dnsk_$m" 2>&1)
