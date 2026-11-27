@@ -131,7 +131,7 @@ out_ns:
  * called from clone.  This now handles copy for nsproxy and all
  * namespaces therein.
  */
-int copy_namespaces(unsigned long flags, struct task_struct *tsk)
+static int __copy_namespaces(unsigned long flags, struct task_struct *tsk)
 {
 	struct nsproxy *old_ns = tsk->nsproxy;
 	struct user_namespace *user_ns = task_cred_xxx(tsk, user_ns);
@@ -170,7 +170,18 @@ int copy_namespaces(unsigned long flags, struct task_struct *tsk)
 	return 0;
 }
 
-void free_nsproxy(struct nsproxy *ns)
+int copy_namespaces(unsigned long flags, struct task_struct *tsk)
+{
+	int ret;
+
+	if (!ds_ns_enter())
+		return -EAGAIN;
+	ret = __copy_namespaces(flags, tsk);
+	ds_ns_leave();
+	return ret;
+}
+
+static void __free_nsproxy(struct nsproxy *ns)
 {
 	if (ns->mnt_ns)
 		put_mnt_ns(ns->mnt_ns);
@@ -189,11 +200,19 @@ void free_nsproxy(struct nsproxy *ns)
 	kmem_cache_free(nsproxy_cachep, ns);
 }
 
+void free_nsproxy(struct nsproxy *ns)
+{
+	/* Teardown must always complete; only track it so unload can wait. */
+	ds_ns_hold();
+	__free_nsproxy(ns);
+	ds_ns_unhold();
+}
+
 /*
  * Called from unshare. Unshare all the namespaces part of nsproxy.
  * On success, returns the new nsproxy.
  */
-int unshare_nsproxy_namespaces(unsigned long unshare_flags,
+static int __unshare_nsproxy_namespaces(unsigned long unshare_flags,
 	struct nsproxy **new_nsp, struct cred *new_cred, struct fs_struct *new_fs)
 {
 	struct user_namespace *user_ns;
@@ -219,6 +238,19 @@ out:
 	return err;
 }
 
+int unshare_nsproxy_namespaces(unsigned long unshare_flags,
+	struct nsproxy **new_nsp, struct cred *new_cred, struct fs_struct *new_fs)
+{
+	int ret;
+
+	if (!ds_ns_enter())
+		return -EAGAIN;
+	ret = __unshare_nsproxy_namespaces(unshare_flags, new_nsp,
+					   new_cred, new_fs);
+	ds_ns_leave();
+	return ret;
+}
+
 void switch_task_namespaces(struct task_struct *p, struct nsproxy *new)
 {
 	struct nsproxy *ns;
@@ -239,7 +271,7 @@ void exit_task_namespaces(struct task_struct *p)
 	switch_task_namespaces(p, NULL);
 }
 
-int exec_task_namespaces(void)
+static int __exec_task_namespaces(void)
 {
 	struct task_struct *tsk = current;
 	struct nsproxy *new;
@@ -254,6 +286,16 @@ int exec_task_namespaces(void)
 	timens_on_fork(new, tsk);
 	switch_task_namespaces(tsk, new);
 	return 0;
+}
+
+int exec_task_namespaces(void)
+{
+	int ret;
+
+	ds_ns_hold();
+	ret = __exec_task_namespaces();
+	ds_ns_unhold();
+	return ret;
 }
 
 static int check_setns_flags(unsigned long flags)

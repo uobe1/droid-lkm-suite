@@ -2271,7 +2271,13 @@ long ksys_semtimedop(int semid, struct sembuf __user *tsops,
 SYSCALL_DEFINE4(ds_semtimedop, int, semid, struct sembuf __user *, tsops,
 		unsigned int, nsops, const struct __kernel_timespec __user *, timeout)
 {
-	return ksys_semtimedop(semid, tsops, nsops, timeout);
+	long ret;
+
+	if (!ds_ns_enter())
+		return -ENOSYS;
+	ret = ksys_semtimedop(semid, tsops, nsops, timeout);
+	ds_ns_leave();
+	return ret;
 }
 
 #ifdef CONFIG_COMPAT_32BIT_TIME
@@ -2299,7 +2305,13 @@ SYSCALL_DEFINE4(ds_semtimedop_time32, int, semid, struct sembuf __user *, tsems,
 SYSCALL_DEFINE3(ds_semop, int, semid, struct sembuf __user *, tsops,
 		unsigned, nsops)
 {
-	return do_semtimedop(semid, tsops, nsops, NULL);
+	long ret;
+
+	if (!ds_ns_enter())
+		return -ENOSYS;
+	ret = do_semtimedop(semid, tsops, nsops, NULL);
+	ds_ns_leave();
+	return ret;
 }
 
 /* If CLONE_SYSVSEM is set, establish sharing of SEM_UNDO state between

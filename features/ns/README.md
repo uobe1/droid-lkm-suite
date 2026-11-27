@@ -9,8 +9,14 @@ Vendored Droidspaces-LKM 6.12 PID/IPC namespace implementation.
   `ns` feature row; without core the namespace implementation still works.
 - `activate=0` loads and unloads cleanly; `tests/device/core-bridge-smoke.sh` verifies
   the bridge and the core pin/unpin order.
-- Upstream pins the module after activation; `rmmod` is not expected to work
-  after activation. Reboot is required to replace it.
+- Unload is safe: activation no longer pins the module.  `ds_port_exit` first
+  quiesces (`ds_ns_quiesce()`: block every IPC/PID entry, take an RCU grace,
+  then wait the `ds_ns_inflight` counter to zero) and only then restores the
+  hooks and frees code.  Every sleep-capable entry takes a `try_module_get()`
+  reference, so a bare `rmmod` answers `EAGAIN` while a caller is still inside
+  module text -- `stop_machine()`/`synchronize_rcu()` alone cannot see a task
+  parked in a blocking SYSVIPC/mqueue syscall or the `do_exit` body.  Leftover
+  per-task IPC state is inert heap and is reported, not WARNed, on unload.
 
 Pre-existing tasks and pidfd setns: with `CONFIG_SYSVIPC=n` the kernel's
 `init_nsproxy.ipc_ns` is NULL by construction (its initializer is guarded by

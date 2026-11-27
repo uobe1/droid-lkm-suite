@@ -1699,10 +1699,15 @@ SYSCALL_DEFINE3(ds_shmat, int, shmid, char __user *, shmaddr, int, shmflg)
 	unsigned long ret;
 	long err;
 
+	if (!ds_ns_enter())
+		return -ENOSYS;
 	err = ds_do_shmat(shmid, shmaddr, shmflg, &ret, SHMLBA);
-	if (err)
+	if (err) {
+		ds_ns_leave();
 		return err;
+	}
 	force_successful_syscall_return();
+	ds_ns_leave();
 	return (long)ret;
 }
 

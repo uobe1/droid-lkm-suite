@@ -844,6 +844,10 @@ void __noreturn do_exit(long code)
 	struct task_struct *tsk = current;
 	int group_dead;
 
+	/* Track, never refuse: an exit must always complete, but unload must
+	 * not free text while one is still running the module's exit body. */
+	ds_ns_hold();
+
 	WARN_ON(irqs_disabled());
 
 	synchronize_group_exit(tsk, code);
@@ -957,5 +961,6 @@ void __noreturn do_exit(long code)
 	exit_tasks_rcu_finish();
 
 	lockdep_free_task(tsk);
+	ds_ns_unhold();
 	do_task_dead();
 }

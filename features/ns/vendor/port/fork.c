@@ -133,7 +133,7 @@ static int wait_for_vfork_done(struct task_struct *child,
 	return killed;
 }
 
-pid_t ds_kernel_clone(struct kernel_clone_args *args)
+static pid_t __ds_kernel_clone(struct kernel_clone_args *args)
 {
 	u64 clone_flags = args->flags;
 	struct completion vfork;
@@ -241,6 +241,17 @@ pid_t ds_kernel_clone(struct kernel_clone_args *args)
 	return nr;
 }
 
+pid_t ds_kernel_clone(struct kernel_clone_args *args)
+{
+	pid_t ret;
+
+	if (!ds_ns_enter())
+		return -EAGAIN;
+	ret = __ds_kernel_clone(args);
+	ds_ns_leave();
+	return ret;
+}
+
 static int check_unshare_flags(unsigned long unshare_flags)
 {
 	if (unshare_flags & ~(CLONE_THREAD|CLONE_FS|CLONE_NEWNS|CLONE_SIGHAND|
@@ -318,7 +329,7 @@ static int unshare_fd(unsigned long unshare_flags, struct files_struct **new_fdp
  * constructed. Here we are modifying the current, active,
  * task_struct.
  */
-int ds_ksys_unshare(unsigned long unshare_flags)
+static int __ds_ksys_unshare(unsigned long unshare_flags)
 {
 	struct fs_struct *fs, *new_fs = NULL;
 	struct files_struct *new_fd = NULL;
@@ -434,6 +445,17 @@ bad_unshare_cleanup_fs:
 
 bad_unshare_out:
 	return err;
+}
+
+int ds_ksys_unshare(unsigned long unshare_flags)
+{
+	int ret;
+
+	if (!ds_ns_enter())
+		return -EAGAIN;
+	ret = __ds_ksys_unshare(unshare_flags);
+	ds_ns_leave();
+	return ret;
 }
 
 SYSCALL_DEFINE1(ds_unshare, unsigned long, unshare_flags)

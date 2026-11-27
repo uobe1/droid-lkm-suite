@@ -1290,13 +1290,21 @@ SYSCALL_DEFINE5(ds_mq_timedsend, mqd_t, mqdes, const char __user *, u_msg_ptr,
 		const struct __kernel_timespec __user *, u_abs_timeout)
 {
 	struct timespec64 ts, *p = NULL;
+	long ret;
+
+	if (!ds_ns_enter())
+		return -ENOSYS;
 	if (u_abs_timeout) {
 		int res = prepare_timeout(u_abs_timeout, &ts);
-		if (res)
+		if (res) {
+			ds_ns_leave();
 			return res;
+		}
 		p = &ts;
 	}
-	return do_mq_timedsend(mqdes, u_msg_ptr, msg_len, msg_prio, p);
+	ret = do_mq_timedsend(mqdes, u_msg_ptr, msg_len, msg_prio, p);
+	ds_ns_leave();
+	return ret;
 }
 
 SYSCALL_DEFINE5(ds_mq_timedreceive, mqd_t, mqdes, char __user *, u_msg_ptr,
@@ -1304,13 +1312,21 @@ SYSCALL_DEFINE5(ds_mq_timedreceive, mqd_t, mqdes, char __user *, u_msg_ptr,
 		const struct __kernel_timespec __user *, u_abs_timeout)
 {
 	struct timespec64 ts, *p = NULL;
+	long ret;
+
+	if (!ds_ns_enter())
+		return -ENOSYS;
 	if (u_abs_timeout) {
 		int res = prepare_timeout(u_abs_timeout, &ts);
-		if (res)
+		if (res) {
+			ds_ns_leave();
 			return res;
+		}
 		p = &ts;
 	}
-	return do_mq_timedreceive(mqdes, u_msg_ptr, msg_len, u_msg_prio, p);
+	ret = do_mq_timedreceive(mqdes, u_msg_ptr, msg_len, u_msg_prio, p);
+	ds_ns_leave();
+	return ret;
 }
 
 /*

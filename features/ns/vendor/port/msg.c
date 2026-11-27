@@ -972,7 +972,13 @@ long ksys_msgsnd(int msqid, struct msgbuf __user *msgp, size_t msgsz,
 SYSCALL_DEFINE4(ds_msgsnd, int, msqid, struct msgbuf __user *, msgp, size_t, msgsz,
 		int, msgflg)
 {
-	return ksys_msgsnd(msqid, msgp, msgsz, msgflg);
+	long ret;
+
+	if (!ds_ns_enter())
+		return -ENOSYS;
+	ret = ksys_msgsnd(msqid, msgp, msgsz, msgflg);
+	ds_ns_leave();
+	return ret;
 }
 
 #ifdef CONFIG_COMPAT
@@ -1271,7 +1277,13 @@ long ksys_msgrcv(int msqid, struct msgbuf __user *msgp, size_t msgsz,
 SYSCALL_DEFINE5(ds_msgrcv, int, msqid, struct msgbuf __user *, msgp, size_t, msgsz,
 		long, msgtyp, int, msgflg)
 {
-	return ksys_msgrcv(msqid, msgp, msgsz, msgtyp, msgflg);
+	long ret;
+
+	if (!ds_ns_enter())
+		return -ENOSYS;
+	ret = ksys_msgrcv(msqid, msgp, msgsz, msgtyp, msgflg);
+	ds_ns_leave();
+	return ret;
 }
 
 #ifdef CONFIG_COMPAT

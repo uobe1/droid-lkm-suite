@@ -95,6 +95,34 @@ devtmpfs 的修法不是"更小心地等", 而是改变所有权:
 `/sys/module/dnsk_cgpids/parameters/quiesce`, 成功后才 rmmod.塞进 exit 只会
 带着活跃计数释放, 随后 panic
 
+## 卸载前的 in-flight 门控: `dnsk_ns` 的做法
+
+`stop_machine()` 只在还原入口的那一瞬保证没有 CPU 在 hook 里, `synchronize_rcu()`
+只排空 RCU 读临界区. 二者都**不会**等待一个睡在模块栈帧里的 task:
+它可能阻塞在模块自带的 SysV/POSIX-mqueue syscall 里(`msgrcv`/`semtimedop`/
+`mq_timedreceive` 的等待队列), 或停在 `do_exit` 的整段替换体里. 模块 text 一旦
+在这类 task 返回前解除映射, 它的 `ret` 就会取指到已释放页(`pc == lr`, `pte=0`,
+IABT), 即 2026-11-27 那次真机 panic.
+
+`dnsk_ns` 因此不靠固定 sleep, 而靠一个可观测的**在途计数**:
+
+1. 每个可能睡眠/长时间占用模块 text 的入口(clone/unshare、`copy_namespaces`、
+   `alloc_pid`、阻塞型 IPC syscall)先 `ds_ns_enter()`: 取 `try_module_get`
+   并 `atomic_inc(&ds_ns_inflight)`, 返回时 `ds_ns_leave()`. 有在途调用时
+   模块 refcount > 0, 裸 `rmmod` 直接 `EAGAIN`, 不可能进入 `module_exit()`;
+2. 必须执行、不能拒绝的路径(`do_exit`、`free_nsproxy`、`exec_task_namespaces`)
+   用 `ds_ns_hold()/ds_ns_unhold()` 只计数不拒绝;
+3. `ds_ns_quiesce()`: 置 `ds_ns_quiescing` 挡住所有可拒绝入口 → `synchronize_rcu()`
+   → `wait_event_timeout` 等 `ds_ns_inflight` 归零; 只有它为 0 才 `ds_hooks_uninstall()`
+   逆序还原并随后 `rcu_barrier()`/`flush_work()`. 还原后所有入口已是内核原生,
+   再补一次 `ds_ns_drain()` 收掉极窄窗口里新起的 `do_exit` 之类;
+4. `ds_ipc_backend_exit()` 不再对残留 per-task 状态 `WARN_ON`: 这些对象是
+   `kzalloc` 堆内存, 卸载后无人再查表, 属于惰性遗留, 只 `pr_info` 报数.
+
+这套顺序由 `tests/host/test_ns_unload_quiesce.py` 守卫: 它建模并发 fork/clone
+下 `rmmod` 必须等计数归零, 并断言 `ds_ns_quiesce` 先于 `ds_hooks_uninstall`、
+计数入口确实插桩、旧 `WARN` 已移除.
+
 ## 新增模块的卸载检查清单
 
 - [ ] 每处 `module_get`/`try_module_get` 都有理由; 能用对称注销解决就不要 pin

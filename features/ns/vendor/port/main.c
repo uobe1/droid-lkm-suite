@@ -193,19 +193,35 @@ static void __exit ds_port_exit(void)
 {
 	int ret;
 
-	/* Refuse to unload while emulated namespaces are still alive: their
-	 * objects call back into this module's code. */
-	if (atomic_read(&ds_pid_live) || atomic_read(&ds_ipc_live) ||
-	    atomic_read(&ds_ipc_task_live))
-		pr_warn("unloading with live namespaces pid=%d ipc=%d tasks=%d\n",
-			atomic_read(&ds_pid_live), atomic_read(&ds_ipc_live),
-			atomic_read(&ds_ipc_task_live));
+	/*
+	 * Phase 1 -- quiesce BEFORE touching a hook or freeing any code.
+	 * This blocks every new IPC/PID entry, takes an RCU grace period, and
+	 * waits until the in-flight counter reads zero.  That counter, not a
+	 * fixed sleep, is the proof that no task still holds a return address
+	 * into this module's text.  stop_machine() only covers the restore
+	 * instant and synchronize_rcu() only covers RCU readers, so a task
+	 * parked inside a blocking IPC syscall or the do_exit body would
+	 * otherwise be missed and would resume into unmapped text.
+	 */
+	ret = ds_ns_quiesce();
+	if (ret)
+		pr_err("quiesce failed: %d in-flight call(s)\n",
+		       atomic_read(&ds_ns_inflight));
+
 	dnsk_ns_core_unregister();
 	/* Clear the backfilled pointers while the hooks can still fail closed. */
 	ds_ipc_backfill_restore();
 	ret = ds_hooks_uninstall();
 	if (ret)
 		pr_err("hook teardown failed: %d\n", ret);
+	/* No new module entry is possible past the restore (stop_machine made
+	 * the trampolines native), so this catches any hold-only caller -- a
+	 * do_exit / free_nsproxy / exec -- that started in the tiny window
+	 * between the quiesce wait and the restore.  Its counter now only
+	 * decreases. */
+	if (ds_ns_drain())
+		pr_err("post-restore drain: %d call(s) still in flight\n",
+		       atomic_read(&ds_ns_inflight));
 	ds_ipc_backend_exit();
 	ds_ipc_flush();
 	ds_pid_exit();

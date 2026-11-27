@@ -319,4 +319,8 @@ void dnsk_hooks_exit(void)
 			dnsk_remove_locked(&dnsk_hooks[i]);
 	}
 	mutex_unlock(&dnsk_hooks_lock);
+	/* Match dnsk_hook_del_internal(): a handler that entered a kprobe or a
+	 * patched pointer just before the restore must leave before the caller
+	 * frees anything the handler still reaches into. */
+	synchronize_rcu();
 }

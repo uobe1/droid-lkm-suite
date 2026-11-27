@@ -46,6 +46,7 @@
 #include <linux/pidfs.h>
 #include <net/sock.h>
 #include <uapi/linux/pidfd.h>
+#include "ipc-backend.h"
 
 #define RESERVED_PIDS 300
 extern spinlock_t pidmap_lock;
@@ -72,8 +73,8 @@ void ds_delayed_put_pid(struct rcu_head *rhp)
 	put_pid(pid);
 }
 
-struct pid *alloc_pid(struct pid_namespace *ns, pid_t *set_tid,
-		      size_t set_tid_size)
+static struct pid *__alloc_pid(struct pid_namespace *ns, pid_t *set_tid,
+			       size_t set_tid_size)
 {
 	struct pid *pid;
 	enum pid_type type;
@@ -215,4 +216,16 @@ out_free:
 
 	kmem_cache_free(ns->pid_cachep, pid);
 	return ERR_PTR(retval);
+}
+
+struct pid *alloc_pid(struct pid_namespace *ns, pid_t *set_tid,
+		      size_t set_tid_size)
+{
+	struct pid *ret;
+
+	if (!ds_ns_enter())
+		return ERR_PTR(-EAGAIN);
+	ret = __alloc_pid(ns, set_tid, set_tid_size);
+	ds_ns_leave();
+	return ret;
 }
