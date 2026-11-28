@@ -151,8 +151,9 @@ static __nocfi noinline void dnsk_flush_icache(unsigned long start, size_t len)
 /*
  * Exported to the inline-hook backend: flush an executable range that was
  * written through a non-patch path (the relocated-origin block allocated by
- * module_alloc).  It is the same already-resolved cache function the patching
- * path uses, so no extra symbol is imported.
+ * the execmem allocator, or module_alloc as a fallback).  It is the same
+ * already-resolved cache function the patching path uses, so no extra symbol
+ * is imported.
  */
 void dnsk_icache_flush(void *addr, size_t len)
 {

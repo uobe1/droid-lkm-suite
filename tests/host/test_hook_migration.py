@@ -65,9 +65,30 @@ class AdapterBackendTest(unittest.TestCase):
     def test_backend_primitives_documented(self):
         text = ADAPTER.read_text()
         self.assertIn("dnsk_patch_text(addr, src, len, true)", text)
-        self.assertIn("module_alloc", text)
-        self.assertIn("module_memfree", text)
         self.assertIn("retired, never freed", text)
+        # Both allocator pairs are resolved; execmem is the preferred pair.
+        for sym in ("execmem_alloc", "execmem_free",
+                    "module_alloc", "module_memfree"):
+            self.assertIn(f'dnsk_resolve_symbol("{sym}")', text)
+        init = text[text.index("int dnsk_hooks_init(void)"):]
+        execmem_pair = init.index(
+            "if (dnsk_execmem_alloc_fn && dnsk_execmem_free_fn)")
+        module_pair = init.index(
+            "else if (dnsk_module_alloc_fn && dnsk_module_free_fn)")
+        self.assertLess(execmem_pair, module_pair)
+        # The enum-typed indirect call runs in the __nocfi helper; the backend
+        # entry point only calls that helper.
+        helper_start = text.index(
+            "static __nocfi noinline void *dnsk_execmem_alloc(size_t size)")
+        helper = text[helper_start:text.index("\n}\n", helper_start)]
+        self.assertIn("dnsk_execmem_alloc_fn(DNSK_EXECMEM_MODULE_TEXT", helper)
+        alloc_start = text.index(
+            "static void *dnsk_dh_alloc_exec(size_t size)")
+        alloc = text[alloc_start:text.index("\n}\n", alloc_start)]
+        self.assertIn("return dnsk_execmem_alloc(size);", alloc)
+        self.assertNotIn("dnsk_execmem_alloc_fn(", alloc)
+        # With neither pair complete, no executable allocator is published.
+        self.assertIn("dnsk_dh_be.alloc_exec = NULL;", init)
         # tlb_flush and quiesce are non-NULL documented no-ops.
         self.assertIn("dnsk_dh_tlb_flush", text)
         self.assertIn("dnsk_dh_quiesce_begin", text)

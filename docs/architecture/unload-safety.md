@@ -80,7 +80,8 @@ devtmpfs 的修法不是"更小心地等", 而是改变所有权:
 
 ## inline hook origin 退役, 不释放
 
-inline hook 的 origin 块由 droid-hook 分配在 `module_alloc` 内存里, 内容是重定位后的
+inline hook 的 origin 块由 droid-hook 分配在 execmem 执行内存里 (execmem 符号对
+缺失时回退到 `module_alloc`), 内容是重定位后的
 原函数, 供 replacement 调用. 它不是模块 `.text`, 但它的执行仍依赖模块代码路径
 
 `hook_uninstall()` 恢复入口并等一个 RCU 宽限期, 只能阻止新调用者, 无法证明没有 task

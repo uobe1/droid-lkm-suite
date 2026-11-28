@@ -36,8 +36,25 @@ static struct dh_ctx dnsk_dh_ctx;
 static struct dh_backend dnsk_dh_be;
 static bool dnsk_dh_ready;
 
+/*
+ * Mirrors enum execmem_type in include/linux/execmem.h, where
+ * EXECMEM_DEFAULT == EXECMEM_MODULE_TEXT == 0.  The header is intentionally
+ * not included: the allocator is resolved from kallsyms at runtime and this
+ * file must compile against kernel headers that may predate the enum.
+ */
+#define DNSK_EXECMEM_MODULE_TEXT 0
+
+enum dnsk_exec_alloc_kind {
+	DNSK_EXEC_ALLOC_NONE,
+	DNSK_EXEC_ALLOC_EXECMEM,
+	DNSK_EXEC_ALLOC_MODULE,
+};
+
+static void *(*dnsk_execmem_alloc_fn)(int type, size_t size);
+static void (*dnsk_execmem_free_fn)(void *ptr);
 static void *(*dnsk_module_alloc_fn)(unsigned long size);
 static void (*dnsk_module_free_fn)(void *addr);
+static enum dnsk_exec_alloc_kind dnsk_exec_alloc;
 
 /*
  * Executable origin blocks are retired, never freed.  Restoring the entry only
@@ -122,11 +139,39 @@ static void dnsk_dh_free(const void *p)
 	kfree(p);
 }
 
+/*
+ * The kernel prototype is execmem_alloc(enum execmem_type, size_t), and kCFI
+ * hashes the enum parameter as a distinct type from int.  Perform the indirect
+ * call from a __nocfi helper so the call site is not type-checked; the pointer
+ * storage keeps the int form the calling convention expects.
+ */
+static __nocfi noinline void *dnsk_execmem_alloc(size_t size)
+{
+	return dnsk_execmem_alloc_fn(DNSK_EXECMEM_MODULE_TEXT, size);
+}
+
 static void *dnsk_dh_alloc_exec(size_t size)
 {
-	if (!dnsk_module_alloc_fn)
+	switch (dnsk_exec_alloc) {
+	case DNSK_EXEC_ALLOC_EXECMEM:
+		return dnsk_execmem_alloc(size);
+	case DNSK_EXEC_ALLOC_MODULE:
+		return dnsk_module_alloc_fn((unsigned long)size);
+	default:
 		return NULL;
-	return dnsk_module_alloc_fn((unsigned long)size);
+	}
+}
+
+static const char *dnsk_exec_alloc_name(void)
+{
+	switch (dnsk_exec_alloc) {
+	case DNSK_EXEC_ALLOC_EXECMEM:
+		return "execmem";
+	case DNSK_EXEC_ALLOC_MODULE:
+		return "module_alloc";
+	default:
+		return "none";
+	}
 }
 
 static void dnsk_dh_free_exec(const void *p)
@@ -287,16 +332,32 @@ int dnsk_hooks_init(void)
 	dnsk_dh_be.name = "dnsk_core";
 	dnsk_dh_be.abi = DH_ABI;
 
+	dnsk_execmem_alloc_fn = dnsk_resolve_symbol("execmem_alloc");
+	dnsk_execmem_free_fn = dnsk_resolve_symbol("execmem_free");
 	dnsk_module_alloc_fn = dnsk_resolve_symbol("module_alloc");
 	dnsk_module_free_fn = dnsk_resolve_symbol("module_memfree");
-	if (dnsk_module_alloc_fn && dnsk_module_free_fn) {
+
+	/*
+	 * 6.12 removed module_alloc() and provides the execmem pair in
+	 * kallsyms instead.  Use a complete execmem pair when present; keep a
+	 * complete module_alloc pair only as a fallback for kernels that still
+	 * provide it.  With neither pair complete, leave the backend without
+	 * an executable allocator.
+	 */
+	if (dnsk_execmem_alloc_fn && dnsk_execmem_free_fn)
+		dnsk_exec_alloc = DNSK_EXEC_ALLOC_EXECMEM;
+	else if (dnsk_module_alloc_fn && dnsk_module_free_fn)
+		dnsk_exec_alloc = DNSK_EXEC_ALLOC_MODULE;
+	else
+		dnsk_exec_alloc = DNSK_EXEC_ALLOC_NONE;
+
+	if (dnsk_exec_alloc != DNSK_EXEC_ALLOC_NONE) {
 		dnsk_dh_be.alloc_exec = dnsk_dh_alloc_exec;
 		dnsk_dh_be.free_exec = dnsk_dh_free_exec;
 	} else {
 		dnsk_dh_be.alloc_exec = NULL;
 		dnsk_dh_be.free_exec = NULL;
-		dnsk_warn(
-		    "hooks: module_alloc/module_memfree missing; call-through origin disabled\n");
+		dnsk_warn("hooks: no complete execmem/module_alloc pair; call-through disabled\n");
 	}
 
 	ret = dh_ctx_init(&dnsk_dh_ctx, &dnsk_dh_be, "dnsk_core");
@@ -305,10 +366,8 @@ int dnsk_hooks_init(void)
 		return -EINVAL;
 	}
 	dnsk_dh_ready = true;
-	dnsk_info(
-	    "hooks: droid-hook backend ready (module_alloc=%px module_memfree=%px origin=%s)\n",
-	    dnsk_module_alloc_fn, dnsk_module_free_fn,
-	    dnsk_dh_be.alloc_exec ? "enabled" : "disabled");
+	dnsk_info("hooks: droid-hook backend ready (exec_alloc=%s origin=%s)\n",
+		  dnsk_exec_alloc_name(), dnsk_dh_be.alloc_exec ? "enabled" : "disabled");
 	return 0;
 }
 

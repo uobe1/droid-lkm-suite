@@ -43,7 +43,8 @@ core 只提供两种 hook 机制, 没有 kprobe/kretprobe/syscall 槽类型:
 ### 安装语义
 
 1. `hook_install()` 解析 `symbol`, 并把请求交给 droid-hook
-2. droid-hook 在 `module_alloc` 内存里构建 origin 块; 该分配器经 kallsyms 解析
+2. droid-hook 在 execmem 执行内存分配器里构建 origin 块; 该分配器经 kallsyms
+   解析, 优先用完整的 execmem 符号对, 缺失时回退到完整的 `module_alloc` 符号对
 3. 需要 origin 时, 库先把可调用块的地址写入 `*origin_out`; 没有可用
    `alloc_exec` 时在写入口之前返回 `-EOPNOTSUPP`
 4. origin 写好后, 库才在入口写入跳转并读回校验
@@ -179,11 +180,12 @@ core 把 suite 现有原语适配给 droid-hook 的 `struct dh_backend`:
 | `text_write` / `ro_write` | `dnsk_patch_text()`, 固定 `flush_icache=true` |
 | `probe` / `icache_flush` | `dnsk_resolve_symbol()` / 已解析的 cache 刷新函数 |
 | `alloc` / `free` | `kmalloc()` / `kfree()` |
-| `alloc_exec` / `free_exec` | 经 kallsyms 解析的 `module_alloc` / 退役不释放 |
+| `alloc_exec` / `free_exec` | 经 kallsyms 解析的 execmem 执行内存分配器 (`module_alloc` 回退) / 退役不释放 |
 | `tlb_flush` | 空操作; fixmap 写入不改变 PTE 映射 |
 | `quiesce_begin` / `quiesce_end` | 空操作; 原子窗口由每次 `text_write` 的 `stop_machine` 提供 |
 
-`alloc_exec` 解析不到时保持 NULL, 需要 origin 的安装因此 fail-closed
+execmem 与 `module_alloc` 两对都没凑齐时, `alloc_exec` 保持 NULL, 需要 origin
+的安装因此 fail-closed
 
 ## 自查清单
 
