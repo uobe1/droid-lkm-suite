@@ -170,5 +170,3 @@ IABT), 这是真机 `rmmod dnsk_ns` panic 的成因.
 
 - [Hook 机制](hook-mechanism.md): `synchronize_rcu()` 覆盖与不覆盖的范围
 - [模块生命周期](module-lifecycle.md): `module_exit` 的逆序清理与 core 引用
-- `docs/notes/On-safe-rmmod.md`(本地资料, 不随仓库分发),
- `docs/notes/On-safe-remove-eval.md`(本地资料, 不随仓库分发): 具体故障与修复依据

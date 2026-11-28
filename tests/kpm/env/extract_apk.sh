@@ -9,7 +9,7 @@
 set -eu
 
 APK=${1:?usage: extract_apk.sh APK [OUT_DIR]}
-OUT=${2:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/out}
+OUT=${2:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/out}
 
 test -f "$APK" || { echo "extract_apk: no such APK: $APK" >&2; exit 1; }
 command -v python3 >/dev/null || { echo "extract_apk: python3 required" >&2; exit 1; }

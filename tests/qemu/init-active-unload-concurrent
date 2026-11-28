@@ -32,8 +32,11 @@ fail() {
 if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
 	"$BB" mount -t tmpfs tmpfs /dev
 	for n in "console 5 1" "null 1 3" "zero 1 5" "urandom 1 9" "tty 5 0"; do
-		set -- $n
-		"$BB" mknod "/dev/$1" c "$2" "$3"
+		name=${n%% *}
+		rest=${n#* }
+		major=${rest%% *}
+		minor=${rest#* }
+		"$BB" mknod "/dev/$name" c "$major" "$minor"
 	done
 fi
 "$BB" mkdir -p /tmp && "$BB" mount -t tmpfs tmpfs /tmp && "$BB" chmod 1777 /tmp
@@ -61,7 +64,7 @@ echo "DNSK_LSMOD_ALL_PRESENT"
 # Idle baseline BEFORE any hammer: if this is already >0 the module leaks a
 # reference at steady state; if it is 0, any later non-zero is live activity.
 "$BB" sleep 2
-idle_ref=$("$BB" awk '$1=="dnsk_ns"{print $3}' /proc/modules 2>/dev/null)
+idle_ref=$("$BB" awk "\$1==\"dnsk_ns\"{print \$3}" /proc/modules 2>/dev/null)
 echo "DNSK_NS_REFCNT_IDLE=${idle_ref:-?}"
 
 # Window for every unload-safety judgement: nothing before this line counts.
@@ -94,7 +97,7 @@ while [ "$tries" -lt 60 ]; do
 	# which is exactly what the module reference is supposed to cause.
 	*busy*|*Busy*|*BUSY*|*temporarily*|*Temporarily*|*unavailable*|*Unavailable*)
 		eagains=$((eagains + 1))
-		refc=$("$BB" awk '$1=="dnsk_ns"{print $3}' /proc/modules 2>/dev/null)
+		refc=$("$BB" awk "\$1==\"dnsk_ns\"{print \$3}" /proc/modules 2>/dev/null)
 		hcount=$("$BB" ps 2>/dev/null | "$BB" grep -c ns_hammer)
 		echo "DNSK_UNLOAD_NS_EAGAIN try=$tries refcnt=${refc:-?} hammers=$hcount"
 		# The hammer holds references for as long as it runs, so a retry can
@@ -119,7 +122,7 @@ if [ "$ns_ok" -ne 1 ]; then
 	# If hammer processes survive, they (not a leak) hold the references.
 	"$BB" killall ns_hammer 2>/dev/null
 	"$BB" sleep 3
-	refc=$("$BB" awk '$1=="dnsk_ns"{print $3}' /proc/modules 2>/dev/null)
+	refc=$("$BB" awk "\$1==\"dnsk_ns\"{print \$3}" /proc/modules 2>/dev/null)
 	hcount=$("$BB" ps 2>/dev/null | "$BB" grep -c ns_hammer)
 	echo "DNSK_NS_REFCNT_FINAL=${refc:-?} hammers=$hcount eagain=$eagains hammer_stopped=$hammer_stopped"
 	fail "ns_never_unloaded refcnt=${refc:-?}"
@@ -160,10 +163,12 @@ fi
 echo "DNSK_UNLOAD_NO_WARN_OK"
 
 # Behaviour restored: with ns gone, IPC/PID namespaces must be uncreatable again.
-"$BB" unshare -i true 2>/dev/null
-[ $? -eq 0 ] && fail ipc_ns_still_creatable
-"$BB" unshare -p -f true 2>/dev/null
-[ $? -eq 0 ] && fail pid_ns_still_creatable
+if "$BB" unshare -i true 2>/dev/null; then
+	fail ipc_ns_still_creatable
+fi
+if "$BB" unshare -p -f true 2>/dev/null; then
+	fail pid_ns_still_creatable
+fi
 echo "DNSK_POST_NS_RESTORED"
 
 echo "DNSK_QEMU_OK"

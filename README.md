@@ -35,8 +35,6 @@ dnskctl start-all        # 或者一次全开
 当前 `ns`, `devtmpfs`, `tmpfsx`, `cgpids`(native 后端), `ipset`, `netfilter`
 都是 **O**; 只有 `cgpids` 的 `native=0` 虚拟控制器是 **V**(用于无法占用 pids 槽位的内核).
 
-分类规则与逐项依据见 `docs/notes/On-OV-split.md`
-
 ## 状态
 
 当前为 **android16-6.12 开发阶段**, 只产出开发工件, 不打 tag
@@ -69,7 +67,7 @@ dnskctl start-all        # 或者一次全开
 
 ```sh
 make KDIR=/path/to/kernel M="$PWD" modules   # 云端/Codespace 内核构建
-make check                                   # 本地: API 漂移 + Markdown 风格 + workflow 输入 + host 单测
+make check                                   # 本地: API 漂移 + 文档/lint 面 + workflow 输入 + host 单测
 make docs                                    # 本地: 从注释重新生成 docs/api/
 ```
 

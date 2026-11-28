@@ -117,6 +117,4 @@ BTF(256, `can_fork@104`, 无 `css_killed`).
 ## 相关阅读
 
 - [core API 契约](../../core/include/dnsk_core.h): ABI, magic, size 与错误语义
-- `docs/evidence/build-profiles.md`(本地资料, 不随仓库分发): schema, CI 输入与 stamp 校验
-- `docs/evidence/abi-config-scope.md`(本地资料, 不随仓库分发): 完整 config 清单与设备/DDK 差异
 - [状态矩阵](../status.md): 当前 core ABI 与各 feature 的验证状态

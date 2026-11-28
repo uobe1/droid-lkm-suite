@@ -72,6 +72,10 @@ jobs:
           NS_EXTRA=""
           [ "${{ inputs.userns }}" = "true" ] && NS_EXTRA="DNSK_USERNS=1"
           for feat in ns diag devtmpfs netfilter ipset cgpids tmpfsx; do
+            EXTRA=()
+            if [ "$feat" = "ns" ] && [ -n "$NS_EXTRA" ]; then
+              EXTRA=("$NS_EXTRA")
+            fi
             make -C "$GITHUB_WORKSPACE/features/$feat" KDIR="$KDIR" \
               DNSK_ABI_PROFILE="${DNSK_ABI_PROFILE:-}" \
               DNSK_PAGE_SIZE="${DNSK_PAGE_SIZE:-}" \
@@ -87,7 +91,7 @@ jobs:
               DNSK_SEQ_FILE_PRIVATE="${DNSK_SEQ_FILE_PRIVATE:-}" \
               DNSK_XT_NOCOMPAT="${DNSK_XT_NOCOMPAT:-}" \
               DNSK_XT_LAYOUT="${DNSK_XT_LAYOUT:-}" \
-              $([ "$feat" = "ns" ] && echo "$NS_EXTRA") modules
+              "${EXTRA[@]}" modules
             cp features/"$feat"/dnsk_*.ko out/
           done
           make -C "$GITHUB_WORKSPACE/tests/qemu/selpermissive" KDIR="$KDIR" modules

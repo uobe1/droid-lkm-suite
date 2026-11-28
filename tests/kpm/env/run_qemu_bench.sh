@@ -12,13 +12,15 @@ TIMEOUT=${3:-900}
 
 APPEND="console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init panic=-1 nokaslr module.sig_enforce=0 selinux=0"
 
+rc_file=$(mktemp) || exit 1
 set +e
-timeout "$TIMEOUT" qemu-system-aarch64 \
+{ timeout "$TIMEOUT" qemu-system-aarch64 \
     -M virt -cpu max -m 4096 -smp 4 -nographic -no-reboot \
     -kernel "$IMG" -initrd "$INITRD" \
-    -append "$APPEND" 2>&1 | tee qemu-kpm.log
-rc=${PIPESTATUS[0]}
+    -append "$APPEND" 2>&1; echo "$?" >"$rc_file"; } | tee qemu-kpm.log
 set -e
+rc=$(cat "$rc_file")
+rm -f "$rc_file"
 echo "qemu_rc=$rc"
 
 grep -q 'KPM_BENCH_A_OK' qemu-kpm.log

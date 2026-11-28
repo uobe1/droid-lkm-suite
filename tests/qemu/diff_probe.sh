@@ -78,32 +78,35 @@ emit "KERNEL=$("$BB" uname -r)"
 # 1. user namespace
 # ==========================================================================
 if have_mod ns; then
-"$BB" unshare -u -r /bin/sh -c 'cat /proc/self/uid_map' >/tmp/um 2>/tmp/ue
-if [ $? -eq 0 ]; then
+if "$BB" unshare -u -r /bin/sh -c 'cat /proc/self/uid_map' >/tmp/um 2>/tmp/ue; then
 	emit "USERNS_CREATE=ok"
 	emit "USERNS_UID_MAP=$(norm < /tmp/um | tr -s ' ' '_')"
 else
 	emit "USERNS_CREATE=err:$(norm < /tmp/ue | head -1)"
 fi
 
-"$BB" unshare -u -r /bin/sh -c 'unshare -u -r /bin/sh -c "true"' 2>/tmp/ne
-[ $? -eq 0 ] && emit "USERNS_NESTED=ok" || emit "USERNS_NESTED=err:$(norm < /tmp/ne | head -1)"
+if "$BB" unshare -u -r /bin/sh -c 'unshare -u -r /bin/sh -c "true"' 2>/tmp/ne; then
+	emit "USERNS_NESTED=ok"
+else
+	emit "USERNS_NESTED=err:$(norm < /tmp/ne | head -1)"
+fi
 
 # An unmapped host uid must be rejected: this is the boundary that a fake
 # implementation usually gets wrong.
-"$BB" unshare -u -r /bin/sh -c 'echo "0 99999 1" > /proc/self/uid_map' 2>/tmp/me
-[ $? -eq 0 ] && emit "USERNS_BAD_MAP=accepted" || emit "USERNS_BAD_MAP=refused"
+if "$BB" unshare -u -r /bin/sh -c 'echo "0 99999 1" > /proc/self/uid_map' 2>/tmp/me; then
+	emit "USERNS_BAD_MAP=accepted"
+else
+	emit "USERNS_BAD_MAP=refused"
+fi
 
 # gid_map and setgroups are separate surfaces: a uid-only emulation can pass
 # the uid_map probe and still fail the group side.
-"$BB" unshare -u -r /bin/sh -c 'cat /proc/self/gid_map' >/tmp/gm 2>/tmp/ge
-if [ $? -eq 0 ]; then
+if "$BB" unshare -u -r /bin/sh -c 'cat /proc/self/gid_map' >/tmp/gm 2>/tmp/ge; then
 	emit "USERNS_GID_MAP=$(norm < /tmp/gm | tr -s ' ' '_')"
 else
 	emit "USERNS_GID_MAP=err:$(norm < /tmp/ge | head -1)"
 fi
-"$BB" unshare -u -r /bin/sh -c 'cat /proc/self/setgroups' >/tmp/sg 2>/tmp/sge
-if [ $? -eq 0 ]; then
+if "$BB" unshare -u -r /bin/sh -c 'cat /proc/self/setgroups' >/tmp/sg 2>/tmp/sge; then
 	emit "USERNS_SETGROUPS=$(head -1 /tmp/sg)"
 else
 	emit "USERNS_SETGROUPS=err:$(norm < /tmp/sge | head -1)"
@@ -141,14 +144,23 @@ fi
 # 2. PID / IPC namespace
 # ==========================================================================
 if have_mod ns; then
-"$BB" unshare -p -f /bin/sh -c 'echo ok' >/dev/null 2>/tmp/pe
-[ $? -eq 0 ] && emit "PIDNS_CREATE=ok" || emit "PIDNS_CREATE=err:$(norm < /tmp/pe | head -1)"
+if "$BB" unshare -p -f /bin/sh -c 'echo ok' >/dev/null 2>/tmp/pe; then
+	emit "PIDNS_CREATE=ok"
+else
+	emit "PIDNS_CREATE=err:$(norm < /tmp/pe | head -1)"
+fi
 
-"$BB" unshare -p -f /bin/sh -c 'unshare -p -f /bin/sh -c "true"' >/dev/null 2>&1
-[ $? -eq 0 ] && emit "PIDNS_NESTED=ok" || emit "PIDNS_NESTED=refused"
+if "$BB" unshare -p -f /bin/sh -c 'unshare -p -f /bin/sh -c "true"' >/dev/null 2>&1; then
+	emit "PIDNS_NESTED=ok"
+else
+	emit "PIDNS_NESTED=refused"
+fi
 
-"$BB" unshare -i /bin/sh -c 'true' 2>/tmp/ie
-[ $? -eq 0 ] && emit "IPCNS_CREATE=ok" || emit "IPCNS_CREATE=err:$(norm < /tmp/ie | head -1)"
+if "$BB" unshare -i /bin/sh -c 'true' 2>/tmp/ie; then
+	emit "IPCNS_CREATE=ok"
+else
+	emit "IPCNS_CREATE=err:$(norm < /tmp/ie | head -1)"
+fi
 
 # A created pidns must actually renumber: the first process is pid 1, NSpid
 # lists two levels, and the child's ns link differs from the parent's.
@@ -179,7 +191,11 @@ fi
 # 3. SysV IPC + POSIX mqueue error codes
 # ==========================================================================
 if have_mod ns; then
-[ -x /ipc_probe ] && /ipc_probe || emit "IPC_PROBE=missing"
+if [ -x /ipc_probe ]; then
+	/ipc_probe || emit "IPC_PROBE=missing"
+else
+	emit "IPC_PROBE=missing"
+fi
 
 # IPC namespace isolation is kernel state, not just a syscall result: a shm
 # segment or mqueue created in a child ipcns must not survive in the parent.
@@ -205,8 +221,11 @@ if [ -x /ipcns_leak ]; then
 	"$BB" grep -E '^IPCNS_MQ_ISOLATED_RC=' /tmp/imc ||
 		emit "IPCNS_MQ_ISOLATED_RC=missing"
 	mq_rc=$(sed -n 's/^IPCNS_MQ_ISOLATED_RC=//p' /tmp/imc | head -1)
-	[ "$mq_rc" = 0 ] && emit "IPCNS_MQ_ISOLATED=yes" ||
+	if [ "$mq_rc" = 0 ]; then
+		emit "IPCNS_MQ_ISOLATED=yes"
+	else
 		emit "IPCNS_MQ_ISOLATED=no"
+	fi
 else
 	emit "IPCNS_ISOLATION_PROBE=missing"
 fi
@@ -337,13 +356,11 @@ fi
 # 5. cgroup pids
 # ==========================================================================
 #
-# Oracle-side hang, observed on run 44911018208 (2026-11-21): the oracle probe
-# stops right after PIDS_PEAK2 and prints nothing for the remaining ~10 min
-# until `timeout 600` kills QEMU (qemu_oracle_rc=124).  PIDS_EVENTS and
-# PIDS_CURRENT never appear.  PIDS_PEAK1/PIDS_PEAK2 are both 0, i.e. nothing was
-# ever charged to that cgroup.  No panic/oops line is present, and the guest
-# runs with panic=-1 and no hard watchdog, so a stuck kernel looks exactly like
-# a silent 10-minute stall.
+# Oracle-side hang: the oracle probe can stop right after PIDS_PEAK2 and print
+# nothing until `timeout 600` kills QEMU (qemu_oracle_rc=124).  PIDS_EVENTS and
+# PIDS_CURRENT then never appear, PIDS_PEAK1/PIDS_PEAK2 are both 0, and no
+# panic/oops line is present.  The guest runs with panic=-1 and no hard
+# watchdog, so a stuck kernel looks exactly like a silent stall.
 #
 # HYPOTHESIS (not a conclusion): the `+pids` write to cgroup.subtree_control
 # below may not take effect on the native oracle, after which either the
@@ -393,8 +410,9 @@ if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
 			cg_read MAX_WRITE "$P"; emit "PIDS_MAX_WRITE=${CGL:-}"
 			echo 3 > "$P" 2>/dev/null
 			cg_read MAX_RESET "$P"; emit "PIDS_MAX_RESET=${CGL:-}"
-			echo bogus > "$P" 2>/dev/null
-			emit "PIDS_BAD_WRITE_RC=$?"
+			printf 'bogus\n' > "$P" 2>/dev/null
+			bad_rc=$?
+			emit "PIDS_BAD_WRITE_RC=$bad_rc"
 			echo max > "$P" 2>/dev/null
 			# peak is a monotonic high-water mark: reading twice must not change
 			# it, and it must survive a limit rewrite.
@@ -478,7 +496,11 @@ if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
 					'echo $$ > /sys/fs/cgroup/dnsk_diff/cgroup.procs 2>/dev/null; exec /pids_probe' \
 					2>/dev/null); frc=$?
 				[ "$frc" = 124 ] && emit "PIDS_FORK_HANG"
-				[ -n "$fork" ] && emit "$fork" || emit "PIDS_FORK_ERRNO=missing"
+				if [ -n "$fork" ]; then
+					emit "$fork"
+				else
+					emit "PIDS_FORK_ERRNO=missing"
+				fi
 				echo max > "$P" 2>/dev/null
 			else
 				emit "PIDS_FORK_PROBE=missing"
@@ -531,20 +553,28 @@ if "$BB" mount -t devtmpfs devtmpfs /tmp/dv 2>/tmp/dve; then
 	# The mount table and the device numbers are part of devtmpfs, not just the
 	# presence of two names.
 	emit "DEVTMPFS_FSTYPE=$(awk '$2 == "/tmp/dv" {print $3; exit}' /proc/mounts 2>/dev/null)"
-	null_dev=$(ls -l /tmp/dv/null 2>/dev/null | awk '
+	null_dev=$("$BB" ls -l /tmp/dv/null 2>/dev/null | awk '
 		{ for (i = 1; i <= NF; i++) {
 			if ($i ~ /^[0-9]+,$/) { print $i $(i + 1); exit }
 			if ($i ~ /^[0-9]+,[0-9]+$/) { print $i; exit }
 		} }' | tr -d ' ')
 	emit "DEVTMPFS_NULL_MAJMIN=$null_dev"
-	console_dev=$(ls -l /tmp/dv/console 2>/dev/null | awk '
+	console_dev=$("$BB" ls -l /tmp/dv/console 2>/dev/null | awk '
 		{ for (i = 1; i <= NF; i++) {
 			if ($i ~ /^[0-9]+,$/) { print $i $(i + 1); exit }
 			if ($i ~ /^[0-9]+,[0-9]+$/) { print $i; exit }
 		} }' | tr -d ' ')
 	emit "DEVTMPFS_CONSOLE_MAJMIN=$console_dev"
-	[ -e /tmp/dv/null ] && emit "DEVTMPFS_NULL=present" || emit "DEVTMPFS_NULL=absent"
-	[ -e /tmp/dv/console ] && emit "DEVTMPFS_CONSOLE=present" || emit "DEVTMPFS_CONSOLE=absent"
+	if [ -e /tmp/dv/null ]; then
+		emit "DEVTMPFS_NULL=present"
+	else
+		emit "DEVTMPFS_NULL=absent"
+	fi
+	if [ -e /tmp/dv/console ]; then
+		emit "DEVTMPFS_CONSOLE=present"
+	else
+		emit "DEVTMPFS_CONSOLE=absent"
+	fi
 	"$BB" umount /tmp/dv 2>/dev/null
 else
 	emit "DEVTMPFS_MOUNT=err:$(norm < /tmp/dve | head -1)"
@@ -643,7 +673,7 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ] && have_mod netfilter && have_mod ipset; then
 		# which a rule count in one netns cannot see.
 		netns_before=$("$IPT" -t filter -S INPUT 2>/dev/null | "$BB" grep -c '^-A')
 		IPT=$IPT "$BB" unshare -n "$BB" sh -c \
-			'"$IPT" -t filter -A INPUT -p tcp --dport 11 -j ACCEPT' 2>/dev/null
+			"\"\$IPT\" -t filter -A INPUT -p tcp --dport 11 -j ACCEPT" 2>/dev/null
 		emit "NETNS_RULE_ADD_RC=$?"
 		netns_after=$("$IPT" -t filter -S INPUT 2>/dev/null | "$BB" grep -c '^-A')
 		if [ "$netns_before" = "$netns_after" ]; then
@@ -657,8 +687,11 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ] && have_mod netfilter && have_mod ipset; then
 		emit "XT_RECENT=$?"
 		# xt_recent owns a per-net /proc table; a rule that registers but does
 		# not create it leaves userspace without the expected state.
-		[ -e /proc/net/xt_recent/dnskprobe ] && \
-			emit "XT_RECENT_PROC=present" || emit "XT_RECENT_PROC=absent"
+		if [ -e /proc/net/xt_recent/dnskprobe ]; then
+			emit "XT_RECENT_PROC=present"
+		else
+			emit "XT_RECENT_PROC=absent"
+		fi
 		# REJECT is native on both sides (CONFIG_IP_NF_TARGET_REJECT=y), so this
 		# is a real comparison rather than "missing on both".
 		"$IPT" -t filter -A INPUT -p tcp --dport 9 -j REJECT --reject-with tcp-reset 2>/dev/null
@@ -736,7 +769,7 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ] && have_mod netfilter && have_mod ipset; then
 		"$IPT" -t filter -Z OUTPUT 2>/dev/null
 		# SET --add-set does not accumulate on an element that already exists:
 		# it inserts on the first matching packet and leaves the counters alone
-		# afterwards (measured: 3 same-source pings -> packets 1).  Use three
+		# afterwards (three same-source pings yield one packet).  Use three
 		# distinct loopback sources so each packet inserts its own element, and
 		# sum the per-element counters.
 		for esrc in 127.0.0.2 127.0.0.3 127.0.0.4; do
@@ -752,12 +785,12 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ] && have_mod netfilter && have_mod ipset; then
 		emit "E4_IPSET_RAW=$(printf '%s' "$raw_ip" | "$BB" tr -s ' ' '_')"
 		emit "E4_IPSET_ELEMS=$("$IPS" list dnskcounters 2>/dev/null |
 			"$BB" grep -c 'packets')"
-		ipk=$("$IPS" list dnskcounters 2>/dev/null | "$BB" awk '
-			{ for (i = 1; i < NF; i++) if ($i == "packets") s += $(i + 1) }
-			END { print s + 0 }')
-		iby=$("$IPS" list dnskcounters 2>/dev/null | "$BB" awk '
-			{ for (i = 1; i < NF; i++) if ($i == "bytes") s += $(i + 1) }
-			END { print s + 0 }')
+		ipk=$("$IPS" list dnskcounters 2>/dev/null | "$BB" awk "
+			{ for (i = 1; i < NF; i++) if (\$i == \"packets\") s += \$(i + 1) }
+			END { print s + 0 }")
+		iby=$("$IPS" list dnskcounters 2>/dev/null | "$BB" awk "
+			{ for (i = 1; i < NF; i++) if (\$i == \"bytes\") s += \$(i + 1) }
+			END { print s + 0 }")
 		emit "E4_IPSET_PKTS=${ipk:-0}"
 		emit "E4_IPSET_BYTES=${iby:-0}"
 		[ "${ipk:-0}" -ge "$E4_MIN" ] || emit "E4_INSUFFICIENT=IPSET_COUNTERS"
@@ -765,8 +798,8 @@ if [ "${DNSK_DIFF_NET:-0}" = 1 ] && have_mod netfilter && have_mod ipset; then
 		raw_ipt=$("$IPT" -v -x -L OUTPUT 2>/dev/null |
 			"$BB" awk '/dnskcounters/ { print; exit }')
 		emit "E4_IPT_RAW=$(printf '%s' "$raw_ipt" | "$BB" tr -s ' ' '_')"
-		iptp=$(printf '%s' "$raw_ipt" | "$BB" awk '{ print $1 + 0 }')
-		iptb=$(printf '%s' "$raw_ipt" | "$BB" awk '{ print $2 + 0 }')
+		iptp=$(printf '%s' "$raw_ipt" | "$BB" awk "{ print \$1 + 0 }")
+		iptb=$(printf '%s' "$raw_ipt" | "$BB" awk "{ print \$2 + 0 }")
 		emit "E4_IPT_PKTS=${iptp:-0}"
 		emit "E4_IPT_BYTES=${iptb:-0}"
 		[ "${iptp:-0}" -ge "$E4_MIN" ] || emit "E4_INSUFFICIENT=IPT_COUNTERS"
@@ -821,12 +854,19 @@ fi
 # Userspace agreeing is not enough: the kernel's own bookkeeping is part of the
 # contract.  A module that fakes the syscall result shows up here.
 for nsw in mnt uts net cgroup time; do
-	[ -e "/proc/self/ns/$nsw" ] && emit "NS_LINK_$nsw=present" || emit "NS_LINK_$nsw=absent"
+	if [ -e "/proc/self/ns/$nsw" ]; then
+		emit "NS_LINK_$nsw=present"
+	else
+		emit "NS_LINK_$nsw=absent"
+	fi
 done
 if have_mod ns; then
 	for nsw in user pid ipc; do
-		[ -e "/proc/self/ns/$nsw" ] && emit "NS_LINK_$nsw=present" ||
+		if [ -e "/proc/self/ns/$nsw" ]; then
+			emit "NS_LINK_$nsw=present"
+		else
 			emit "NS_LINK_$nsw=absent"
+		fi
 	done
 else
 	skip_sec "kernel-side/ns"
@@ -834,7 +874,11 @@ fi
 
 for k in Uid Gid CapEff NoNewPrivs Seccomp; do
 	v=$("$BB" grep -m1 "^$k:" /proc/self/status 2>/dev/null)
-	[ -n "$v" ] && emit "STATUS_$k=present" || emit "STATUS_$k=absent"
+	if [ -n "$v" ]; then
+		emit "STATUS_$k=present"
+	else
+		emit "STATUS_$k=absent"
+	fi
 done
 
 if have_mod ns; then
@@ -851,7 +895,11 @@ fi
 
 if [ -r /proc/filesystems ]; then
 	for fs in tmpfs overlay fuse; do
-		"$BB" grep -qw "$fs" /proc/filesystems && emit "FS_$fs=present" || emit "FS_$fs=absent"
+		if "$BB" grep -qw "$fs" /proc/filesystems; then
+			emit "FS_$fs=present"
+		else
+			emit "FS_$fs=absent"
+		fi
 	done
 	if have_mod devtmpfs; then
 		if "$BB" grep -qw devtmpfs /proc/filesystems; then
@@ -876,7 +924,11 @@ fi
 if have_mod cgpids; then
 	if [ -r /proc/cgroups ]; then
 		line=$("$BB" grep -E '^pids[[:space:]]' /proc/cgroups 2>/dev/null)
-		[ -n "$line" ] && emit "CGROUPS_PIDS=present" || emit "CGROUPS_PIDS=absent"
+		if [ -n "$line" ]; then
+			emit "CGROUPS_PIDS=present"
+		else
+			emit "CGROUPS_PIDS=absent"
+		fi
 	fi
 	[ -r /sys/fs/cgroup/cgroup.subtree_control ] && \
 		emit "SUBTREE=$("$BB" tr ' ' '_' < /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null)"
@@ -899,7 +951,11 @@ if [ -x /userns_test ]; then
 		v=$(printf '%s\n' "$UT" | "$BB" grep -E "^$k(=|$)" | head -1)
 		[ -n "$v" ] && emit "$v"
 	done
-	printf '%s\n' "$UT" | "$BB" grep -q USERNS_IDMAP_OK && emit "USERNS_IDMAP=ok" || emit "USERNS_IDMAP=refused"
+	if printf '%s\n' "$UT" | "$BB" grep -q USERNS_IDMAP_OK; then
+		emit "USERNS_IDMAP=ok"
+	else
+		emit "USERNS_IDMAP=refused"
+	fi
 else
 	emit "USERNS_IDMAP=probe_missing"
 fi

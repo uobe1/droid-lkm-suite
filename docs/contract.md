@@ -158,13 +158,12 @@ profile 不匹配时**必须拒绝加载**, 不得"尽力而为":
 | `docs/evidence/` | 研究汇报, 门控证据, 可行性研究 | 否 |
 | memory | 跨会话可复用的规则与事实 | 否 |
 
-tracked 文档**不得**链接后三者 (新克隆会 404).只能写纯路径并注明"本地资料"
+tracked 文档**不得**引用后三者 (新克隆会 404)
 
 ### 6.3 数字与 run id 不进 tracked 文档
 
-它们属于 `docs/notes/` 或 `docs/evidence/`.tracked 文档只写结论与判据.
-例外是 `docs/status.md`: 它是状态与证据指针的权威表, 必须保留 run id 以便复核,
-其余 tracked 文档仍按本节执行
+它们属于 `docs/notes/` 或 `docs/evidence/`.tracked 文档只写结论与判据, 包括
+`docs/status.md`: 逐项证据保存在本地资料, 不随仓库分发
 
 ---
 

@@ -25,8 +25,11 @@ FEATURE=${DNSK_FEATURE:-ns}
 if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
 	"$BB" mount -t tmpfs tmpfs /dev
 	for n in "console 5 1" "null 1 3" "zero 1 5" "random 1 8" "urandom 1 9" "tty 5 0" "kmsg 1 11"; do
-		set -- $n
-		"$BB" mknod "/dev/$1" c "$2" "$3"
+		name=${n%% *}
+		rest=${n#* }
+		major=${rest%% *}
+		minor=${rest#* }
+		"$BB" mknod "/dev/$name" c "$major" "$minor"
 	done
 fi
 "$BB" mount -t tmpfs tmpfs /tmp && "$BB" chmod 1777 /tmp
@@ -133,7 +136,7 @@ echo "DNSK_DRAIN_WAIT=$i refs=${refs:-none}"
 # kept the module pinned; that is a real defect, not slowness.
 if [ "${refs:-1}" != "0" ]; then
 	dnskctl monitor
-	fail drain_timeout_$FEATURE
+	fail "drain_timeout_$FEATURE"
 fi
 
 mark=$(cursor)
@@ -178,8 +181,9 @@ ns)
 	# `unshare -u -f` is not a valid probe here: -f only forks and succeeds even
 	# with CONFIG_USER_NS=n.  -r writes a uid map, which actually reaches
 	# create_user_ns().
-	"$BB" unshare -p -f /bin/true 2>/dev/null
-	[ $? -eq 0 ] && fail pidns_still_live
+	if "$BB" unshare -p -f /bin/true 2>/dev/null; then
+		fail pidns_still_live
+	fi
 	echo "DNSK_POST_PIDNS_RESTORED"
 	"$BB" unshare -u -r /bin/sh -c 'cat /proc/self/uid_map' 2>/tmp/unshare_after.err
 	userns_rc=$?

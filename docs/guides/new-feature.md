@@ -19,9 +19,7 @@
 
 一个模块可以调用内核 helper 却仍属 V(内核没有真正参与那条语义), 也可以只做少量注入却属 O(内核自己的调度/accounting 在跑)
 
-完整定义见 `docs/notes/On-OV-split.md`(本地资料, 不随仓库分发)
-
-O 类的额外前提: 确认目标内核缺的是哪个 `CONFIG_*`, 并在 `docs/notes/On-netns-minimum-and-extension.md`(本地资料) 这类清单里登记"设备已有 / 模块补齐", 不要重复实现内核已有的能力
+O 类的额外前提: 确认目标内核缺的是哪个 `CONFIG_*`, 并在本地维护的 config 清单里登记"设备已有 / 模块补齐", 不要重复实现内核已有的能力
 
 ## 目录结构
 
@@ -125,4 +123,4 @@ features/<name>/
 - 设备侧: `dnskctl preflight` 通过, `dnskctl load <name>` 成功,
  `dnskctl status` 显示该 feature
 - 卸载: `rmmod` 成功, `lsmod` 清洁, 卸载后内核行为回到原生态
-- 语义: 语义差分方法与边界见 `docs/notes/On-native-status-snapshot.md`(本地资料, 不随仓库分发), 以及 `docs/evidence/` 下的差分报告
+- 语义: 用同一组探针在原生内核与模块内核上做差分, 逐项比对 `/proc`, `/sys`, errno 与计数

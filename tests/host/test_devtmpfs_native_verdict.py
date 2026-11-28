@@ -26,8 +26,8 @@ HOOKS_C = ROOT / "features" / "devtmpfs" / "vendor" / "devtmpfs" / "hooks.c"
 STATUS_MD = ROOT / "docs" / "status.md"
 README = ROOT / "features" / "devtmpfs" / "README.md"
 
-# Line numbers cited by docs/status.md, docs/notes/On-devtmpfs-native-*.md and
-# features/devtmpfs/README.md. Keeping them asserted keeps the citations honest.
+# Line numbers cited by the status matrix and features/devtmpfs/README.md.
+# Keeping them asserted keeps the citations honest.
 CONFIG_LINE = 1836
 TMPFS_LINE = 7101
 

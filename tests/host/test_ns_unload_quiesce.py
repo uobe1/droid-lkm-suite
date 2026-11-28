@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Ordering / counter guard for unloading dnsk_ns with concurrent callers.
 
-This is the regression test for the real-device panic (see
-docs/evidence/device-panic-dnsk-ns-unload-2026-11-27.md): a task that was
+This is the regression test for the real-device panic: a task that was
 still *inside* a module-resident path (fork/clone into a new pid/ipc namespace,
 a blocking SYSVIPC/POSIX-mqueue syscall, or the module's full ``do_exit``
 replacement) when ``rmmod dnsk_ns`` freed the module text.  ``stop_machine()``

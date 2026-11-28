@@ -4,7 +4,7 @@
 
 - Repository: AOSP `kernel/common` (Android common kernel), branch `android16-6.12`
 - Tag: `android16-6.12-2025-09_r12` (annotated tag object `15cb176d0e05e89a4d2b2c83f6d8311f48c43979`)
-- Commit: `e1b7f2c3c5bdb42b8083b0199de89b1b155e9daf` (2025-11-16, Linux 6.12.38)
+- Commit: `e1b7f2c3c5bdb42b8083b0199de89b1b155e9daf` (Linux 6.12.38)
 - Tag URL: <https://android.googlesource.com/kernel/common/+/refs/tags/android16-6.12-2025-09_r12>
 - File URL template:
   <https://android.googlesource.com/kernel/common/+/e1b7f2c3c5bdb42b8083b0199de89b1b155e9daf/PATH>

@@ -60,7 +60,7 @@ reader still sees the whole original table, so it is a *safe mechanism probe*,
   folded into loop bounds, masks and `cmp` operands. The count is an enum
   constant with no symbol, so there is no authoritative site list; the rewrite is
   deferred on purpose (reason and a runtime detection method are in the in-code
-  comment, and in `docs/notes/On-cgpids-reloc-2026-11-21.md`, local material);
+  comment);
 - it does **not** touch the shadow arrays sized by `CGROUP_SUBSYS_COUNT`
   (`cgroup_subsys_name[]`, `*_enabled_key[]`, `*_on_dfl_key[]`, and the embedded
   `css_set->subsys[]` / `cgroup->subsys[]` / `e_csets[]` / `nr_dying_subsys[]`).

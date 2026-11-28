@@ -902,7 +902,9 @@ do_storage_loop() {
 	shift
 	case "$action" in
 	create)
-		[ $# -ge 2 ] && [ $# -le 3 ] || die "storage-loop create <img> <size> [ext4|f2fs]"
+		if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+			die "storage-loop create <img> <size> [ext4|f2fs]"
+		fi
 		img=$1
 		size=$2
 		fs=${3:-ext4}

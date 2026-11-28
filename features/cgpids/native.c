@@ -351,7 +351,6 @@ static void dnsk_rwprobe_scan_refs(void *target)
  * it only rewrites *reference pairs* to the array base.  It does NOT rewrite
  * the CGROUP_SUBSYS_COUNT immediate the compiler folded into loop bounds,
  * `cmp`/`mov` operands and bitmasks, and it does not touch the shadow arrays
- * from docs/evidence/rw-memory-mutation-research.md §2.1-B
  * (cgroup_subsys_name[], *_enabled_key[], *_on_dfl_key[], and the embedded
  * css_set->subsys[] / cgroup->subsys[] / e_csets[] / nr_dying_subsys[]).
  * Because the copy has identical content, any missed reader still sees the
@@ -360,7 +359,7 @@ static void dnsk_rwprobe_scan_refs(void *target)
  *
  * Why the CGROUP_SUBSYS_COUNT immediate rewrite is deliberately deferred and
  * not done here:
- *   - The count has no symbol (the beryl probe read `cgroup_subsys_count`
+ *   - The count has no symbol (the device probe read `cgroup_subsys_count`
  *     as -ENOENT: it is fully folded), so there is no authoritative site
  *     list.  A literal `#8 -> #9` sweep over _stext.._etext matches countless
  *     unrelated 8s; patching the wrong immediate corrupts arbitrary code.

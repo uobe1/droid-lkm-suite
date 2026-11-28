@@ -39,8 +39,8 @@ Known residual differences against a kernel built with `CONFIG_DEVTMPFS=y`:
    updates from hooks. The default `trigger=entry` keeps the old ordering
    (node after uevent/driver probe, gone before `bus_notify(DEL)`); the opt-in
    `trigger=bus` moves the add node before the notifier chain and the del node
-   after it. Gap #1 is closed by QEMU run `44982893540` (all four markers:
-   `READY`/`ADD_NODE_PRESENT`/`DEL_NODE_PRESENT`/`ROLLBACK_OK`); `trigger=bus`
+   after it. The QEMU gate observes all four markers
+   (`READY`/`ADD_NODE_PRESENT`/`DEL_NODE_PRESENT`/`ROLLBACK_OK`); `trigger=bus`
    itself is QEMU-only, not device-verified.
 2. The worker runs with the loader's credentials instead of the kernel's
    credentials, so SELinux/AVC decisions can differ.
@@ -98,6 +98,3 @@ after reloading without the parameter confirms the fallback.
 
 The module refuses to shadow a kernel that ships devtmpfs: at init it calls
 `get_fs_type("devtmpfs")` and returns `-EEXIST` if the type exists.
-
-Local material, not part of this page: `docs/notes/On-devtmpfs-native-2026-11-21.md`
-holds the verdict, the gap table and the AOSP `file:line` evidence.

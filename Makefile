@@ -21,8 +21,9 @@ clean:
 	$(MAKE) -C "$(KDIR)" M="$(PWD)" clean
 
 check: docs-check
-	sh ./scripts/check-style.sh
 	python3 scripts/check-ci-inputs.py
+	python3 -m unittest discover -s tests/host -p 'test_*.py'
+	sh ./scripts/check-style.sh
 
 # ---------------------------------------------------------------------------
 # API documentation

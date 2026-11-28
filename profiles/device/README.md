@@ -1,8 +1,8 @@
 # beryl device kernel config
 
 `beryl-6.12.30.config.gz` is the exact config copied from the device
-`/proc/config.gz` on 2026-11-06 (kernel
-`6.12.30-android16-5-g1ed949324a3e-ab13881345-4k`, Redmi Note 14 5G).
+`/proc/config.gz` (kernel `6.12.30-android16-5-g1ed949324a3e-ab13881345-4k`,
+Redmi Note 14 5G).
 
 It is the base for QEMU/DKK oracle builds: copy it over the build `.config`,
 then apply only the explicit test deltas in `.github/workflows/qemu-core.yml`

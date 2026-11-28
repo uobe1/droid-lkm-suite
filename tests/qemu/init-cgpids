@@ -21,11 +21,12 @@ if ! "$BB" mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
 fi
 
 EXPECT_PIDS=0
-MODPARAM=""
-for arg in $(cat /proc/cmdline); do
+cmdline=$(cat /proc/cmdline)
+set --
+for arg in $cmdline; do
 	case "$arg" in
-		cgpids_native=1) EXPECT_PIDS=1; MODPARAM="native=1" ;;
-		cgpids_rw_probe=1) MODPARAM="$MODPARAM rw_probe=1" ;;
+		cgpids_native=1) EXPECT_PIDS=1; set -- native=1 ;;
+		cgpids_rw_probe=1) set -- "$@" rw_probe=1 ;;
 	esac
 done
 
@@ -62,13 +63,13 @@ if grep -q 'dnsk_lkm=1' /proc/cmdline; then
 		[ "$(cat /sys/fs/selinux/enforce)" = 0 ] || fail selinux_enforcing
 		echo "DNSK_SELINUX_AFTER_KSU=permissive"
 		/ksud insmod /modules/dnsk_core.ko || fail dnsk_core_ksud_insmod
-		/ksud insmod /modules/dnsk_cgpids.ko $MODPARAM || fail dnsk_cgpids_ksud_insmod
+		/ksud insmod /modules/dnsk_cgpids.ko "$@" || fail dnsk_cgpids_ksud_insmod
 	elif [ -x /insmod_force ]; then
 		/insmod_force /modules/dnsk_core.ko || fail dnsk_core_insmod
-		/insmod_force /modules/dnsk_cgpids.ko $MODPARAM || fail dnsk_cgpids_insmod
+		/insmod_force /modules/dnsk_cgpids.ko "$@" || fail dnsk_cgpids_insmod
 	else
 		"$BB" insmod /modules/dnsk_core.ko || fail dnsk_core_insmod
-		"$BB" insmod /modules/dnsk_cgpids.ko $MODPARAM || fail dnsk_cgpids_insmod
+		"$BB" insmod /modules/dnsk_cgpids.ko "$@" || fail dnsk_cgpids_insmod
 	fi
 	echo "DNSK_CGPIDS_LKM_OK"
 	if grep -q '^pids' /proc/cgroups; then
@@ -86,14 +87,14 @@ echo "DNSK_CGPIDS_ROOT_SUBTREE=$(cat /sys/fs/cgroup/cgroup.subtree_control)"
 echo +pids > /sys/fs/cgroup/t/cgroup.subtree_control || fail t_subtree_write
 "$BB" mkdir /sys/fs/cgroup/t/a || fail mkdir_a
 test -e /sys/fs/cgroup/t/a/pids.max || fail no_pids_files
-read max_before < /sys/fs/cgroup/t/a/pids.max || fail read_max_before
+read -r max_before < /sys/fs/cgroup/t/a/pids.max || fail read_max_before
 echo "DNSK_CGPIDS_MAX_BEFORE=$max_before"
 echo 3 > /sys/fs/cgroup/t/a/pids.max || fail pids_max_write
-read max_after < /sys/fs/cgroup/t/a/pids.max || fail read_max
+read -r max_after < /sys/fs/cgroup/t/a/pids.max || fail read_max
 echo "DNSK_CGPIDS_MAX=$max_after"
 
 echo $$ > /sys/fs/cgroup/t/a/cgroup.procs || fail move_shell
-read current_shell < /sys/fs/cgroup/t/a/pids.current || fail read_shell
+read -r current_shell < /sys/fs/cgroup/t/a/pids.current || fail read_shell
 echo "DNSK_CGPIDS_CURRENT_SHELL=$current_shell"
 
 n=0
@@ -105,9 +106,9 @@ while [ "$n" -lt 10 ]; do
 	fi
 done
 echo "DNSK_CGPIDS_SPAWNED=$n"
-read current_after < /sys/fs/cgroup/t/a/pids.current || fail read_current
-read peak_after < /sys/fs/cgroup/t/a/pids.peak || fail read_peak
-read events_after < /sys/fs/cgroup/t/a/pids.events || fail read_events
+read -r current_after < /sys/fs/cgroup/t/a/pids.current || fail read_current
+read -r peak_after < /sys/fs/cgroup/t/a/pids.peak || fail read_peak
+read -r events_after < /sys/fs/cgroup/t/a/pids.events || fail read_events
 echo "DNSK_CGPIDS_CURRENT=$current_after"
 echo "DNSK_CGPIDS_PEAK=$peak_after"
 echo "DNSK_CGPIDS_EVENTS=$events_after"
@@ -117,8 +118,8 @@ echo 10 > /sys/fs/cgroup/t/a/pids.max || fail raise_limit
 "$BB" mkdir /sys/fs/cgroup/t/b || fail mkdir_b
 sh -c 'sleep 30 & echo $! > /sys/fs/cgroup/t/b/cgroup.procs' || fail migrate_child
 sleep 1
-read a_after < /sys/fs/cgroup/t/a/pids.current || fail read_a_after
-read b_after < /sys/fs/cgroup/t/b/pids.current || fail read_b_after
+read -r a_after < /sys/fs/cgroup/t/a/pids.current || fail read_a_after
+read -r b_after < /sys/fs/cgroup/t/b/pids.current || fail read_b_after
 echo "DNSK_CGPIDS_A_AFTER_MIGRATE=$a_after"
 echo "DNSK_CGPIDS_B_AFTER_MIGRATE=$b_after"
 

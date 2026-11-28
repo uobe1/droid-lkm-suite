@@ -25,7 +25,8 @@ cd /kpm-bench || { echo KPM_BENCH_FAIL=no_workdir; poweroff -f; exit 1; }
 
 REPS=20
 N=10000000
-for arg in $(cat /proc/cmdline); do
+cmdline=$(cat /proc/cmdline)
+for arg in $cmdline; do
     case "$arg" in
         kpm_bench.reps=*) REPS=${arg#kpm_bench.reps=} ;;
         kpm_bench.n=*) N=${arg#kpm_bench.n=} ;;

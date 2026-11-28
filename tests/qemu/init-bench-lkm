@@ -14,7 +14,8 @@ N=1000000
 mkdir -p /dev/pts /dev/shm /bench
 "$BB" mount -t devpts devpts /dev/pts 2>/dev/null || true
 
-for arg in $(cat /proc/cmdline); do
+cmdline=$(cat /proc/cmdline)
+for arg in $cmdline; do
 	case "$arg" in
 		bench.reps=*) REPS=${arg#bench.reps=} ;;
 		bench.n=*) N=${arg#bench.n=} ;;

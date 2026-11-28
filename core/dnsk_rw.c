@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Root-only RW server (/proc/dnsk/rw); research and measurements are in
- * docs/evidence/rw-memory-mutation-research.md.
+ * Root-only RW server (/proc/dnsk/rw).
  *
  * Two primitives, both single-page and <= 256 bytes per operation:
  *   - kernel virtual addresses: read via copy_from_kernel_nofault(), write via

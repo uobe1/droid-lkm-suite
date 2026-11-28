@@ -12,7 +12,7 @@
 
 set -u
 
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 DIFF="$ROOT/tests/qemu/diff_semantics.sh"
 PROBE="$ROOT/tests/qemu/diff_probe.sh"
 ORACLE_INIT="$ROOT/tests/qemu/init-diff-oracle"
@@ -373,7 +373,7 @@ assert_file_has "oracle Image is reused through oracle_image_run_id" "$WORKFLOW"
 assert_file_has "diff mode exists" "$WORKFLOW" '^          - diff$'
 assert_file_has "diff job is mode-gated" "$WORKFLOW" "inputs.mode == 'diff'"
 assert_file_has "image build is skipped in diff mode" "$WORKFLOW" \
-	"inputs.mode != 'diff' && inputs.image_run_id == ''"
+	"inputs\.mode != 'diff'.*inputs\.image_run_id == ''"
 assert_file_has "diff map is compared with diff_semantics.sh" "$WORKFLOW" \
 	'diff_semantics.sh oracle.log lkm.log'
 assert_file_has "net probes are opt-in in the workflow" "$WORKFLOW" \

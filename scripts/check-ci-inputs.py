@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
 """Check that every input a workflow references actually exists and is buildable.
 
-Written after two identical failures where a workflow referenced something the
-repository did not provide:
-
-  * run 44919953563: `cp: cannot stat 'listxattr_probe'` -- the compile line had
-    been added to only one of the two jobs that build probe binaries.
-  * run 44975024513: `make: *** No rule to make target 'modules'` --
-    tests/qemu/trigger_probe/Makefile only defined `all`, while ci-fast invokes
-    `make ... modules`.
-
-Both were findable before pushing.  This script is the mechanical check:
+Written after failures where a workflow referenced something the repository
+did not provide: a probe compile line added to only one of the two jobs that
+build probe binaries, and a `make ... modules` target the referenced Makefile
+did not define.  Both were findable before pushing.  This script is the
+mechanical check:
 
   1. every workflow parses as YAML;
   2. every `make -C <dir> ... <target>` has a Makefile in <dir> that defines

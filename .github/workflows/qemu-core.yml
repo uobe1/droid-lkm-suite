@@ -290,11 +290,11 @@ jobs:
           github-token: ${{ github.token }}
       - name: Install QEMU
         run: |
-          PKGS="qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio gcc-aarch64-linux-gnu libc6-dev-arm64-cross"
-          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3"
-          if ! sudo timeout 300 apt-get $APT_OPTS install -y --no-install-recommends $PKGS; then
-            sudo timeout 180 apt-get $APT_OPTS update
-            sudo timeout 300 apt-get $APT_OPTS install -y --no-install-recommends $PKGS
+          PKGS=(qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio gcc-aarch64-linux-gnu libc6-dev-arm64-cross)
+          APT_OPTS=(-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3)
+          if ! sudo timeout 300 apt-get "${APT_OPTS[@]}" install -y --no-install-recommends "${PKGS[@]}"; then
+            sudo timeout 180 apt-get "${APT_OPTS[@]}" update
+            sudo timeout 300 apt-get "${APT_OPTS[@]}" install -y --no-install-recommends "${PKGS[@]}"
           fi
       - name: Build initramfs
         shell: bash
@@ -556,12 +556,12 @@ jobs:
           fi
       - name: Install QEMU and toolchain
         run: |
-          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
-          PKGS="qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu
+          APT_OPTS=(-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5)
+          PKGS=(qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu
             ipxe-qemu-256k-compat-efi-roms qemu-efi-aarch64 cpio
-            gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu kmod"
-          sudo timeout 900 apt-get $APT_OPTS update
-          sudo timeout 900 apt-get $APT_OPTS install -y --no-install-recommends $PKGS
+            gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu kmod)
+          sudo timeout 900 apt-get "${APT_OPTS[@]}" update
+          sudo timeout 900 apt-get "${APT_OPTS[@]}" install -y --no-install-recommends "${PKGS[@]}"
       - name: Patch module vermagic for the device Image
         env:
           MODULE_LAYOUT_CRC: ${{ inputs.module_layout_crc }}
@@ -811,8 +811,9 @@ jobs:
           set +e
           set -x
           find rounds -name diff.log -print
+          mapfile -t diff_logs < <(find rounds -name diff.log | sort)
           sh tests/qemu/diff_merge.sh merged \
-            $(find rounds -name diff.log | sort) | tee merged-table.log
+            "${diff_logs[@]}" | tee merged-table.log
           rc=${PIPESTATUS[0]}
           set +x
           echo "merge_rc=$rc"
@@ -870,10 +871,10 @@ jobs:
           ls -l device modules
       - name: Install QEMU and toolchain
         run: |
-          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
-          PKGS="qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu kmod"
-          sudo timeout 900 apt-get $APT_OPTS update
-          sudo timeout 900 apt-get $APT_OPTS install -y --no-install-recommends $PKGS
+          APT_OPTS=(-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5)
+          PKGS=(qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu kmod)
+          sudo timeout 900 apt-get "${APT_OPTS[@]}" update
+          sudo timeout 900 apt-get "${APT_OPTS[@]}" install -y --no-install-recommends "${PKGS[@]}"
       - name: Patch module vermagic for the device Image
         env:
           MODULE_LAYOUT_CRC: ${{ inputs.module_layout_crc }}
@@ -1016,10 +1017,10 @@ jobs:
           ls -l device modules
       - name: Install QEMU and toolchain
         run: |
-          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
-          PKGS="qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu kmod"
-          sudo timeout 900 apt-get $APT_OPTS update
-          sudo timeout 900 apt-get $APT_OPTS install -y --no-install-recommends $PKGS
+          APT_OPTS=(-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5)
+          PKGS=(qemu-system-arm qemu-system-common qemu-system-data qemu-efi-aarch64 ipxe-qemu ipxe-qemu-256k-compat-efi-roms cpio gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu kmod)
+          sudo timeout 900 apt-get "${APT_OPTS[@]}" update
+          sudo timeout 900 apt-get "${APT_OPTS[@]}" install -y --no-install-recommends "${PKGS[@]}"
       - name: Patch module vermagic for the device Image
         env:
           MODULE_LAYOUT_CRC: ${{ inputs.module_layout_crc }}

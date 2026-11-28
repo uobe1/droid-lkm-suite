@@ -22,8 +22,7 @@ SUPPORTED_SCHEMA = 2
 
 # Every key is required in every profile except cgroup_pids_slot, which marks
 # profiles whose kernel has a disposable v1-only cgroup slot.  Values are from
-# the device BTF / /proc/config.gz or from the matching DDK defconfig; see
-# docs/evidence/abi-config-scope.md.
+# the device BTF / /proc/config.gz or from the matching DDK defconfig.
 CONFIG_SPECS = {
     "xtables_compat": ("bool", None),
     "android_vendor_oem_data": ("bool", None),

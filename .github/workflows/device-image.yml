@@ -132,18 +132,18 @@ jobs:
           github-token: ${{ github.token }}
       - name: Install QEMU and module tools
         run: |
-          APT_OPTS="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
-          PKGS="qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu
+          APT_OPTS=(-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5)
+          PKGS=(qemu-system-arm qemu-system-common qemu-system-data ipxe-qemu
             ipxe-qemu-256k-compat-efi-roms qemu-efi-aarch64 cpio
-            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross kmod python3"
+            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross kmod python3)
           # apt mirrors are intermittently slow; retry each phase instead of
           # losing the whole gate to a 124 timeout.
-          sudo timeout 900 apt-get $APT_OPTS update || true
-          sudo timeout 900 apt-get $APT_OPTS install -y --no-install-recommends \
-            $PKGS || {
+          sudo timeout 900 apt-get "${APT_OPTS[@]}" update || true
+          sudo timeout 900 apt-get "${APT_OPTS[@]}" install -y --no-install-recommends \
+            "${PKGS[@]}" || {
             sleep 10
-            sudo timeout 900 apt-get $APT_OPTS update || true
-            sudo timeout 900 apt-get $APT_OPTS install -y --no-install-recommends $PKGS
+            sudo timeout 900 apt-get "${APT_OPTS[@]}" update || true
+            sudo timeout 900 apt-get "${APT_OPTS[@]}" install -y --no-install-recommends "${PKGS[@]}"
           }
           timeout 300 python3 -m pip install --break-system-packages pyelftools || \
             timeout 300 python3 -m pip install --break-system-packages pyelftools
@@ -268,7 +268,7 @@ jobs:
             nm device/vmlinux.elf | grep -E 'module_layout|__crc_module_layout|kcrctab' | head -20 || true
             addr=$(nm device/vmlinux.elf | awk '/__kcrctab_module_layout/ {print $1; exit}')
             if [ -n "$addr" ]; then
-              aarch64-linux-gnu-objdump -s --start-address=0x$addr                 --stop-address=$((0x$addr + 8)) device/vmlinux.elf || true
+              aarch64-linux-gnu-objdump -s --start-address="0x$addr"                 --stop-address=$((0x$addr + 8)) device/vmlinux.elf || true
             fi
             strings device/vmlinux.elf | grep -m5 -E '6\.12\.30-android16|SMP preempt mod_unload' || true
           else

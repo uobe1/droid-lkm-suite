@@ -21,7 +21,8 @@ fi
 
 EXPECT_PIDS=1
 MODPARAM=""
-for arg in $(cat /proc/cmdline); do
+cmdline=$(cat /proc/cmdline)
+for arg in $cmdline; do
 	case "$arg" in
 		cgpids_virtual=1) EXPECT_PIDS=0; MODPARAM="native=0" ;;
 	esac
@@ -169,14 +170,14 @@ export DOCKER_RAMDISK=true
 if [ "$NET_OK" = 1 ]; then
 	# No CONFIG_BRIDGE_NETFILTER on this Image: the default userland proxy
 	# keeps ICC enabled, while the bridge still programs the nat DNAT rules.
-	DOCKER_NET_FLAGS="--iptables=true --ip6tables=false"
+	set -- --iptables=true --ip6tables=false
 else
-	DOCKER_NET_FLAGS="--iptables=false --ip6tables=false --bridge=none"
+	set -- --iptables=false --ip6tables=false --bridge=none
 fi
 dockerd --containerd /run/containerd/containerd.sock \
 	--data-root /var/lib/docker --exec-root /run/docker \
 	--pidfile /run/docker.pid --storage-driver vfs \
-	$DOCKER_NET_FLAGS \
+	"$@" \
 	--exec-opt native.cgroupdriver=cgroupfs \
 	>/var/log/dockerd.log 2>&1 &
 i=0
@@ -258,7 +259,7 @@ if [ "$NET_OK" = 1 ] && [ -x /sbin/iptables-nft ]; then
 	dockerd --containerd /run/containerd/containerd.sock \
 		--data-root /var/lib/docker --exec-root /run/docker \
 		--pidfile /run/docker.pid --storage-driver vfs \
-		$DOCKER_NET_FLAGS \
+		"$@" \
 		--exec-opt native.cgroupdriver=cgroupfs \
 		>/var/log/dockerd-nft.log 2>&1 &
 	i=0

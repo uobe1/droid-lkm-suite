@@ -101,8 +101,10 @@ allow ksu selinuxfs file { open read write getattr }
 allow ksu selinuxfs dir { open read getattr search }
 RULES
 	/ksud sepolicy apply /ksu_rules || fail su_sepolicy
-	su_sh 'read ctx < /proc/self/attr/current 2>/dev/null; echo "DNSK_SU_CTX=$ctx"; echo 1 > /sys/fs/selinux/enforce; echo "DNSK_SELINUX_ENFORCE=$(read e < /sys/fs/selinux/enforce; echo $e)"; /xattr_test /early/f && /xattr_test /late/f && /acl_test /acl && /acl_test /acl inherit && /acl_test /aclled existing && /acl_test /aclled inherit && echo "DNSK_TMPFSX_ENFORCE_OK"; poweroff -f || echo o > /proc/sysrq-trigger'
-	if [ $? -ne 0 ]; then
+	if ! su_sh "$(cat <<-'SUEOF'
+		read ctx < /proc/self/attr/current 2>/dev/null; echo "DNSK_SU_CTX=$ctx"; echo 1 > /sys/fs/selinux/enforce; echo "DNSK_SELINUX_ENFORCE=$(read e < /sys/fs/selinux/enforce; echo $e)"; /xattr_test /early/f && /xattr_test /late/f && /acl_test /acl && /acl_test /acl inherit && /acl_test /aclled existing && /acl_test /aclled inherit && echo "DNSK_TMPFSX_ENFORCE_OK"; poweroff -f || echo o > /proc/sysrq-trigger
+SUEOF
+)"; then
 		echo "DNSK_QEMU_FAIL tmpfsx_enforce"
 		echo o > /proc/sysrq-trigger
 	fi

@@ -3,7 +3,7 @@
 #
 #   tests/kpm/env/load_kp_late.sh            (run as root on beryl, adb shell su -c)
 #
-# Sequence (from docs/evidence/kpm-evaluation.md and the APatch apd strings):
+# Sequence (from the APatch apd strings):
 #   1. apd relocates the KMI .ko itself against /proc/kallsyms and calls
 #      init_module(2); it is not plain `insmod`.
 #   2. It reads /data/adb/ap/{KMI}_kernelpatch.ko, so the extracted asset must

@@ -13,7 +13,7 @@ make check
 python3 tools/kmi_matrix.py --check
 ```
 
-`make check` 运行 API 文档一致性, Markdown 风格与 workflow 输入一致性; host 单测用 `python3 -m unittest discover -s tests/host -p 'test_*.py'`. 本机缺少 shellcheck/ruff/clang-format 时对应项输出 `SKIPPED: <tool> missing`, 不声明已检查.
+`make check` 运行 API 文档一致性, tracked Markdown 风格, workflow 输入一致性, host 单测 (`python3 -m unittest discover -s tests/host -p 'test_*.py'`), 以及和 CI 同一套 lint 面: shellcheck, ruff, clang-format, yamllint, actionlint, cppcheck. 本机缺少某个工具时该面输出 `UNAVAILABLE` 并让门控以退出码 2 结束, 不声明已检查.
 
 ## DDK 构建
 
@@ -21,7 +21,7 @@ python3 tools/kmi_matrix.py --check
 make KDIR=/opt/ddk/kdir/<kmi> M="$PWD" modules
 ```
 
-CI 使用 `ghcr.io/ylarod/ddk-min: <kmi>-20260828`. `docs-check.yml` 的 `docs` job 在构建前校验 API 文档, 文档风格, workflow 输入一致性与 host 单测; 同文件的 `lint` job 安装并运行 shellcheck (全部 tracked shell, 含无扩展名脚本), ruff (`scripts`/`tools`/`tests`), clang-format (`--dry-run --Werror`, 排除 `vendor/` 与 `selftests/`), yamllint 与 actionlint (workflows), cppcheck (`tools/dnsk_preflight.c`). 仓库不执行 imports guard 或 KSU ZIP 结构检查
+CI 使用 `ghcr.io/ylarod/ddk-min: <kmi>-20260828`. `docs-check.yml` 的 `docs` job 在构建前校验 API 文档, 文档风格, workflow 输入一致性与 host 单测; 同文件的 `lint` job 安装并运行 shellcheck (全部 tracked shell, 含无扩展名脚本), ruff (`scripts`/`tools`/`tests`), clang-format (`--dry-run --Werror`, 排除 `vendor/` 与 `selftests/`), yamllint 与 actionlint (workflows), cppcheck (`tools/dnsk_preflight.c`).
 
 ## droid-hook 依赖
 
