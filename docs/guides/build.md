@@ -23,6 +23,34 @@ make KDIR=/opt/ddk/kdir/<kmi> M="$PWD" modules
 
 CI 使用 `ghcr.io/ylarod/ddk-min: <kmi>-20260828`. `docs-check.yml` 的 `docs` job 在构建前校验 API 文档, 文档风格, workflow 输入一致性与 host 单测; 同文件的 `lint` job 安装并运行 shellcheck (全部 tracked shell, 含无扩展名脚本), ruff (`scripts`/`tools`/`tests`), clang-format (`--dry-run --Werror`, 排除 `vendor/` 与 `selftests/`), yamllint 与 actionlint (workflows), cppcheck (`tools/dnsk_preflight.c`). 仓库不执行 imports guard 或 KSU ZIP 结构检查
 
+## droid-hook 依赖
+
+`dnsk_core.ko` 把 droid-hook 的 `src/*.c` 按路径编入, 不复制源码, 也不使用 submodule
+构建 core 前必须有一份 droid-hook checkout:
+
+```sh
+# 默认: suite 仓库旁的 sibling checkout
+make -C ../droid-hook ...
+make KDIR=/opt/ddk/kdir/android16-6.12 M="$PWD" modules
+
+# 或显式指定
+make KDIR=/opt/ddk/kdir/android16-6.12 M="$PWD" \
+  DNSK_HOOK_DIR=/path/to/droid-hook modules
+```
+
+- `DNSK_HOOK_DIR` 的默认值是 `../droid-hook`; 相对路径按 suite 根目录解析, 也可用绝对路径
+- 目录缺失或其中没有 `src/dh_hook.c` 时, Kbuild 直接报错并打印期望路径, 不会静默产出
+ 缺少 inline hook 支持的 core
+- 只有 core 构建需要 droid-hook; 各 feature 的 `obj-m` 构建与本地静态检查不需要
+- CI 在构建 core 前 checkout `uobe1/droid-hook`, 并用
+  `git tag --list --sort=-v:refname | head -n1` 取最新 stable tag 后
+  `git checkout --detach`; 构建固定在该 tag 上; 仓库没有 stable tag 时步骤以
+  明确错误失败
+- stable tag 由 droid-hook 自己的发布工作流在通过门禁的 commit 上创建; suite 的
+  构建只能在包含其依赖 API 的 tag 发布之后运行
+- 头文件搜索路径由 Kbuild 加 `-I$(DNSK_HOOK_PATH)/include`; 每个 `core/dnsk_dh_*.c`
+  是一个按路径 `#include` 对应 droid-hook 源文件的包装 TU, 保留源文件内的 `static` 作用域
+
 ## Native oracle
 
 TMPFS/USER_NS/CGROUP_PIDS 的差分测试需要 AOSP 同 KMI 内核:

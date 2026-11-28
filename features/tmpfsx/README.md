@@ -7,11 +7,11 @@ Current prototype:
 - Reuses the existing `simple_xattrs` storage inside `shmem_inode_info`
   and the kernel's `simple_xattr_*` helpers.
 - Wires `user.`, `trusted.` and `security.` handlers into every tmpfs
-  superblock (`iterate_supers` plus a `shmem_fill_super` kprobe for new
-  mounts), including the host `/dev` and `/dev/shm`.
+  superblock (`iterate_supers` plus an inline hook on `shmem_fill_super`
+  for new mounts), including the host `/dev` and `/dev/shm`.
 - Patches the `listxattr` slots of `shmem_inode_operations` and
-  `shmem_dir_inode_operations`; frees stored xattrs from a
-  `shmem_evict_inode` kprobe.
+  `shmem_dir_inode_operations`; an inline hook on `shmem_evict_inode`
+  frees stored xattrs.
 - Refuses to load when the kernel already has native tmpfs xattr.
 - No self-pin: live superblocks keep `s_xattr` pointing at this module, and
   `module_exit` detaches that pointer from every touched superblock (via

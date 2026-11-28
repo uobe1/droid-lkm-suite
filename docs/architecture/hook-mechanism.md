@@ -1,138 +1,209 @@
 # Hook 机制
 
-读者: 需要为 feature 选择 hook 类型, 并确保注销后可以安全卸载的开发者
+读者: 需要为 feature 选择 hook 机制, 并确保注销后可以安全卸载的开发者
 
-读完之后应能判断该用哪种 hook, 以及删除时为什么必须等 RCU
+读完之后应能判断该用 inline hook 还是 `patch_pointer`, 以及删除时为什么必须等 RCU
 
-## 能力总览
+## 两种受管机制
 
-core 的 hook API 只有四种类型 (`enum dnsk_hook_type`)
+core 只提供两种 hook 机制, 没有 kprobe/kretprobe/syscall 槽类型:
 
-| 类型 | 替换/插入什么 | 请求字段 | 删除时恢复什么 | 适合 |
+| 机制 | 改什么 | 谁安装 | 谁保存原值 | 适合 |
 |---|---|---|---|---|
-| `DNSK_HOOK_KPROBE` | 在 `symbol` 入口挂 kprobe pre-handler | `symbol`, `replacement` | `unregister_kprobe()`, 清理 `.addr` 与 `KPROBE_FLAG_DISABLED` | 低频路径; 只想在入口观察参数或改参数 |
-| `DNSK_HOOK_SYSCALL` | 改写 `sys_call_table[syscall_nr]` 槽 | `syscall_nr`, `replacement` | 把原槽值写回 | syscall 热路径 |
-| `DNSK_HOOK_DATA` | 改写一个指针槽 | `target`, `replacement` | 把旧值(可以为 NULL)写回 | 只替换 ops 表项/函数指针, 不需要改代码 |
-| `DNSK_HOOK_KRETPROBE` | 在 `symbol` 上挂 entry + return handler | `symbol`, `target`(entry), `replacement`(return) | `unregister_kretprobe()` | 需要读取或改写函数返回值 |
+| inline hook | 在 `symbol` 入口写入跳转, 调用 `replacement` | core (`hook_install()`) | core 生成 origin 块 | 需要介入函数入口或返回值 |
+| data-slot patch | 改写一个指针槽 | feature (`patch_pointer()`) | feature 自己 | 只替换 ops 表项/函数指针, 不改指令 |
 
-这四种都通过 `dnsk_hook_add()` / `dnsk_hook_del()` 注册; core 执行安装与恢复, 但不替 feature 保活, 也不在卸载时自动注销
+若内核已经提供正式注册接口(nft/xt/ipset, cgroup cftypes, pernet 等), 优先直接注册;
+这是最稳的路径, 失败时按逆序回滚, 不涉及代码改写
 
-深移植 feature (`ns`, `devtmpfs`) 另自带入口指令替换 (直接调用 `aarch64_insn_patch_text_nosync` 并用 `stop_machine` 串行化), 这类 hook 由 feature 自己负责卸载顺序与恢复; 规则见 [卸载安全](unload-safety.md)
+深移植 feature (`ns`, `devtmpfs`) 另自带入口指令替换, 由 feature 自己负责 quiesce 与恢复;
+规则见 [卸载安全](unload-safety.md)
 
-若内核已经提供了正式注册接口(nft/xt/ipset, cgroup cftypes, pernet 等), 优先直接注册: 这是最稳的路径, 失败时按逆序回滚, 不涉及代码改写
+## inline hook
 
-## RW 原语(ABI 5 主入口)
+### 请求
 
-除了四种受管 hook, core ABI 5 还对外暴露单入口 `rw(struct dnsk_rw_req *)` 与 `patch_pointer()`
+`hook_install()` 接受 `struct dnsk_inline_hook_req`:
 
-`rw` 的 opcode 为 `READ/WRITE/XCHG/CAS/PROBE`, 锁模式由 `DNSK_RW_F_LOCKED` 与 `enum dnsk_rw_lock_type` 控制
+| 字段 | 含义 | 要求 |
+|---|---|---|
+| `key` | 注销凭据 | 必填, 短于 `DNSK_HOOK_KEY_LEN`(48, 含 NUL), 同 key 重复返回 `-EBUSY` |
+| `symbol` | 被 hook 的内核符号名 | 必填, 经 kallsyms 解析; 解析失败返回 `-ENOENT` |
+| `owner` | 注册模块 | 必填, 只用于诊断; core 不 pin |
+| `replacement` | 同原型替换函数 | 必填; 原型必须与 `symbol` 完全一致 |
+| `origin_out` | 可选的原函数块输出 | 非 NULL 时安装失败即 fail-closed; NULL 表示完全替换 |
 
-`READ/WRITE/XCHG/CAS` 走直接拷贝或硬件原子, 不进 `stop_machine`, 可在持锁上下文调用
+`replacement` 必须按目标原型声明参数与返回类型, 不能使用 `void *` 间接调用
 
-`DNSK_RW_F_TEXT` 与 `DNSK_RW_F_RO` 走会睡眠的 patch 后端(stop_machine + fixmap + icache flush), 用于改写代码页与只读数据页, 不得在持锁上下文调用
+要保留原逻辑, `replacement` 调用 `*origin_out` 收到的块; 该块是 droid-hook 重定位后的
+可执行原函数, 不是目标地址, 也不是可随意转存的普通函数指针
 
-`PROBE` 按符号名解析地址, 是"改静态数据/静态数组引用"前的寻址前提
+`origin_out` 收到的块只在 `hook_uninstall(key)` 成功返回前有效; 卸载后不得再调用
 
-RW 是 Native 化的既定手段: 通过改写运行中内核的真实路径恢复本构建被裁掉的语义, 而不是把 config 编进内核
+### 安装语义
 
-API 的权威定义见 [core API 契约](../../core/include/dnsk_core.h), 自动生成的字段说明见 [Kernel API](../api/kernel.md)
+1. `hook_install()` 解析 `symbol`, 并把请求交给 droid-hook
+2. droid-hook 在 `module_alloc` 内存里构建 origin 块; 该分配器经 kallsyms 解析
+3. 需要 origin 时, 库先把可调用块的地址写入 `*origin_out`; 没有可用
+   `alloc_exec` 时在写入口之前返回 `-EOPNOTSUPP`
+4. origin 写好后, 库才在入口写入跳转并读回校验
+5. 入口写入之前的失败会清空 `*origin_out`; 入口写入已经发出后的失败会回滚入口,
+   但不释放 origin 块--该块保持有效, 以免在途 CPU 取指到已释放内存, 此时
+   `*origin_out` 仍指向该块, 而 hook 记录不填充
+
+origin 指针因此先于入口生效, replacement 不需要处理"入口已生效但 origin 仍为空"
+的安装窗口. 保留 NULL 检查只是防御: 若某次安装异常地发布了没有 origin 的入口,
+该次调用 fail-closed, 而不是解引用 NULL:
+
+```c
+static void *dnsk_origin;
+
+static __nocfi int replacement(struct thing *t)
+{
+	int (*origin)(struct thing *) = READ_ONCE(dnsk_origin);
+
+	if (unlikely(!origin))
+		return -EAGAIN;
+	pre_work(t);
+	return origin(t);
+}
+```
+
+origin 是重定位后的机器码, 没有 kCFI 类型哈希; 对它的普通间接调用会被 CFI 检查
+拒绝并进入 `__cfi_check_fail`. 因此 replacement 必须以 `__nocfi` 编译 (或在那一处
+调用自行抑制检查); 它的原型仍必须与目标完全一致
+
+void 原型则跳过原逻辑并返回
+
+### 卸载语义
+
+- `hook_uninstall(key)` 恢复入口原字节; 恢复成功后再等一个 RCU 宽限期才返回
+- 只有恢复被证明成功才删除注册项; 恢复失败返回错误并保留该 hook, 调用方不得释放
+  handler 数据, 也不得把状态标记为已恢复
+- `key` 为 NULL 返回 `-EINVAL`, 无此 key 返回 `-ENOENT`
+- origin 可执行块在卸载后**退役, 不释放**: 入口恢复只阻止新调用者, 无法证明没有 task
+  已在 origin 块内; 释放会重演模块 text 的 use-after-free. 代价是每次 hook 加载泄漏
+  一个可执行块, 见 [卸载安全](unload-safety.md)
+
+`module_exit()` 是 void 函数, 不能因为恢复失败而中止卸载
+可失败的拒绝必须在 rmmod 之前完成; exit 里遇到恢复失败只能记录, 并保持模块 text
+仍可达这一事实
+
+### `synchronize_rcu()` 的作用
+
+`stop_machine()` 只保证"恢复入口的那一刻, 没有 CPU 正停在被 hook 的函数里"
+
+它不能保证一个在恢复前刚进入 replacement 的 CPU 已经离开模块 text, 也不能保证
+origin 块的调用者已经返回
+
+因此 `hook_uninstall()` 在恢复原值之后, 返回之前调用 `synchronize_rcu()`
+
+效果是:
+
+- 调用方在返回后可以立即释放 handler 数据, 不会再有 RCU 读侧临界区引用它
+- 卸载路径不会与"刚进入 replacement 的调用者"竞争
+- 代价是 rmmod 路径最多可能阻塞几十毫秒, 这是可接受的: rmmod 不是热路径
+
+`synchronize_rcu()` 不覆盖 task_work, RCU 回调, superblock 销毁等**在模块退出之后
+才运行**的路径; 后者见 [卸载安全](unload-safety.md)
+
+## data-slot patch
+
+不是所有 hook 都需要改指令. 只替换 ops 表里一个函数指针时, 用 `patch_pointer()`:
+
+```c
+static struct {
+	const char *key;
+	void **slot;
+	void *orig;
+	bool ready;
+} dnsk_slots[16];
+static int dnsk_nr;
+
+static int patch_slot(const char *key, void **slot, void *value)
+{
+	void *orig = READ_ONCE(*slot);
+	int ret = dnsk_api->patch_pointer(slot, value);
+
+	if (ret)
+		return ret;
+	dnsk_slots[dnsk_nr].key = key;
+	dnsk_slots[dnsk_nr].slot = slot;
+	dnsk_slots[dnsk_nr].orig = orig;
+	dnsk_slots[dnsk_nr].ready = true;
+	dnsk_nr++;
+	return 0;
+}
+```
+
+- 原值允许为 NULL(例如内核编译时缺失的 inode operation 槽); 恢复时把 NULL 原样写回
+- 写入走 patch 后端(页表遍历 + fixmap + `stop_machine`), 因此 init 后只读的槽也能改
+- core 不保存槽位, 只提供写入原语; feature 必须在 exit 里按安装逆序逐个恢复
+- 恢复失败的槽保持"未恢复"记录, 不能标记为已恢复; 下一次命中仍会跳进模块 text
+
+`patch_pointer()` 不是 inline hook, 不产生 origin, 也不经过 droid-hook 注册表
 
 ## 怎么选
 
 1. **内核已有注册接口** → 直接注册, 不要为了统一而套 hook
-2. **系统调用热路径**(fork/exit 这类高频入口) → `SYSCALL`; 槽替换一次完成, 命中成本最低; 配合 `patch_memory` + `stop_machine` 改写, preflight 要记录并校验槽原值
-3. **低频路径或中心函数, 只需入口介入** → `KPROBE`; 开销高于槽替换, 但不需要改 syscall 表, 也不需要复制整个函数体
-4. **需要函数返回值**(例如判断某次迁移是否成功) → `KRETPROBE`; 返回值在 return handler 里用 `regs_return_value()` 从 `regs` 读取
-5. **只是替换 ops 表里的一个函数指针**(例如 `inode_operations` 的 xattr/ACL 槽) → `DATA`; 不要用 kprobe 去模拟一次指针替换
-
-## 各类型的语义
-
-### KPROBE
-
-`replacement` 的类型是 `int (*)(struct kprobe *, struct pt_regs *)`
-
-返回非 0 表示跳过被 probe 的指令, 返回 0 继续执行
-
-`original_out` 收到的是被 probe 的 **地址**, 不是原函数指针--kprobe 没有"原函数"可调用
-
-注册失败时请求无效返回 `-EINVAL`, 其余错误由 kprobe 注册结果决定
-
-### SYSCALL
-
-`replacement` 是新的 syscall 函数体, `original_out` 收到被替换的槽值
-
-槽值不能为 NULL; patching 后端不可用时返回 `-EOPNOTSUPP`
-
-写入走 patch 后端(`stop_machine` + fixmap), 因此即使 syscall 表位于 init 后只读内存也可以改
-
-这是热路径的首选, 但也是 preflight 必须核对"槽原值"的原因: 槽已经被别人改过时, 直接覆盖会丢失对方的 hook
-
-### DATA
-
-`target` 指向要覆盖的指针槽, `replacement` 是新值
-
-旧值允许为 NULL(例如内核编译时缺失的 inode operation 槽), `dnsk_hook_del()` 会把记录的 NULL 原样写回
-
-写入同样走 `patch_memory`: 页表遍历 + fixmap + `copy_to_kernel_nofault` + `stop_machine`
-
-适合只换指针, 不改指令的场景
-
-### KRETPROBE
-
-`target` 是 entry handler, `replacement` 是 return handler, 签名都是 `int (*)(struct kretprobe_instance *, struct pt_regs *)`
-
-返回值的读取发生在 return handler 中, 用 `regs_return_value()` 从该 handler 的 `regs` 取
-
-entry handler 返回非 0 时该实例不会建立返回回调, 适合"只对特定调用跟踪返回值"
+2. **需要读取或改写函数返回值**, 或需要围绕函数体做事 → inline hook;
+   replacement 调 origin 后处理返回值
+3. **只需替换 ops 表里的一个函数指针** → data-slot patch; 不要用 inline hook
+   去模拟一次指针替换
+4. **高频路径的 syscall 表项** → data-slot patch 一个槽, 并在 preflight 核对槽原值;
+   槽已被别人改过时直接覆盖会丢失对方的 hook
+5. **只想观察一个低频入口而不改语义** → inline hook, replacement 直接调用 origin;
+   不需要返回值处理时也可用 `rw` 的 PROBE 只做寻址
 
 ## 注册与删除的生命周期
 
-- 在 `module_init()` 里, `dnsk_core_get()` 成功之后注册; 在 `feature_add()` 之前完成, 保证 `dnskctl status` 看到的 feature 已经可用
-- key 是删除时的唯一凭据, 必须稳定且短于 `DNSK_HOOK_KEY_LEN`(48, 含 NUL); 重复 key 返回 `-EBUSY`, 表满返回 `-ENOSPC`
+- 在 `module_init()` 里, `dnsk_core_get()` 成功之后安装; 在 `feature_add()` 之前完成,
+  保证 `dnskctl status` 看到的 feature 已经可用
+- key 是删除时的唯一凭据, 必须稳定; data-slot 的 key 只用于本 feature 的记录,
+  不进入 core 注册表
 - `owner` 必填但只用于诊断; core 不在 owner 上取引用, 因此不会替 feature 保活或自动注销
-- 带着 active hook 卸载 feature, core 注册表仍指向已释放的模块 text--下一次命中就是 use-after-free
-- 删除顺序与注册相反; `hook_del()` 先恢复被替换的值, 成功后再等一个 RCU 宽限期才返回; 返回后 handler 数据才可以释放
-- 删除失败返回 `-EINVAL`(key 为 NULL), `-ENOENT`(没有该 key), 或恢复原值时的错误
-- 任何一步失败都要逆序回滚已经成功的注册; 失败路径不能留下半套 hook
+- 带着 active hook 卸载 feature, core 注册表或指针槽仍指向已释放的模块 text--
+  下一次命中就是 use-after-free
+- 删除顺序与注册相反; inline hook 先恢复入口, data-slot 后恢复槽, 最后 `feature_del()`
+  与 `module_put()`
+- 任何一步失败都要逆序回滚已经成功的安装; 失败路径不能留下半套 hook
 
-## `synchronize_rcu()` 的作用
+## 后端映射
 
-`stop_machine()` 只能保证"恢复入口的那一刻, 没有 CPU 正停在被 hook 的函数里"
+core 把 suite 现有原语适配给 droid-hook 的 `struct dh_backend`:
 
-它不能保证一个在恢复前刚进入的 CPU 已经离开 trampoline, 而 trampoline 位于模块内存
+| 后端槽 | suite 实现 |
+|---|---|
+| `rw` | `dnsk_rw_op()`, 逐字段拷贝请求 |
+| `patch_pointer` | `dnsk_patch_pointer()` |
+| `text_write` / `ro_write` | `dnsk_patch_text()`, 固定 `flush_icache=true` |
+| `probe` / `icache_flush` | `dnsk_resolve_symbol()` / 已解析的 cache 刷新函数 |
+| `alloc` / `free` | `kmalloc()` / `kfree()` |
+| `alloc_exec` / `free_exec` | 经 kallsyms 解析的 `module_alloc` / 退役不释放 |
+| `tlb_flush` | 空操作; fixmap 写入不改变 PTE 映射 |
+| `quiesce_begin` / `quiesce_end` | 空操作; 原子窗口由每次 `text_write` 的 `stop_machine` 提供 |
 
-若此时直接返回并允许 rmmod, 那个 CPU 会继续跳进即将消失的 text
-
-因此 `hook_del()` 在恢复原值之后, 返回之前调用 `synchronize_rcu()`
-
-效果是:
-
-- 调用方在 `hook_del()` 返回后可以立即释放 handler 数据, 不会再有 RCU 读侧临界区引用它
-- 卸载路径不会与"刚进入 trampoline 的调用者"竞争
-- 代价是 rmmod 路径最多可能阻塞几十毫秒
-- 这是可接受的: rmmod 不是热路径, 正确性优先
-- 如果使用场景要求亚毫秒级卸载, 必须改成用 RCU 回调延后释放 trampoline, 而不是删掉这次等待
-
-`synchronize_rcu()` 只覆盖"正在执行 hook"这一种延迟, 不覆盖 task_work, RCU 回调, superblock 销毁等**在模块退出之后才运行**的路径
-
-后者见 [卸载安全](unload-safety.md)
+`alloc_exec` 解析不到时保持 NULL, 需要 origin 的安装因此 fail-closed
 
 ## 自查清单
 
 - [ ] 先问有没有正式注册接口; 有就直接注册, 不套 hook
-- [ ] 热路径用 `SYSCALL`; 只需入口介入用 `KPROBE`; 需要返回值用 `KRETPROBE`;
- 只换指针用 `DATA`
+- [ ] 需要函数体介入或返回值处理用 inline hook; 只换指针用 `patch_pointer`
+- [ ] replacement 的原型与目标完全一致, 且调用 origin 继续原逻辑
+- [ ] replacement 在 origin 尚未发布时返回错误或跳过, 不解引用 NULL
 - [ ] 每个 hook 有唯一, 稳定, 短于 48 字节的 key
+- [ ] 安装数量受 droid-hook 注册表容量限制; 表满返回 `-ENOSPC`, 不要把 hook
+ 数量当作无限
 - [ ] 注册在 `core_get` 之后, `feature_add` 之前; 删除在 `module_put` 之前,
  且逆序
-- [ ] `hook_del()` 返回前不释放 handler 数据; 返回后才释放
-- [ ] 不依赖 core 自动清理 hook; core 不 pin owner
+- [ ] `hook_uninstall()` 成功返回前不释放 handler 数据; 返回后才释放
+- [ ] 恢复失败不标记已恢复; 不依赖 core 自动清理 hook; core 不 pin owner
 - [ ] 若 hook 会触发延迟执行的回调, 按卸载安全检查表处理, 而不是只加
  `synchronize_rcu()`
 
 ## 相关阅读
 
-- [core API 契约](../../core/include/dnsk_core.h): `enum dnsk_hook_type` 与
- `struct dnsk_hook_req` 的字段语义
-- [卸载安全](unload-safety.md): 延迟回调与 module text 的关系
+- [core API 契约](../../core/include/dnsk_core.h): `struct dnsk_inline_hook_req`,
+ `hook_install()` 与 `hook_uninstall()` 的字段与错误语义
+- [卸载安全](unload-safety.md): 延迟回调, origin 退役与 module text 的关系
 - [模块生命周期](module-lifecycle.md): 注册顺序与引用计数责任

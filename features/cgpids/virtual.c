@@ -15,13 +15,12 @@
 #include <linux/atomic.h>
 #include <linux/cgroup.h>
 #include <linux/cgroup-defs.h>
+#include <linux/compiler.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
-#include <linux/kprobes.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/printk.h>
-#include <linux/ptrace.h>
 #include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/spinlock.h>
@@ -83,10 +82,21 @@ static void dnsk_release(struct task_struct *task)
 		dnsk_pids_uncharge(cset->dfl_cgrp, 1);
 }
 
-static int dnsk_migrate_entry(struct kretprobe_instance *ri,
-			      struct pt_regs *regs)
+/*
+ * cgroup_migrate_execute() is an inline hook: this wrapper runs the existing
+ * pre-accounting, calls the relocated origin to run the real migration, then
+ * applies the existing rollback when the original reports failure.  The origin
+ * is written before the entry is published, so the wrapper always has it on a
+ * normal installation; the NULL check below only covers an installation that
+ * published without an origin.
+ *
+ * The origin block is relocated machine code with no kCFI type hash, so the
+ * call back to it must not be CFI-checked; __nocfi covers that indirect call.
+ */
+static void *dnsk_migrate_origin;
+
+static void dnsk_migrate_pre(struct cgroup_mgctx *mgctx)
 {
-	struct cgroup_mgctx *mgctx = (void *)regs->regs[0];
 	struct list_head *head = (struct list_head *)((char *)mgctx + 32);
 	struct list_head *pos;
 	unsigned long flags;
@@ -129,17 +139,15 @@ static int dnsk_migrate_entry(struct kretprobe_instance *ri,
 		dnsk_pids_charge(dst, count);
 	}
 	spin_unlock_irqrestore(&dnsk_migrate_lock, flags);
-	return 0;
 }
 
-static int dnsk_migrate_return(struct kretprobe_instance *ri,
-			       struct pt_regs *regs)
+static void dnsk_migrate_post(int ret)
 {
 	unsigned long flags;
 	int i;
 
 	spin_lock_irqsave(&dnsk_migrate_lock, flags);
-	if (regs_return_value(regs)) {
+	if (ret) {
 		for (i = 0; i < dnsk_migrate_nr; i++) {
 			dnsk_pids_charge(dnsk_migrate_recs[i].src,
 					 dnsk_migrate_recs[i].count);
@@ -149,7 +157,26 @@ static int dnsk_migrate_return(struct kretprobe_instance *ri,
 	}
 	dnsk_migrate_nr = 0;
 	spin_unlock_irqrestore(&dnsk_migrate_lock, flags);
-	return 0;
+}
+
+static __nocfi int dnsk_migrate_execute(struct cgroup_mgctx *mgctx)
+{
+	int (*origin)(struct cgroup_mgctx *) = READ_ONCE(dnsk_migrate_origin);
+	int ret;
+
+	/*
+	 * Defense only: the library publishes the origin before the entry, so
+	 * this is not the normal installation window.  If an installation
+	 * somehow did publish without an origin, fail this migration closed
+	 * instead of jumping through NULL.
+	 */
+	if (unlikely(!origin))
+		return -EAGAIN;
+
+	dnsk_migrate_pre(mgctx);
+	ret = origin(mgctx);
+	dnsk_migrate_post(ret);
+	return ret;
 }
 
 static int dnsk_resolve_symbols(struct dnsk_core_api *api)
@@ -256,13 +283,12 @@ static void dnsk_unpatch_slots(void)
 int dnsk_cgpids_virtual_init(struct dnsk_core_api *api,
 			     const struct dnsk_feature_desc *desc)
 {
-	struct dnsk_hook_req hook = {
+	struct dnsk_inline_hook_req hook = {
 		.key = DNSK_MIGRATE_KEY,
-		.type = DNSK_HOOK_KRETPROBE,
-		.owner = THIS_MODULE,
 		.symbol = "cgroup_migrate_execute",
-		.target = dnsk_migrate_entry,
-		.replacement = dnsk_migrate_return,
+		.owner = THIS_MODULE,
+		.replacement = dnsk_migrate_execute,
+		.origin_out = &dnsk_migrate_origin,
 	};
 	int ret;
 
@@ -282,7 +308,7 @@ int dnsk_cgpids_virtual_init(struct dnsk_core_api *api,
 	if (ret)
 		goto out_sysops;
 
-	ret = api->hook_add(&hook);
+	ret = api->hook_install(&hook);
 	if (ret)
 		goto out_slots;
 	virtual_hook_ready = true;
@@ -297,8 +323,15 @@ int dnsk_cgpids_virtual_init(struct dnsk_core_api *api,
 	return 0;
 
 out_hook:
-	api->hook_del(DNSK_MIGRATE_KEY);
-	virtual_hook_ready = false;
+	{
+		int ur = api->hook_uninstall(DNSK_MIGRATE_KEY);
+
+		if (ur)
+			pr_err("dnsk_cgpids: rollback could not restore %s: %d\n",
+			       DNSK_MIGRATE_KEY, ur);
+		else
+			virtual_hook_ready = false;
+	}
 out_slots:
 	dnsk_unpatch_slots();
 out_sysops:
@@ -313,8 +346,15 @@ void dnsk_cgpids_virtual_exit(struct dnsk_core_api *api)
 {
 	if (virtual_feature_ready)
 		api->feature_del("cgpids");
-	if (virtual_hook_ready)
-		api->hook_del(DNSK_MIGRATE_KEY);
+	if (virtual_hook_ready) {
+		int ret = api->hook_uninstall(DNSK_MIGRATE_KEY);
+
+		if (ret)
+			pr_err("dnsk_cgpids: %s restore failed; module text is still reachable: %d\n",
+			       DNSK_MIGRATE_KEY, ret);
+		else
+			virtual_hook_ready = false;
+	}
 	if (virtual_sysops_ready)
 		dnsk_cgpids_restore_sysops();
 	if (virtual_files_ready)

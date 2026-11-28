@@ -78,6 +78,25 @@ devtmpfs 的修法不是"更小心地等", 而是改变所有权:
 堆分配也救不了 `dnsk_cgpids` native: `cgroup_subsys` 回调 (`css_alloc`,
 `can_attach`, `fork`, `release`) 是模块代码, 搬 struct 只是移动指针
 
+## inline hook origin 退役, 不释放
+
+inline hook 的 origin 块由 droid-hook 分配在 `module_alloc` 内存里, 内容是重定位后的
+原函数, 供 replacement 调用. 它不是模块 `.text`, 但它的执行仍依赖模块代码路径
+
+`hook_uninstall()` 恢复入口并等一个 RCU 宽限期, 只能阻止新调用者, 无法证明没有 task
+已经进入 origin 块: 入口恢复的那一刻可能有 CPU 正停在块内, 或已 preempt 在块内.
+core 没有覆盖 trampoline 的在途计数, 因此不能证明块可以回收
+
+suite 后端的 `free_exec` 因此**只退役, 不释放**:
+
+- 退役指针放入 core 的固定数组, 模块加载期间保持可达; 数组满后丢弃指针
+- 可执行内存不归还 allocator, 也不在 `dnsk_core` 卸载时释放
+- 代价是每次 hook 安装泄漏一个几十字节的可执行块, 按模块加载次数累积
+- 这是明确的取舍: 泄漏优于让仍在 origin 块内的 task 取指到已释放页
+
+droid-hook 本身仍可以释放 origin; 退役策略只属于 suite 后端, 因为 suite 没有为
+trampoline 提供在途门控
+
 ## cgpids 为什么需要两步卸载
 
 设备内核的 `struct cgroup_subsys` **没有 `owner` 字段**(BTF: 256 字节, 32 个
@@ -129,6 +148,8 @@ IABT), 这是真机 `rmmod dnsk_ns` panic 的成因.
 - [ ] 每种注册都有对应的逆序注销: hook, feature, `cgroup_subsys`,
  `pernet_operations`, filesystem/superblock, workqueue, timer, RCU 回调,
  task_work, sysfs/kernfs 文件
+- [ ] inline hook 的 origin 块退役而不释放; 不用 `kfree()` 回收仍在执行路径上的
+ 可执行块
 - [ ] 列出所有可能在 `module_exit()` 之后运行的回调
 - 有 → 同步 drain, 或改成
  内核常驻回调, 或自持引用并明确记录不可卸载

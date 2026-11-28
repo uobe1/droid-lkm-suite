@@ -37,6 +37,25 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout droid-hook at the latest stable tag
+        uses: actions/checkout@v4
+        with:
+          repository: uobe1/droid-hook
+          path: droid-hook
+          fetch-depth: 0
+          token: ${{ secrets.DROID_HOOK_TOKEN || github.token }}
+      - name: Pin droid-hook to the latest stable tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/droid-hook"
+          tag=$(git tag --list --sort=-v:refname | head -n1)
+          if [ -z "$tag" ]; then
+            echo "no stable tag in uobe1/droid-hook; publish one from its release workflow first" >&2
+            exit 1
+          fi
+          git checkout --detach "$tag"
+          echo "droid-hook pinned to $tag"
       - name: Build android16 modules
         shell: bash
         env:
@@ -47,7 +66,7 @@ jobs:
           eval "$(python3 tools/build_flags.py \
             --profile "profiles/abi/${PROFILE}.json" \
             --kmi android16-6.12)"
-          make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
+          make -C "$KDIR" M="$GITHUB_WORKSPACE" DNSK_HOOK_DIR="$GITHUB_WORKSPACE/droid-hook" modules
           mkdir -p out
           cp dnsk_core.ko out/
           NS_EXTRA=""

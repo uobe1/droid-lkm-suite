@@ -20,7 +20,7 @@
  * request unless the caller's value matches exactly; the value changes
  * whenever the layout or semantics of the API change.
  */
-#define DNSK_CORE_ABI 5
+#define DNSK_CORE_ABI 2
 
 struct module;
 
@@ -35,9 +35,9 @@ struct module;
 /**
  * define DNSK_HOOK_KEY_LEN - maximum hook key including the NUL
  *
- * A key at or above this length is rejected with -EINVAL by dnsk_hook_add().
- * The key is copied into the hook registry and is what dnsk_hook_del() later
- * uses to identify the hook.
+ * A key at or above this length is rejected with -EINVAL by
+ * hook_install().  The key is copied into the hook registry and is what
+ * hook_uninstall() later uses to identify the hook.
  */
 #define DNSK_HOOK_KEY_LEN 48
 
@@ -90,93 +90,52 @@ enum dnsk_status {
 };
 
 /**
- * enum dnsk_hook_type - kind of hook requested from the core
+ * struct dnsk_inline_hook_req - one inline hook installation request
  *
- * Selects which fields of &struct dnsk_hook_req are meaningful and how core
- * installs and removes the hook.  Core removes a hook only when
- * dnsk_hook_del() is called with its key; a feature that skips the delete
- * leaves a registry entry pointing at freed module text (use-after-free).
+ * Passed to hook_install().  Core resolves @symbol and writes the callable
+ * original-function block through @origin_out before it publishes the entry
+ * jump to @replacement.  When @origin_out is non-NULL but no executable
+ * origin can be built, hook_install() returns -EOPNOTSUPP before writing
+ * any text.  The strings must stay valid only for the duration of the call,
+ * except @key which is copied.  Core does not pin @owner, so the registering
+ * module must call hook_uninstall() for every key it installed in
+ * module_exit(); the reference the module holds on core through
+ * dnsk_core_get() keeps core itself alive until then.
  */
-enum dnsk_hook_type {
-	/**
-	 * @DNSK_HOOK_KPROBE: kprobe on @symbol.
-	 *
-	 * @replacement is the pre-handler, typed
-	 * ``int (*)(struct kprobe *, struct pt_regs *)``; returning non-zero
-	 * skips the probed instruction.  @original_out receives the probed
-	 * address, not a function pointer.
-	 */
-	DNSK_HOOK_KPROBE = 1,
-	/**
-	 * @DNSK_HOOK_SYSCALL: replace the sys_call_table slot of @syscall_nr.
-	 *
-	 * @replacement is the new syscall body, @original_out receives the
-	 * slot value that was there before.  Fails with -EOPNOTSUPP when the
-	 * patching backend is unavailable, and the slot must not be NULL.
-	 */
-	DNSK_HOOK_SYSCALL,
-	/**
-	 * @DNSK_HOOK_DATA: replace a pointer stored at @target.
-	 *
-	 * @target points at the pointer slot to overwrite, @replacement is the
-	 * new value.  The old value, which may legitimately be NULL, is
-	 * recorded and written back by dnsk_hook_del().
-	 */
-	DNSK_HOOK_DATA,
-	/**
-	 * @DNSK_HOOK_KRETPROBE: kretprobe on @symbol.
-	 *
-	 * @target is the entry handler and @replacement is the return handler,
-	 * both typed ``int (*)(struct kretprobe_instance *, struct pt_regs *)``.
-	 * The return value is read with regs_return_value() from the return
-	 * handler's @regs.
-	 */
-	DNSK_HOOK_KRETPROBE,
-};
-
-/**
- * struct dnsk_hook_req - one hook registration request
- *
- * Passed to dnsk_hook_add(), which copies or records what it needs; the
- * strings must stay valid only for the duration of the call.  Which fields
- * are required depends on @type.  Core does not pin @owner, so the registering
- * module must remove every hook it added in module_exit(); the reference the
- * module holds on core through dnsk_core_get() keeps core itself alive until
- * then.
- */
-struct dnsk_hook_req {
+struct dnsk_inline_hook_req {
 	/** @key: unique name of the hook, shorter than DNSK_HOOK_KEY_LEN. */
 	const char *key;
-	/** @type: which kind of hook to install. */
-	enum dnsk_hook_type type;
+	/** @symbol: kernel symbol name whose entry is hooked. */
+	const char *symbol;
 	/**
 	 * @owner: registering module, for diagnostics.
 	 *
-	 * Core does not pin it.  The owner must remove every hook in
+	 * Core does not pin it.  The owner must uninstall every hook in
 	 * module_exit().
 	 */
 	struct module *owner;
 	/**
-	 * @symbol: kernel symbol name for %DNSK_HOOK_KPROBE and
-	 * %DNSK_HOOK_KRETPROBE, unused otherwise.
+	 * @replacement: same-prototype continuation function.
+	 *
+	 * Its signature must exactly match @symbol.  To continue the original
+	 * logic, it calls the block returned through @origin_out when that
+	 * pointer is non-NULL.
 	 */
-	const char *symbol;
-	/** @syscall_nr: sys_call_table index for %DNSK_HOOK_SYSCALL. */
-	unsigned int syscall_nr;
-	/**
-	 * @target: kretprobe entry handler, or the pointer slot to patch for
-	 * %DNSK_HOOK_DATA.
-	 */
-	void *target;
-	/** @replacement: handler or value to install. */
 	void *replacement;
 	/**
-	 * @original_out: optional out-parameter.
+	 * @origin_out: optional out-parameter for the original-function block.
 	 *
-	 * Receives the value displaced by the hook; may be %NULL when the
-	 * caller does not need it.
+	 * When non-NULL, receives the callable relocated-origin block before
+	 * the entry jump is published; if no executable origin can be built,
+	 * hook_install() fails with -EOPNOTSUPP before writing any text.  The
+	 * block is relocated machine code without a kCFI type hash, so a normal
+	 * indirect call to it fails the CFI check; on CFI kernels the
+	 * replacement must be built with __nocfi (or otherwise suppress the
+	 * check on that call).  The block stays valid until hook_uninstall()
+	 * for @key returns.  When NULL, the replacement fully replaces @symbol
+	 * and no origin is provided.
 	 */
-	void **original_out;
+	void **origin_out;
 };
 
 /**
@@ -327,28 +286,35 @@ struct dnsk_core_api {
 	 */
 	void *(*resolve)(const char *name);
 	/**
-	 * @hook_add: install a hook owned by core.
+	 * @hook_install: install an inline hook at a kernel symbol entry.
 	 *
 	 * @req: the hook to install.
 	 *
+	 * Resolves @req->symbol, writes @req->origin_out before publishing the
+	 * entry jump to @req->replacement, and then installs that jump through
+	 * droid-hook.  The replacement must have the target's exact prototype
+	 * and call the origin block to continue the original logic.
+	 *
 	 * Return: %0 on success, negative errno on failure, including -EINVAL
-	 * for a malformed request, -EBUSY for a duplicate @key, -ENOSPC when
-	 * the registry is full, and -EOPNOTSUPP when the patching backend is
-	 * not available.
+	 * for a malformed request, -ENOENT when @symbol cannot be resolved,
+	 * -EBUSY for a duplicate @key or a second hook at the same target,
+	 * -ENOSPC when the registry is full, and -EOPNOTSUPP when the patching
+	 * backend or the executable-origin allocator is unavailable.
 	 */
-	int (*hook_add)(const struct dnsk_hook_req *req);
+	int (*hook_install)(const struct dnsk_inline_hook_req *req);
 	/**
-	 * @hook_del: remove a hook by key and restore what it replaced.
+	 * @hook_uninstall: remove an inline hook by key and restore its entry.
 	 *
-	 * @key: the key the hook was added with.
+	 * @key: the key the hook was installed with.
 	 *
-	 * Restores whatever the hook displaced, then waits for an RCU grace
-	 * period on success, so a caller may free its handler data on return.
+	 * Restores the original entry bytes, then waits for an RCU grace period
+	 * on success, so a caller may free handler data on return.  The origin
+	 * block is retired, not freed (see unload-safety).
 	 *
 	 * Return: %0 on success, -EINVAL for a %NULL @key, -ENOENT when no
 	 * hook has that key, or the error from restoring the original.
 	 */
-	int (*hook_del)(const char *key);
+	int (*hook_uninstall)(const char *key);
 	/**
 	 * @feature_add: record a feature registration.
 	 *

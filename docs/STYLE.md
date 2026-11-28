@@ -32,7 +32,7 @@
 - 围栏代码块必须标注语言; 路径与命令使用行内代码
 - 表格用于状态矩阵, 验收矩阵, 版本固定; 避免超宽表格
 - 图使用 Mermaid; 禁止直接嵌入不可审计的外部图片
-- 由 markdownlint 检查; 链接必须可解析
+- 半角符号, 行尾空格, 链接与标题由 `scripts/check-docs-style.py` 检查; 装了 markdownlint 时另跑其默认规则, 未装则报 `SKIPPED`, CI 不运行 markdownlint
 
 ## 页面结构
 
@@ -67,8 +67,10 @@
 - `scripts/gen-api-docs.py` 只解析注释, 不读实现, 格式串或 `usage()` here-doc
 - 生成物为 `docs/api/kernel.md` 与 `docs/api/userspace.md`, 提交到仓库
 - `make docs` 重新生成; `make docs-check` 或 `make check` 校验漂移
-- 本机没有 kernel-doc / doxygen / markdownlint 且不允许本地安装, 故生成器与
-  风格检查均为纯 Python3; 工具缺失时门禁必须报错, 不得静默通过
+- 本机没有 kernel-doc / doxygen 且不允许本地安装, 故生成器为纯 Python3,
+  不依赖外部工具
+- 可选外部检查工具缺失时该项输出 `SKIPPED`, 不声明已检查; CI 的 `lint` job
+  强制 shellcheck, ruff, clang-format, yamllint, actionlint 与 cppcheck
 - 生成物不手工编辑; 公开声明缺注释时生成器报错, 不得静默跳过
 
 ## 许可证

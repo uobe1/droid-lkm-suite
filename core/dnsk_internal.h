@@ -4,7 +4,6 @@
 
 #include <linux/atomic.h>
 #include <linux/compiler.h>
-#include <linux/kprobes.h>
 #include <linux/mutex.h>
 #include <linux/seq_file.h>
 #include <linux/types.h>
@@ -17,38 +16,6 @@
 #define dnsk_info(fmt, ...) pr_info("dnsk: " fmt, ##__VA_ARGS__)
 #define dnsk_warn(fmt, ...) pr_warn("dnsk: " fmt, ##__VA_ARGS__)
 #define dnsk_err(fmt, ...) pr_err("dnsk: " fmt, ##__VA_ARGS__)
-
-struct dnsk_hook {
-	char key[DNSK_HOOK_KEY_LEN];
-	enum dnsk_hook_type type;
-	bool active;
-	union {
-		struct {
-			struct kprobe kp;
-			const char *symbol;
-			unsigned long addr;
-			int (*pre_handler)(struct kprobe *, struct pt_regs *);
-		} kprobe;
-		struct {
-			unsigned int nr;
-			unsigned long *slot;
-			unsigned long original;
-		} syscall;
-		struct {
-			void *target;
-			unsigned long original;
-		} data;
-		struct {
-			struct kretprobe krp;
-			const char *symbol;
-			unsigned long addr;
-			int (*entry_handler)(struct kretprobe_instance *,
-					     struct pt_regs *);
-			int (*ret_handler)(struct kretprobe_instance *,
-					   struct pt_regs *);
-		} kretprobe;
-	} u;
-};
 
 struct dnsk_feature {
 	char name[DNSK_FEATURE_NAME_LEN];
@@ -75,9 +42,10 @@ int dnsk_virt_to_phys(void *va, unsigned long *pa);
 
 int dnsk_hooks_init(void);
 void dnsk_hooks_exit(void);
-int dnsk_hook_add_internal(const struct dnsk_hook_req *req);
-int dnsk_hook_del_internal(const char *key);
+int dnsk_hook_install_internal(const struct dnsk_inline_hook_req *req);
+int dnsk_hook_uninstall_internal(const char *key);
 unsigned int dnsk_hook_count(void);
+void dnsk_icache_flush(void *addr, size_t len);
 
 int dnsk_features_init(void);
 void dnsk_features_exit(void);

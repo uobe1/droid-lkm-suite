@@ -6,11 +6,16 @@
 KDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 
+# droid-hook checkout compiled into dnsk_core.ko by path (no copy, no
+# submodule).  Relative paths are resolved from this directory; the default is
+# the sibling checkout.  The Kbuild reports a hard error if it is absent.
+DNSK_HOOK_DIR ?= ../droid-hook
+
 .PHONY: all clean check docs docs-check docs-clean
 
 all:
 	@test -n "$(KDIR)" || { echo "Set KDIR to a prepared kernel build directory." >&2; exit 1; }
-	$(MAKE) -C "$(KDIR)" M="$(PWD)" modules
+	$(MAKE) -C "$(KDIR)" M="$(PWD)" DNSK_HOOK_DIR="$(abspath $(DNSK_HOOK_DIR))" modules
 
 clean:
 	$(MAKE) -C "$(KDIR)" M="$(PWD)" clean

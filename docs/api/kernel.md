@@ -40,7 +40,7 @@ dnsk_feature_add() rejects a longer name with -ENAMETOOLONG.  Names are stored b
 
 maximum hook key including the NUL
 
-A key at or above this length is rejected with -EINVAL by dnsk_hook_add(). The key is copied into the hook registry and is what dnsk_hook_del() later uses to identify the hook.
+A key at or above this length is rejected with -EINVAL by hook_install().  The key is copied into the hook registry and is what hook_uninstall() later uses to identify the hook.
 
 > 来源: `dnsk_core.h` 的 kernel-doc 注释
 
@@ -52,19 +52,11 @@ The level a feature module claims in `struct` dnsk_feature_desc.  It is informat
 
 > 来源: `dnsk_core.h` 的 kernel-doc 注释
 
-## `dnsk_hook_type`
+## `dnsk_inline_hook_req`
 
-kind of hook requested from the core
+one inline hook installation request
 
-Selects which fields of `struct` dnsk_hook_req are meaningful and how core installs and removes the hook.  Core removes a hook only when dnsk_hook_del() is called with its key; a feature that skips the delete leaves a registry entry pointing at freed module text (use-after-free).
-
-> 来源: `dnsk_core.h` 的 kernel-doc 注释
-
-## `dnsk_hook_req`
-
-one hook registration request
-
-Passed to dnsk_hook_add(), which copies or records what it needs; the strings must stay valid only for the duration of the call.  Which fields are required depends on @type.  Core does not pin @owner, so the registering module must remove every hook it added in module_exit(); the reference the module holds on core through dnsk_core_get() keeps core itself alive until then.
+Passed to hook_install().  Core resolves @symbol and writes the callable original-function block through @origin_out before it publishes the entry jump to @replacement.  When @origin_out is non-NULL but no executable origin can be built, hook_install() returns -EOPNOTSUPP before writing any text.  The strings must stay valid only for the duration of the call, except @key which is copied.  Core does not pin @owner, so the registering module must call hook_uninstall() for every key it installed in module_exit(); the reference the module holds on core through dnsk_core_get() keeps core itself alive until then.
 
 > 来源: `dnsk_core.h` 的 kernel-doc 注释
 
@@ -161,4 +153,4 @@ The value is a property of the kernel's CONFIG, not of the KMI: a stock GKI/DDK 
 
 ## 覆盖检查
 
-本次共生成 18 个带注释的公开声明, 覆盖审计通过.
+本次共生成 17 个带注释的公开声明, 覆盖审计通过.

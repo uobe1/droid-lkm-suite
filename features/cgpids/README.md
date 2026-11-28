@@ -23,8 +23,8 @@ provides the observable controller instead:
   `pids.events.local` files, added on cgroup mkdir.
 - Hierarchical counters charged at fork and uncharged at task release.
 - Real `-EAGAIN` when a fork would exceed any ancestor limit.
-- Migration accounting through a `cgroup_migrate_execute` kretprobe, with
-  rollback when migration fails.
+- Migration accounting through an inline hook on `cgroup_migrate_execute`,
+  with rollback when migration fails.
 - `cgroup.controllers` / `cgroup.subtree_control` expose and accept `pids`
   without enabling a fake native controller.
 

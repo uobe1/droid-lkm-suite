@@ -42,7 +42,8 @@ dnskctl start-all        # 或者一次全开
 当前为 **android16-6.12 开发阶段**, 只产出开发工件, 不打 tag
 
 - `core`/`devtmpfs`/`netfilter`/`cgpids`/`tmpfsx`/`ns` 已在真机 (beryl, `6.12.30-android16-5`)
-  通过 EL0/EL1 功能检查; `ipset` 仅通过 EL1 加载与 `xt_set` 注册, EL0 未验证
+  通过 EL0/EL1 功能检查; ABI 2 inline 迁移后这些检查尚未重新运行, 涉及 hook
+  路径的 status 因此按 development 计; `ipset` 仅通过 EL1 加载与 `xt_set` 注册, EL0 未验证
   (设备与 Termux 均无 `ipset` 工具)
 - 已与原生 GKI 内核做过语义差分: QEMU (beryl Image) 上全模块 0 差异; 差分不含 E5/E2/E3,
   真机语义差分未做

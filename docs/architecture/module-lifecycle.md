@@ -47,24 +47,32 @@ feature 持有 core 引用, core 的 refcount 不归零, `rmmod dnsk_core` 永�
 core 不监视 feature 模块的卸载, 也不会替你删掉注册行; 不删就会留下一条属于已
 消失模块的记录, `dnskctl status` 会继续报告一个不存在的 feature
 
-## hook 注册与删除的对称性
+## inline hook 安装与删除的对称性
 
-每个 `hook_add()` 必须在 `module_exit()` 里用**同一个 key** 调用 `hook_del()`:
+每个 `hook_install()` 必须在 `module_exit()` 里用**同一个 key** 调用
+`hook_uninstall()`:
 
 - key 必填且短于 `DNSK_HOOK_KEY_LEN`(48, 含 NUL); 重复 key 返回 `-EBUSY`,
- hook 表满返回 `-ENOSPC`, 请求不合法返回 `-EINVAL`, patching 后端不可用返回
- `-EOPNOTSUPP`;
-- `hook_del()` 恢复被替换的原值, 成功后再等一个 RCU 宽限期才返回; 返回后调用
+ hook 表满返回 `-ENOSPC`, 请求不合法返回 `-EINVAL`, patching 后端或可执行
+ origin 分配器不可用返回 `-EOPNOTSUPP`, 符号无法解析返回 `-ENOENT`;
+- `replacement` 必须与目标同原型; 要保留原逻辑就调用 `origin_out` 收到的块, 该块只在
+ `hook_uninstall()` 成功返回前有效;
+- `hook_uninstall()` 恢复入口原字节, 成功后再等一个 RCU 宽限期才返回; 返回后调用
  方可以释放 handler 数据;
-- 删除失败返回 `-EINVAL`(key 为 NULL), `-ENOENT`(无此 key) 或恢复原值错误
+- 恢复失败返回错误并保留注册项; 调用方不得释放 handler 数据, 也不得把状态标记为
+ 已恢复.`module_exit()` 不能中止卸载, 因此这个错误只能记录, 可失败的拒绝必须前移;
+- 删除失败返回 `-EINVAL`(key 为 NULL), `-ENOENT`(无此 key) 或恢复入口时的错误
 
-hook 不是"注册完就归 core 管".core 只保存注册项并在 `dnsk_hook_del()` 时恢复
-原值; 它不会在 feature 卸载时替你删 hook.带着 active hook 卸载模块, 等于把
-core 注册表里的 handler 指针留在已释放的模块 text 上
+hook 不是"注册完就归 core 管".core 只保存注册项并在 `hook_uninstall()` 时恢复
+入口; 它不会在 feature 卸载时替你删 hook.带着 active hook 卸载模块, 等于把
+core 注册表里的跳转目标留在已释放的模块 text 上
+
+origin 块在卸载时退役而不是释放: 入口恢复无法证明没有 task 仍在块内执行, 释放会
+造成 use-after-free. 详见 [卸载安全](unload-safety.md)
 
 ## core 不 pin owner 的含义
 
-`struct dnsk_hook_req.owner` 和 `struct dnsk_feature_desc.owner` 都只用于诊断,
+`struct dnsk_inline_hook_req.owner` 和 `struct dnsk_feature_desc.owner` 都只用于诊断,
 core **不在这两个 owner 上取模块引用**.两个必须理解的结果:
 
 - core 不会阻止 feature 卸载, 也没有能力在 feature 卸载时自动清理
@@ -116,7 +124,7 @@ static void __exit x_exit(void)
 
 - [ ] init 第一步 `dnsk_core_get()`, 最后一步 `feature_add()`; exit 严格逆序
 - [ ] 每条错误路径都回滚已完成步骤, 包括提前返回和"保持原生"路径
-- [ ] 每个 `feature_add()`/`hook_add()` 都有对应删除, `get`/`put` 严格成对
+- [ ] 每个 `feature_add()`/`hook_install()` 都有对应删除, `get`/`put` 严格成对
 - [ ] 退出路径不依赖"core 会帮我清理": core 不 pin owner, 也没有卸载回调
 - [ ] 可失败的操作已前移到 rmmod 之前; `module_exit` 只做确定的清理
 

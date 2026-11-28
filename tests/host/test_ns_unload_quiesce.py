@@ -43,7 +43,7 @@ MSG_C = PORT / "msg.c"
 MQUEUE_C = PORT / "mqueue.c"
 SEM_C = PORT / "sem.c"
 SHM_C = PORT / "shm.c"
-CORE_HOOK_C = ROOT / "core" / "dnsk_hook.c"
+CORE_HOOK_C = ROOT / "core" / "dnsk_hook_api.c"
 
 
 # --------------------------------------------------------------------------

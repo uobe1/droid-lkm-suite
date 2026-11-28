@@ -42,16 +42,17 @@ features/<name>/
 
 | 符号 | 用途 |
 |---|---|
-| `struct dnsk_core_api` | core 提供的全部能力 (`rw` 单入口, `resolve`, `hook_add/del`, `feature_add/del`, `log`, `patch_pointer`) |
+| `struct dnsk_core_api` | core 提供的全部能力 (`rw` 单入口, `resolve`, `hook_install/uninstall`, `feature_add/del`, `log`, `patch_pointer`) |
 | `struct dnsk_feature_desc` | 注册自己: `name`/`version`/`status`/`caps`/`owner` |
 | `dnsk_core_get(abi, size)` | 取得 API, `abi` 必须是 `DNSK_CORE_ABI` |
 
 两条生命周期规则, 做错的后果各不相同, 注意区分:
 
-1. **core 不 pin owner**(注册 feature/hook 不会让核心替你持引用).
+1. **core 不 pin owner**(注册 feature/inline hook 不会让核心替你持引用).
  因此 `rmmod` **会成功**, 但模块卸走后 core 里仍留着指向已释放代码的注册项:
  下一次命中该 hook 就跳进已释放内存 -- **UAF / panic**, 而不是卸载失败
- 所以 `module_exit()` 必须先 `hook_del()` 每一个 hook, 再 `feature_del()`
+ 所以 `module_exit()` 必须先 `hook_uninstall()` 每一个 inline hook, 恢复每一个
+ data-slot 原值, 再 `feature_del()`
 2. **`dnsk_core_get()` 成功会取一份 core 的引用**.最后一次使用后必须
  `module_put(api->owner)`, 之后不可再碰 API.漏 put → core 的 refcount 永不归零,
  `rmmod dnsk_core` 永远 EAGAIN; 提前 put 后继续用 → core 可被卸走, feature

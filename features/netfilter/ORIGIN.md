@@ -14,11 +14,11 @@ Local changes:
   `gki=1` + `6.12.*-android16-*` gate. `activate=0` loads as a no-op;
   `activate=1` registers the vendored nftables and xt units. A `registered` guard
   prevents the exit path from unregistering units that were never initialized;
-  the missing guard caused a NULL dereference in `nft_unregister_expr` when an
-  inactive instance was unloaded.
+  without it, unloading an inactive instance NULL-dereferences in
+  `nft_unregister_expr`.
 - Build target is android16-6.12 only for now. Not release-supported.
 
-## xt_REJECT and xt_RECENT (added 2026-11-01)
+## xt_REJECT and xt_RECENT
 
 Upstream: AOSP `kernel/common`, branch `android16-6.12`, commit
 `105b5745f1d771060aa9fb7f75821f69bb2298fd`

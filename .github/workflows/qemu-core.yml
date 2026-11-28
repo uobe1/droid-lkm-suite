@@ -99,13 +99,32 @@ jobs:
       options: --user root
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout droid-hook at the latest stable tag
+        uses: actions/checkout@v4
+        with:
+          repository: uobe1/droid-hook
+          path: droid-hook
+          fetch-depth: 0
+          token: ${{ secrets.DROID_HOOK_TOKEN || github.token }}
+      - name: Pin droid-hook to the latest stable tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/droid-hook"
+          tag=$(git tag --list --sort=-v:refname | head -n1)
+          if [ -z "$tag" ]; then
+            echo "no stable tag in uobe1/droid-hook; publish one from its release workflow first" >&2
+            exit 1
+          fi
+          git checkout --detach "$tag"
+          echo "droid-hook pinned to $tag"
       - name: Build modules and boot Image
         if: ${{ inputs.kernel == 'stock' }}
         shell: bash
         run: |
           set -euxo pipefail
           KDIR="/opt/ddk/kdir/android16-6.12"
-          make -C "$KDIR" M="$GITHUB_WORKSPACE" modules
+          make -C "$KDIR" M="$GITHUB_WORKSPACE" DNSK_HOOK_DIR="$GITHUB_WORKSPACE/droid-hook" modules
           make -C "$GITHUB_WORKSPACE/features/ns" KDIR="$KDIR" \
             DNSK_ABI_PROFILE=android16-6.12-xt128 DNSK_PAGE_SIZE=4096 \
             DNSK_MAX_SKB_FRAGS=17 DNSK_CGROUP_SUBSYS_COUNT=8 modules
@@ -230,7 +249,7 @@ jobs:
             cat "$KDIR/vmlinux.symvers" "$KDIR/Module.symvers" | \
               awk '!seen[$2]++' > "$KDIR/Module.symvers.merged"
             mv "$KDIR/Module.symvers.merged" "$KDIR/Module.symvers"
-            make -C "$KDIR" M="$GITHUB_WORKSPACE" modules || {
+            make -C "$KDIR" M="$GITHUB_WORKSPACE" DNSK_HOOK_DIR="$GITHUB_WORKSPACE/droid-hook" modules || {
               sed -n '1,60p' "$GITHUB_WORKSPACE/dnsk_core.mod.c" || true
               exit 1
             }

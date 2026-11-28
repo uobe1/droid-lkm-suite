@@ -21,14 +21,14 @@ static void *dnsk_api_resolve(const char *name)
 	return dnsk_resolve_symbol(name);
 }
 
-static int dnsk_api_hook_add(const struct dnsk_hook_req *req)
+static int dnsk_api_hook_install(const struct dnsk_inline_hook_req *req)
 {
-	return dnsk_hook_add_internal(req);
+	return dnsk_hook_install_internal(req);
 }
 
-static int dnsk_api_hook_del(const char *key)
+static int dnsk_api_hook_uninstall(const char *key)
 {
-	return dnsk_hook_del_internal(key);
+	return dnsk_hook_uninstall_internal(key);
 }
 
 static int dnsk_api_feature_add(const struct dnsk_feature_desc *desc)
@@ -69,8 +69,8 @@ static struct dnsk_core_api dnsk_api = {
 	.abi = DNSK_CORE_ABI,
 	.size = sizeof(struct dnsk_core_api),
 	.resolve = dnsk_api_resolve,
-	.hook_add = dnsk_api_hook_add,
-	.hook_del = dnsk_api_hook_del,
+	.hook_install = dnsk_api_hook_install,
+	.hook_uninstall = dnsk_api_hook_uninstall,
 	.feature_add = dnsk_api_feature_add,
 	.feature_del = dnsk_api_feature_del,
 	.log = dnsk_api_log,
@@ -112,7 +112,7 @@ static int __init dnsk_core_init(void)
 
 	ret = dnsk_patch_init();
 	if (ret)
-		dnsk_warn("patching unavailable; syscall/data hooks will fail closed\n");
+		dnsk_warn("patching unavailable; data slots and inline entry installs will fail closed\n");
 
 	ret = dnsk_diag_init();
 	if (ret)

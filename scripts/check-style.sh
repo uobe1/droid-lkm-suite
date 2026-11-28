@@ -68,7 +68,7 @@ for tool in shellcheck ruff clang-format markdownlint; do
 		markdownlint) run "markdownlint" markdownlint README.md CONTRIBUTING.md 'docs/**/*.md' ;;
 		esac
 	else
-		echo "SKIPPED: $tool missing (CI runs it in .github/workflows/docs-check.yml)" >&2
+		echo "SKIPPED: $tool missing; not checked in this run" >&2
 	fi
 done
 

@@ -63,16 +63,19 @@
 - 需要长期存活的, 改为堆分配 (内存在, 指针在), 或把回调换成内核常驻函数
 - RCU 延迟回调必须用 `kfree_rcu()` 这类内核侧释放, 不能用 `call_rcu()` +
  模块内的释放函数
+- inline hook 的 origin 可执行块只退役不释放: 入口恢复无法证明没有 task 仍在块内,
+ 释放会变成 use-after-free; 泄漏量必须记录在卸载安全文档中
 
 判据: 假设某个延迟回调在 `module_exit` **之后**才执行, 它跳转到的地址还有效吗?
 
 ### 3.2 core 不 pin feature, feature 必须自己清理
 
-- `feature_add()` / `hook_add()` **不**增加 owner 引用
+- `feature_add()` / `hook_install()` **不**增加 owner 引用
 - 所以 `rmmod` 会**成功**, 但 core 里会留下指向已释放代码的注册项
 - 后果是**之后的 UAF / panic**, 不是卸载失败
-- 因此 `module_exit()` 必须: 先 `hook_del()` 每个 hook → 再 `feature_del()` →
- 最后 `module_put(api->owner)`
+- 因此 `module_exit()` 必须: 先 `hook_uninstall()` 每个 inline hook 并恢复每个
+ data-slot 原值 → 再 `feature_del()` → 最后 `module_put(api->owner)`
+- 恢复失败必须保持"未恢复"状态并记录; 不得释放仍可达的 handler 数据
 
 ### 3.3 core 引用一对一
 

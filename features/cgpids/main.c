@@ -11,11 +11,9 @@
 #include <linux/cgroup-defs.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
-#include <linux/kprobes.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/printk.h>
-#include <linux/ptrace.h>
 #include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/spinlock.h>

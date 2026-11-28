@@ -1,0 +1,7 @@
+line-length = 100
+target-version = "py312"
+exclude = ["vendor", "build", "site", "__pycache__"]
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]

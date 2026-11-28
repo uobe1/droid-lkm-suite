@@ -13,7 +13,7 @@
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
-| `dnsk_core.ko` | 符号解析, patch, hook 托管, diag, feature 注册, panic 取证, 日志 | M0 完成 (ABI 5) |
+| `dnsk_core.ko` | 符号解析, patch, inline hook 托管 (内嵌 droid-hook), diag, feature 注册, panic 取证, 日志 | M0 完成 (ABI 2) |
 | `dnsk_ns.ko` | PID_NS/IPC_NS/SYSVIPC/POSIX_MQUEUE, 含 USER_NS 实现 | development |
 | `dnsk_devtmpfs.ko` | devtmpfs | development |
 | `dnsk_netfilter.ko` | nft 目标子集, xt_addrtype/REJECT/RECENT, ip6table_nat | development |
@@ -27,14 +27,12 @@
 
 ## Core ABI
 
-`dnsk_core_get()` 返回版本化 `struct dnsk_core_api`.Core 自身不导入任何非导出内核符号, 全部经运行时解析.Droidspaces 深移植的 feature(ns/devtmpfs/netfilter/ipset) 会引用内核内部符号, 目标设备由 KernelSU 的 `ksud insmod` 解析; 普通 `/system/insmod` 与 stock-GKI QEMU 无法加载这些 feature.core 提供四种受管 hook (kprobe/syscall/data/kretprobe); 深移植 feature (`ns`, `devtmpfs`) 另自带入口指令替换, 由 feature 自己负责 quiesce 与恢复, 见 [Hook 机制](hook-mechanism.md)
+`dnsk_core_get()` 返回版本化 `struct dnsk_core_api`.Core 自身不导入任何非导出内核符号, 全部经运行时解析.Droidspaces 深移植的 feature(ns/devtmpfs/netfilter/ipset) 会引用内核内部符号, 目标设备由 KernelSU 的 `ksud insmod` 解析; 普通 `/system/insmod` 与 stock-GKI QEMU 无法加载这些 feature.core 托管 inline hook, 通过按路径编入的 droid-hook 替换符号入口并生成可调用的 origin 块; 只替换指针槽的 feature 直接使用 `patch_pointer()`. 深移植 feature (`ns`, `devtmpfs`) 另自带入口指令替换, 由 feature 自己负责 quiesce 与恢复, 见 [Hook 机制](hook-mechanism.md)
 
 ## Hook 机制
 
-- syscall 槽替换: 热路径优先, `patch_memory` + `stop_machine`
-- 入口指令替换/跳板: 用于 `copy_namespaces`, `free_nsproxy`, `do_exit`, `device_add/del`, `shmem_*` 等
-- kprobe PC rewrite: 低频路径或 cgpids 中心函数; 注销后清理 `.addr` 与 `KPROBE_FLAG_DISABLED`
-- 数据指针 patch: `patch_memory` 页表遍历 + fixmap + `copy_to_kernel_nofault` + `stop_machine`
+- inline hook: 入口写入跳转, replacement 与目标同原型并调用 origin 继续原逻辑; 卸载恢复入口后等 RCU
+- 数据指针 patch: `patch_pointer()` 页表遍历 + fixmap + `stop_machine`; feature 保存并恢复槽原值
 - 直接注册: nft/xt/ipset/cgroup cftypes/pernet, 最稳, 失败逆序回滚
 
 ## 加载模型

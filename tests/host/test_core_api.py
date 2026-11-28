@@ -12,7 +12,7 @@ INTERNAL = ROOT / "core" / "dnsk_internal.h"
 
 class CoreApiTest(unittest.TestCase):
     def test_abi_revision(self):
-        self.assertIn("#define DNSK_CORE_ABI 5", HEADER.read_text())
+        self.assertIn("#define DNSK_CORE_ABI 2", HEADER.read_text())
 
     def test_single_rw_entry(self):
         text = HEADER.read_text()
