@@ -30,6 +30,13 @@
 #include <dnsk_core.h>
 #include "cgpids.h"
 
+/*
+ * Private to the kernel's cgroup internals (cgroup-internal.h, not exported to
+ * modules).  The module only holds a pointer and reads offsets from struct
+ * css_set, so a forward declaration is all the file needs.
+ */
+struct cgroup_mgctx;
+
 #define DNSK_SUBSYS_PTR(ss, off) (*(void **)((char *)(ss) + (off)))
 #define DNSK_SUBSYS_ID(ss) (*(int *)((char *)(ss) + DNSK_CGROUP_SUBSYS_ID))
 
