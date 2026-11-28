@@ -42,7 +42,6 @@ if "$BB" lsmod | grep -q '^dnsk_'; then
 	die "dnsk modules already loaded; unload them first"
 fi
 
-# shellcheck disable=SC2317  # invoked through the EXIT trap
 cleanup() {
 	if "$BB" lsmod | grep -q '^dnsk_ns '; then
 		"$BB" rmmod dnsk_ns 2>/dev/null
@@ -74,6 +73,7 @@ if ! "$BB" rmmod dnsk_core; then
 	die "core unload after ns release"
 fi
 [ ! -e /proc/dnsk/status ] || die "/proc/dnsk/status survived core unload"
+cleanup
 trap - EXIT
 
 echo "CORE_BRIDGE_SMOKE_OK"

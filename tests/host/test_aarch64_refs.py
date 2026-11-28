@@ -16,6 +16,7 @@ Two layers:
 import ctypes
 import pathlib
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -151,6 +152,11 @@ _STATE = {}
 
 
 def setUpModule():
+    tools = ("clang", "ld.lld", "aarch64-linux-gnu-objdump", "gcc")
+    missing = [t for t in tools if not shutil.which(t)]
+    if missing:
+        raise unittest.SkipTest(
+            "aarch64 ground-truth toolchain missing: " + ", ".join(missing))
     tmp = tempfile.TemporaryDirectory()
     _STATE["tmp"] = tmp
     d = pathlib.Path(tmp.name)
