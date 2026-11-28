@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # USER_NS spike on the beryl device Image: the merged dnsk_ns build owns the
 # user namespace live path; ksud resolves its unexported imports.
 

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 """Model the dnsk_ns IPC-namespace backfill contract.
 
 Scope: this mirrors the two C functions added to

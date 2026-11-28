@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Real QEMU runner for a prepared arm64 kernel/initramfs.
 # Required: KERNEL, INITRD, MODULE. Optional: QEMU, TIMEOUT.
 set -eu

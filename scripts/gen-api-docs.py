@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 """Generate every API page from documentation comments only.
 
 There is exactly one source of truth for the API: the comment blocks in

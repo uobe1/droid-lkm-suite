@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Docker 29.x baseline in the stock DDK VM: cgroup2, vfs storage and no
 # network.  The image is imported from the Alpine minirootfs, so no registry
 # access is needed.  Network/bridge/NAT is a separate mode.

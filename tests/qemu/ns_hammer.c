@@ -1,5 +1,5 @@
 #define _GNU_SOURCE
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // ns_hammer: keep ns code paths busy while another process unloads dnsk_ns.
 //

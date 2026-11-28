@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 /* Fixed-affinity getpid loop for the KPM vs LKM overhead evaluation. */
 #define _GNU_SOURCE
 #include <sched.h>

@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 MODDIR=${0%/*}
 STATE_DIR=${DNSK_STATE_DIR:-/data/adb/dnsk}
 

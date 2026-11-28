@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # UFW + Fail2ban gate on the beryl Image, using the LKM netfilter stack.
 
 BB=/bin/busybox

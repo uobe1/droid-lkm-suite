@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Native USER_NS oracle (CONFIG_USER_NS=y, FUSE/OVERLAY built in).
 # Same user-space tests as the beryl device gate, without any LKM or ksud.
 

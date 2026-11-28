@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 #define _GNU_SOURCE
 // Minimal finit_module loader for QEMU: caller patches vermagic and the
 // module_layout CRC.  Do NOT pass IGNORE_MODVERSIONS: it sets versindex=0,

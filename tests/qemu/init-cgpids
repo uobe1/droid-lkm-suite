@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # cgroup v2 pids differential: same script runs on the native oracle
 # (CONFIG_CGROUP_PIDS=y) and on the virtual controller (oracle-nopids +
 # dnsk_cgpids).  Compare the marked values across both runs.

@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Run the PID/IPC/SysV/mqueue smoke set against an already-active dnsk_ns.
 # Requires root (su -c) and the Termux python/unshare binaries.
 set -u

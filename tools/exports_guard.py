@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 """Exported-symbol guard for out-of-tree modules.
 
 Every undefined symbol in a .ko must either be listed in the kernel's

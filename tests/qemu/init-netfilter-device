@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # M2 device-image gate: xt_addrtype/REJECT/RECENT, ipset hash types and
 # ip6table NAT on the beryl kernel Image, loaded through ksud.
 

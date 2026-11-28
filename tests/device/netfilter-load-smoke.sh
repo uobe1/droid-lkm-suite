@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Minimal active netfilter load/unload test: no nft/iptables rules.
 # The full rule/container acceptance is a separate test.
 set -u

@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # Module lifecycle gate on the beryl device Image:
 #   1. load every shipped module through dnskctl (the same entry point the

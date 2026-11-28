@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 /*
  * pidfd setns regression: a target task created before dnsk_ns may have
  * nsproxy->ipc_ns == NULL on kernels without IPC_NS/POSIX_MQUEUE.  The hook

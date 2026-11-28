@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Disposable-VM test for the standalone ipset core and hash types.
 BB=/bin/busybox
 IPSET=/usr/sbin/ipset

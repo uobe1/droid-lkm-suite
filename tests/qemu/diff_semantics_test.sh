@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # Local tests for the semantic-differential harness.  No QEMU, no network:
 # every case feeds synthetic probe output to diff_semantics.sh, and the

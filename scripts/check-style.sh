@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Unified local style gate.  Pure-Python3 checks always run.  Optional external
 # tools run only when installed; when a tool is missing the gate prints
 # "SKIPPED: <tool> missing" and never claims the rule was checked.  CI enforces

@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Native tmpfs xattr/ACL oracle (CONFIG_TMPFS_XATTR/POSIX_ACL=y).
 # Same test items as the beryl device gate, without any LKM.
 

@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # KSU sources this script inside its installer; never use `set -e` here.
 # KSU sources this script, so $0 is not the module path; MODPATH is.
 MODDIR=${MODPATH:-${0%/*}}

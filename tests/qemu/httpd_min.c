@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 /* Minimal static HTTP server for the Docker networking gate.  Alpine's
  * minirootfs busybox has no httpd or nc applet, so the container serves from
  * a bind-mounted binary instead of the image.

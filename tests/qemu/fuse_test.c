@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 /*
  * Minimal FUSE daemon: serves one read-only file from a user namespace.
  * Hand-rolled protocol so the test needs no libfuse or musl toolchain.

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 """Model the tmpfsx listxattr size/fill accounting contract.
 
 Scope: this is a *model* of two implementations of fs/xattr.c's

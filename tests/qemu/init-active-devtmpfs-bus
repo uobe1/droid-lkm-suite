@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # Devtmpfs trigger=bus gate: boot the *device* Image (CONFIG_DEVTMPFS=n), load
 # only dnsk_devtmpfs.ko with trigger=bus, then prove with a bus-notify probe

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 /*
  * selinuxfs only accepts a complete policy image in one write(2); a shell
  * redirection writes in chunks and the second chunk fails with EINVAL.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Disposable-VM test for active device lifecycle hooks; the module stays pinned.
 BB=/bin/busybox
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Print the raw listxattr() result for one path, plus how many times each
 // POSIX ACL name appears.

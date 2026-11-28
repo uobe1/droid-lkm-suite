@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 /* Unprivileged (uid 1000) user-namespace smoke for the userns oracle/gate. */
 #define _GNU_SOURCE
 #include <errno.h>

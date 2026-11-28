@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Verify the internal dnsk_devtmpfs mount without touching host /dev.
 # Run as root after `dnsk_devtmpfs.ko gki=1 activate=1`.
 set -u

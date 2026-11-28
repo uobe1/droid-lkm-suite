@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 """Ordering / counter guard for unloading dnsk_ns with concurrent callers.
 
 This is the regression test for the real-device panic (see

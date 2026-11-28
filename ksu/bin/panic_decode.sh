@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Extract structured DNSK panic markers from ramoops/pstore or last_kmsg.
 set -eu
 

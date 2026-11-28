@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # tmpfs xattr on the beryl device Image.  dnsk_tmpfsx imports unexported
 # tmpfs helpers, so it is loaded through ksud, not the raw module loader.
 

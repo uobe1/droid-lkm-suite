@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Activate dnsk_netfilter and prove xt_addrtype is really registered.
 # Requires a disposable test kernel/VM: activation is global and the module
 # must be unloaded before the test is considered passed.

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 """Ordering-logic guard for the opt-in ``trigger=bus`` device lifecycle.
 
 Scope: this test exercises the *decision logic* and the *source call order*,

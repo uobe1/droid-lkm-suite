@@ -78,11 +78,11 @@ make docs                                    # 本地: 从注释重新生成 doc
 按文件类型分层授权:
 
 - 内核模块与内核适配代码: GPL-2.0-only, 见 [LICENSES/GPL-2.0-only.txt](LICENSES/GPL-2.0-only.txt)
-- 用户态工具, 脚本, CI: GPL-3.0-or-later, 见 [LICENSES/GPL-3.0-or-later.txt](LICENSES/GPL-3.0-or-later.txt)
+- 用户态工具, 脚本, CI: GPL-3.0-only, 见 [LICENSES/GPL-3.0-only.txt](LICENSES/GPL-3.0-only.txt)
 - 文档: CC-BY-SA-4.0, 见 [LICENSES/CC-BY-SA-4.0.txt](LICENSES/CC-BY-SA-4.0.txt)
 - Vendored 上游代码保留其原始 SPDX 与许可证
 
-作者: Uobe(uobe1).
+Copyright (C) 2025 Simiao Ding <upbr233@outlook.com>
 
 ---
 

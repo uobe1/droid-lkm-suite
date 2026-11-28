@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Docker 29.x pids-limit smoke on the beryl device kernel Image.
 # Uses host PID/IPC/UTS/cgroup namespaces because the stock device kernel has
 # those namespace configs disabled; cgroups/pids are still created per container.

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 """Source-level guards for the devtmpfs E-route decision and wiring.
 
 Scope: these tests pin *tracked-file invariants* only. They verify

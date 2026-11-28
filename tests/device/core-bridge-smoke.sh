@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Verify the ns -> core status bridge without activating namespace hooks.
 # Loads core and dnsk_ns with activate=0, checks /proc/dnsk/status, proves
 # core cannot be unloaded while ns holds the API, then unloads in order.

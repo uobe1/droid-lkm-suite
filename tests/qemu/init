@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Minimal arm64 initramfs init for the stock-GKI core smoke.
 # Feature modules import non-exported kernel symbols and need the KernelSU
 # loader; this stock insmod path therefore validates core only.

@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Regression for the inactive-netfilter unload panic. Run as root.
 set -u
 KO=${1:?usage: netfilter-inactive-smoke.sh /path/to/dnsk_netfilter.ko}

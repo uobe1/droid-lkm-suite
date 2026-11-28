@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 """Build a KernelSU module ZIP from built artifacts.
 
 This script never invents modules.  A requested KMI must have a built

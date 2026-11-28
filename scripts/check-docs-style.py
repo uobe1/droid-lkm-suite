@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 """Pure-Python3 style gate for tracked Markdown and documentation comments.
 
 The dev container has no markdownlint/clang-format/shellcheck, and the hard

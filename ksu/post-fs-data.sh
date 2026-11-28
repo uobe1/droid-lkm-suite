@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Load only core at boot; feature modules remain on-demand.  No boot partition writes.
 
 MODDIR=${0%/*}

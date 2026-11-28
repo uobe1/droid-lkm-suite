@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # Complete semantic probe: runs identically on the native oracle kernel and on
 # the device kernel with this suite's modules loaded, and prints only

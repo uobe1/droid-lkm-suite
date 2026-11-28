@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Cross-compiled static arm64 helpers for the KSU module.
 
 CC ?= clang

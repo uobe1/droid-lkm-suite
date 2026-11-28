@@ -39,6 +39,6 @@
 ## 许可证
 
 - 内核模块与内核适配代码: GPL-2.0-only
-- 用户态工具, 脚本, CI: GPL-3.0-or-later
+- 用户态工具, 脚本, CI: GPL-3.0-only
 - 文档: CC-BY-SA-4.0.
 - 新增文件必须带对应 SPDX 头; vendored 代码保留原 SPDX

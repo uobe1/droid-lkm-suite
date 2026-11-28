@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-only
 # Disposable-VM test for the active PID/IPC namespace hooks.
 BB=/bin/busybox
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
