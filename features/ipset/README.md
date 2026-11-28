@@ -120,7 +120,7 @@ make -C features/ipset KDIR=/opt/ddk/kdir/android16-6.12 DNSK_XT_NOCOMPAT=1 modu
 
 - 设备上的 `ipset` 建集合、计数与 iptables/ip6tables 规则 (设备与 Termux
   均无 `ipset` 工具)
-- 设备 `rmmod` (2026-11-27 逆序卸载被 sysrq panic 打断,无独立证据)
+- 设备 `rmmod` (逆序卸载验证被 panic 打断,无独立证据)
 - 容器验收
 
 以下为待执行清单,已通过项见上.测试环境为 arm64 目标机或 QEMU

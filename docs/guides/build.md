@@ -3,8 +3,8 @@
 ## 约束
 
 - 本地不进行大体积内核构建; 使用 GitHub Actions 标准 runner + DDK
-- 目标 KMI: `android12-5.10`, `android13-5.10`, `android13-5.15`, `android14-5.15`, `android14-6.1`, `android15-6.6`, `android16-6.12`, `android17-6.18`
-- 首 tag 需要全部 KMI 通过; 开发版本 `vX.Y.ZdevN` 只产生 artifacts, 不建 tag
+- 目标 KMI: `android16-6.12`; 其余 7 个 KMI 已由项目所有者搁置, 不参与构建与校验
+- 当前为开发阶段, 只产生 artifacts, 不建 tag
 
 ## 本地静态检查
 
@@ -13,13 +13,15 @@ make check
 python3 tools/kmi_matrix.py --check
 ```
 
+`make check` 运行 API 文档一致性, Markdown 风格与 workflow 输入一致性; host 单测用 `python3 -m unittest discover -s tests/host -p 'test_*.py'`. 本机缺少 shellcheck/ruff/clang-format 时对应项输出 `SKIPPED: <tool> missing`, 不声明已检查.
+
 ## DDK 构建
 
 ```sh
 make KDIR=/opt/ddk/kdir/<kmi> M="$PWD" modules
 ```
 
-CI 使用 `ghcr.io/ylarod/ddk-min: <kmi>-20260828`, 并在构建前执行 imports guard, KSU ZIP 结构检查, 文档构建
+CI 使用 `ghcr.io/ylarod/ddk-min: <kmi>-20260828`. `docs-check.yml` 的 `docs` job 在构建前校验 API 文档, 文档风格, workflow 输入一致性与 host 单测; 同文件的 `lint` job 安装并运行 shellcheck (全部 tracked shell, 含无扩展名脚本), ruff (`scripts`/`tools`/`tests`), clang-format (`--dry-run --Werror`, 排除 `vendor/` 与 `selftests/`), yamllint 与 actionlint (workflows), cppcheck (`tools/dnsk_preflight.c`). 仓库不执行 imports guard 或 KSU ZIP 结构检查
 
 ## Native oracle
 
@@ -29,7 +31,7 @@ TMPFS/USER_NS/CGROUP_PIDS 的差分测试需要 AOSP 同 KMI 内核:
 - 一份关闭目标配置 (LKM 测试环境);
 - 同一 rootfs, 同一测试套件, 同一 QEMU 参数
 
-构建与运行脚本在 `ci/qemu/` 与 `tests/differential/`.未产生 oracle 的内核不得用于差分结论
+构建入口在 `.github/workflows/qemu-core.yml`, 差分段在 `tests/qemu/diff_*.sh`, 输入说明在 `ci/qemu/README.md`. 未产生 oracle 的内核不得用于差分结论
 
 ## ABI build profile
 
@@ -60,6 +62,6 @@ python3 tools/build_flags.py --profile profiles/abi/android16-6.12-xt104.json \
  与构建 KMI 一致; 其他 KMI 不再误用 6.12 profile
 - 模块内嵌 `dnsk_abi_profile=` 与 `dnsk_xt_layout=` stamp; KSU 包的
  `policy.conf` 写入同名的 `abi_profile`/`xt_layout`, `dnskctl load` 先比对
- stamp, 再用 `dnsk-preflight` 校验设备 BTF, 全部通过才允许 `ksud insmod`
+ stamp, 再用 `dnsk-preflight` 校验设备 BTF, 全部通过才允许 `dnskctl load`
 - 新增会影响模块/内核边界 struct 的 config 时, 必须同时更新 profile
  registry, 构建变体和 BTF preflight 检查; 不能仅靠 `uname` KMI 判断

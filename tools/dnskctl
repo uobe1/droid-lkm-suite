@@ -15,8 +15,8 @@
 #  * @command start-all [--json]        load every shipped module in dependency order
 #  * @command stop-all [--json]         unload features then core, verifying each step
 #  * @command preflight [feature]       run device-side preflight (default: core)
-#  * @command load <feature>            ksud insmod a feature module (idempotent)
-#  * @command unload <feature>          rmmod safely: refs, dependants, post-check
+#  * @command load <feature>            load a feature module via DNSK_LOADER (idempotent)
+#  * @command unload <feature>          unload via the same loader: refs, dependants, quiesce, post-check
 #  * @command profile <name>            load a named profile
 #  * @command enable|disable            allow/skip core auto-load on the next boot
 #  * @command logs [lines]              tail the module state logs
@@ -56,8 +56,9 @@ commands:
   start-all [--json]        load every shipped module in dependency order
   stop-all [--json]         unload features then core, verifying each step
   preflight [feature]       run device-side preflight (default: core)
-  load <feature>            ksud insmod a feature module (idempotent)
-  unload <feature>          rmmod safely: refs, dependants, post-check
+  load <feature>            load a feature module via DNSK_LOADER (idempotent)
+  unload <feature>          unload via the same loader: refs, dependants,
+                            quiesce, post-check
   profile <name>            load a named profile
   enable|disable            allow/skip core auto-load on the next boot
   logs [lines]              tail the module state logs
@@ -171,11 +172,17 @@ check_abi_stamps() {
 
 is_loaded() {
 	name=$1
+	list_modules | grep -q "^${name}[[:space:]]"
+}
+
+# list_modules prints the "name size refs" table whether or not busybox is on
+# PATH; busybox's lsmod is preferred because some ROMs ship no lsmod at all.
+list_modules() {
 	bb=$(find_busybox)
 	if [ -n "$bb" ]; then
-		"$bb" lsmod 2>/dev/null | grep -q "^${name}[[:space:]]"
+		"$bb" lsmod 2>/dev/null
 	else
-		lsmod 2>/dev/null | grep -q "^${name}[[:space:]]"
+		lsmod 2>/dev/null
 	fi
 }
 
@@ -339,11 +346,11 @@ do_preflight() {
 		set -- "$@" --feature "$feature"
 		#
 		# The preflight binary treats a missing ksud as a failed check, because
-		# that is true for the default loader.  When droid-lkm-ins does the
-		# loading, ksud is not part of the path at all, so telling the checker it
+		# that is true when ksud does the loading.  With the default lkmins
+		# backend, ksud is not part of the path at all, so telling the checker it
 		# is missing would refuse a perfectly loadable module.  Report the loader
 		# actually in use instead of a path that will never be used.
-		if [ "${DNSK_LOADER:-ksud}" = "lkmins" ]; then
+		if [ "${DNSK_LOADER:-lkmins}" = "lkmins" ]; then
 			DNSK_KSUD=
 			DNSK_LOADER_BACKEND=lkmins
 		else
@@ -377,15 +384,16 @@ do_load() {
 	#
 	# Two loaders are supported.
 	#
-	#   ksud     (default) KernelSU's, which resolves unexported imports through
-	#            the KernelSU driver as well as /proc/kallsyms.
-	#   lkmins   droid-lkm-ins' head-only loader: it binds undefined symbols from
-	#            /proc/kallsyms and calls init_module(2) itself.
+	#   ksud     KernelSU's, which resolves unexported imports through the
+	#            KernelSU driver as well as /proc/kallsyms.
+	#   lkmins   (default) droid-lkm-ins' head-only loader: it binds undefined
+	#            symbols from /proc/kallsyms, adapts knowable struct module
+	#            layout, and calls init_module(2) itself.
 	#
 	# Both end up in the same kernel path; the difference is only who patches the
-	# symbol table.  The default stays ksud so existing devices keep working, and
-	# because a kernel that hides symbols from /proc/kallsyms needs the driver.
-	case "${DNSK_LOADER:-ksud}" in
+	# symbol table.  A kernel that hides symbols from /proc/kallsyms still needs
+	# the ksud driver, selected with DNSK_LOADER=ksud.
+	case "${DNSK_LOADER:-lkmins}" in
 	ksud) : ;;
 	lkmins)
 		lkmctl=$(find_lkmctl) || \
@@ -480,12 +488,30 @@ do_unload() {
 	need_root
 	feature=$1
 	name="dnsk_${feature}"
+	# Reject an unknown loader before doing anything else, with the same
+	# message as do_load.  Falling through to the busybox path would silently
+	# treat a typo such as DNSK_LOADER=lkmis as ksud.
+	case "${DNSK_LOADER:-lkmins}" in
+	ksud|lkmins) ;;
+	*) die "DNSK_LOADER must be ksud or lkmins" ;;
+	esac
 	if ! is_loaded "$name"; then
 		echo "$name is not loaded"
 		return 0
 	fi
 	bb=$(find_busybox)
-	[ -n "$bb" ] || die "busybox not found; cannot rmmod safely"
+	# Match the loader that was selected for insmod; the default is lkmins plus
+	# lkmctl rmmod.  The safety checks below are the same either way: lkmctl's
+	# rmmod is only the delete_module(2) call, not a replacement for them.
+	case "${DNSK_LOADER:-lkmins}" in
+	lkmins)
+		lkmctl=$(find_lkmctl) || \
+			die "DNSK_LOADER=lkmins but no lkmctl found (set DNSK_LKMCTL)"
+		;;
+	ksud)
+		[ -n "$bb" ] || die "busybox not found; cannot rmmod safely"
+		;;
+	esac
 
 	if [ "$feature" != core ]; then
 		holders=$(module_holders "$name")
@@ -495,7 +521,7 @@ do_unload() {
 	fi
 
 	if [ "$feature" = core ]; then
-		deps=$("$bb" lsmod 2>/dev/null | grep '^dnsk_' | awk '$1 != "dnsk_core" {print $1}')
+		deps=$(list_modules | grep '^dnsk_' | awk '$1 != "dnsk_core" {print $1}')
 		if [ -n "$deps" ]; then
 			die "feature modules still loaded; unload them first: $(echo "$deps" | tr '\n' ' ')"
 		fi
@@ -516,7 +542,11 @@ do_unload() {
 	refs=$(module_refcnt "$name")
 	mark=$(dmesg_mark)
 	set +e
-	"$bb" rmmod "$name" 2>&1
+	if [ "${DNSK_LOADER:-lkmins}" = "lkmins" ]; then
+		"$lkmctl" rmmod "$name" 2>&1
+	else
+		"$bb" rmmod "$name" 2>&1
+	fi
 	rc=$?
 	set -e
 

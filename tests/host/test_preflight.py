@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -337,6 +338,40 @@ class PreflightTests(unittest.TestCase):
         self.assertIn("dcache", data["checks"])
         # ok may be false on a host without ksud; the JSON must still be valid.
         self.assertIn("ok", data)
+
+    def test_lkmins_backend_skips_ksud_lookup(self):
+        cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+        if not cc:
+            self.skipTest("no host C compiler")
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            binary = tmp / "dnsk-preflight"
+            subprocess.run(
+                [cc, "-O2", "-Wall", "-Wextra", "-std=c11", "-D_GNU_SOURCE",
+                 "-o", str(binary), str(ROOT / "tools/dnsk_preflight.c")],
+                check=True,
+            )
+            fake = tmp / "ksud"
+            fake.write_text("#!/bin/sh\nexit 0\n")
+            fake.chmod(0o755)
+            base = [str(binary), "--kmi", "android16-6.12",
+                    "--supported", str(ROOT / "ksu/supported_kmis.txt")]
+            env = dict(os.environ)
+            env["DNSK_KSUD"] = str(fake)
+
+            env["DNSK_LOADER_BACKEND"] = "lkmins"
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False, env=env)
+            data = json.loads(proc.stdout)
+            self.assertEqual(data["ksud"], "")
+            self.assertFalse(data["checks"]["ksud"])
+
+            env["DNSK_LOADER_BACKEND"] = "ksud"
+            proc = subprocess.run(base, text=True, capture_output=True,
+                                  check=False, env=env)
+            data = json.loads(proc.stdout)
+            self.assertEqual(data["ksud"], str(fake))
+            self.assertTrue(data["checks"]["ksud"])
 
     def test_preflight_xt_btf_layout(self):
         cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")

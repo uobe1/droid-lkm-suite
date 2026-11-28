@@ -19,8 +19,8 @@ The only supported user-space entry point for loading, unloading and inspecting 
 | `start-all [--json]` | load every shipped module in dependency order |
 | `stop-all [--json]` | unload features then core, verifying each step |
 | `preflight [feature]` | run device-side preflight (default: core) |
-| `load <feature>` | ksud insmod a feature module (idempotent) |
-| `unload <feature>` | rmmod safely: refs, dependants, post-check |
+| `load <feature>` | load a feature module via DNSK_LOADER (idempotent) |
+| `unload <feature>` | unload via the same loader: refs, dependants, quiesce, post-check |
 | `profile <name>` | load a named profile |
 | `enable|disable` | allow/skip core auto-load on the next boot |
 | `logs [lines]` | tail the module state logs |
@@ -49,8 +49,8 @@ This is intentionally conservative: it checks the facts dnsk_core depends on and
 | `supported` | whether this KMI is in the supported list |
 | `page_size` | kernel page size in bytes |
 | `btf` | whether /sys/kernel/btf/vmlinux is usable |
-| `ksud` | resolved ksud path, empty when absent |
-| `btf_layout` | object: measured BTF structure sizes |
+| `ksud` | resolved ksud path; empty when absent or when the lkmins backend is selected |
+| `btf_layout` | object: BTF structure sizes read from the device |
 | `btf_layout.xt_match_size` | sizeof(struct xt_match) |
 | `btf_layout.xt_target_size` | sizeof(struct xt_target) |
 | `btf_layout.seq_file_private` | offset of seq_file->private |
@@ -87,7 +87,7 @@ This is intentionally conservative: it checks the facts dnsk_core depends on and
 | `checks.page_size_4k` | page size is 4096 |
 | `checks.btf` | BTF available |
 | `checks.kmi_supported` | KMI supported |
-| `checks.ksud` | ksud present |
+| `checks.ksud` | ksud present in the selected backend (false under lkmins) |
 | `checks.dcache` | dcache available |
 | `checks.kallsyms_resolver` | kallsyms resolver available |
 | `checks.xt_layout` | xtables layout acceptable |

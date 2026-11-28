@@ -102,7 +102,7 @@ devtmpfs 的修法不是"更小心地等", 而是改变所有权:
 它可能阻塞在模块自带的 SysV/POSIX-mqueue syscall 里(`msgrcv`/`semtimedop`/
 `mq_timedreceive` 的等待队列), 或停在 `do_exit` 的整段替换体里. 模块 text 一旦
 在这类 task 返回前解除映射, 它的 `ret` 就会取指到已释放页(`pc == lr`, `pte=0`,
-IABT), 即 2026-11-27 那次真机 panic.
+IABT), 这是真机 `rmmod dnsk_ns` panic 的成因.
 
 `dnsk_ns` 因此不靠固定 sleep, 而靠一个可观测的**在途计数**:
 
@@ -121,7 +121,7 @@ IABT), 即 2026-11-27 那次真机 panic.
 
 这套顺序由 `tests/host/test_ns_unload_quiesce.py` 守卫: 它建模并发 fork/clone
 下 `rmmod` 必须等计数归零, 并断言 `ds_ns_quiesce` 先于 `ds_hooks_uninstall`、
-计数入口确实插桩、旧 `WARN` 已移除.
+计数入口确实插桩、残留 per-task 状态只报数不告警.
 
 ## 新增模块的卸载检查清单
 

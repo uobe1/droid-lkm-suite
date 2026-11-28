@@ -211,7 +211,11 @@ jobs:
       - name: Compute device module_layout CRC
         if: ${{ inputs.mode != 'baseline' }}
         run: |
-          python3 - <<'PY'
+          if [ ! -f device/vmlinux.elf ]; then
+            echo "vmlinux.elf not present; the patched CRC cannot be verified" >&2
+            exit 0
+          fi
+          python3 - <<'PY' | tee crc-report.txt
           import struct
           from elftools.elf.elffile import ELFFile
           f = open('device/vmlinux.elf', 'rb')
@@ -237,6 +241,26 @@ jobs:
                           print('crc step', step, hex(val))
                           break
           PY
+      - name: Verify the module_layout CRC used for patching
+        if: ${{ inputs.mode != 'baseline' }}
+        env:
+          MODULE_LAYOUT_CRC: ${{ inputs.module_layout_crc }}
+        run: |
+          set -eu
+          test -n "$MODULE_LAYOUT_CRC" || {
+            echo "module_layout_crc input is empty" >&2
+            exit 1
+          }
+          if [ ! -f device/vmlinux.elf ]; then
+            echo "warning: vmlinux.elf is absent; module_layout_crc=$MODULE_LAYOUT_CRC is unverified" >&2
+            exit 0
+          fi
+          if ! grep -qi "$MODULE_LAYOUT_CRC" crc-report.txt; then
+            cat crc-report.txt >&2
+            echo "module_layout_crc=$MODULE_LAYOUT_CRC was patched in, but the device vmlinux does not report it" >&2
+            exit 1
+          fi
+          echo "module_layout_crc=$MODULE_LAYOUT_CRC matches the device vmlinux"
       - name: Inspect device kernel symbols
         if: ${{ inputs.mode != 'baseline' }}
         run: |

@@ -14,8 +14,8 @@
  * @json supported          whether this KMI is in the supported list
  * @json page_size          kernel page size in bytes
  * @json btf                whether /sys/kernel/btf/vmlinux is usable
- * @json ksud               resolved ksud path, empty when absent
- * @json btf_layout         object: measured BTF structure sizes
+ * @json ksud               resolved ksud path; empty when absent or when the lkmins backend is selected
+ * @json btf_layout         object: BTF structure sizes read from the device
  * @json btf_layout.xt_match_size    sizeof(struct xt_match)
  * @json btf_layout.xt_target_size   sizeof(struct xt_target)
  * @json btf_layout.seq_file_private offset of seq_file->private
@@ -52,7 +52,7 @@
  * @json checks.page_size_4k       page size is 4096
  * @json checks.btf                BTF available
  * @json checks.kmi_supported      KMI supported
- * @json checks.ksud               ksud present
+ * @json checks.ksud               ksud present in the selected backend (false under lkmins)
  * @json checks.dcache             dcache available
  * @json checks.kallsyms_resolver   kallsyms resolver available
  * @json checks.xt_layout           xtables layout acceptable
@@ -1073,6 +1073,7 @@ int main(int argc, char **argv)
 	char derived[64] = { 0 };
 	const char *supported_path = NULL;
 	const char *feature = "core";
+	const char *backend;
 	const char *ksud;
 	unsigned long page_size;
 	const char *btf_path = "/sys/kernel/btf/vmlinux";
@@ -1096,6 +1097,7 @@ int main(int argc, char **argv)
 	int supported;
 	int dcache;
 	int resolver;
+	int ksud_required;
 	int ok;
 
 	for (int i = 1; i < argc; i++) {
@@ -1142,7 +1144,15 @@ int main(int argc, char **argv)
 					      (uint32_t)xt_expected, 1);
 	else
 		layout_ok = 0;
-	ksud = find_ksud();
+	/*
+	 * Resolve ksud only when it is the selected backend.  An empty DNSK_KSUD
+	 * does not mean "no ksud": find_ksud() falls back to fixed paths and
+	 * PATH, so calling it under lkmins would still report a loader that was
+	 * never selected.
+	 */
+	backend = getenv("DNSK_LOADER_BACKEND");
+	ksud_required = !backend || strcmp(backend, "lkmins") != 0;
+	ksud = ksud_required ? find_ksud() : NULL;
 	supported = supported_kmi(supported_path, kmi);
 	scan_kallsyms();
 
@@ -1168,17 +1178,13 @@ int main(int argc, char **argv)
 	/*
 	 * ksud is only a requirement when ksud is the loader.
 	 *
-	 * The default loader is KernelSU's ksud, which needs to exist; but an
-	 * alternate loader (droid-lkm-ins) binds symbols from /proc/kallsyms and
-	 * calls init_module itself, so demanding ksud there would refuse a module
-	 * that loads perfectly well.  The value is still reported, never hidden.
+	 * dnskctl's default backend is lkmins (droid-lkm-ins), which binds
+	 * symbols from /proc/kallsyms and calls init_module itself, so ksud is
+	 * neither needed nor looked up there.  ksud is required only when
+	 * DNSK_LOADER_BACKEND selects it; the lookup is never hidden.
 	 */
-	{
-		const char *backend = getenv("DNSK_LOADER_BACKEND");
-		int ksud_required = !backend || strcmp(backend, "lkmins") != 0;
-
-		ok = page_size == 4096 && btf && layout_ok && boundary_ok &&
-		     (!ksud_required || ksud) &&
+	ok = page_size == 4096 && btf && layout_ok && boundary_ok &&
+	     (!ksud_required || ksud) &&
 	     supported && kmi[0] && required[SYM_SYS_CALL_TABLE].found &&
 	     required[SYM_INIT_MM].found &&
 	     required[SYM_PANIC_NOTIFIER_LIST].found &&
@@ -1187,7 +1193,6 @@ int main(int argc, char **argv)
 	     nf_ok && (!check_nf || nf_symbols) && seq_ok &&
 	     (!check_cgpids || cgpids_symbols) &&
 	     (!check_tmpfsx || tmpfsx_symbols);
-	}
 
 	printf("{\"ok\":%s,\"feature\":\"%s\",\"release\":\"%s\","
 	       "\"kmi\":\"%s\",\"supported\":%s,\"page_size\":%lu,"

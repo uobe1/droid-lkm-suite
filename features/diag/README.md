@@ -32,5 +32,5 @@ symbols that are not exported.
 
 ## Evidence
 
-Build coverage: `ci-fast.yml` and `qemu-core.yml` module lists (2026-11-27).
+Build coverage: `ci-fast.yml` and `qemu-core.yml` module lists.
 No functional gate evidence; treat any output as diagnostic only.

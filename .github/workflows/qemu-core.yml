@@ -52,15 +52,6 @@ on:
         required: false
         type: string
         default: "0xe976b219"
-      include_net:
-        description: diff mode only - include netfilter/ipset probes (temporarily off until the net baseline is complete)
-        type: boolean
-        default: false
-      diff_load:
-        description: comma-separated modules for the LKM side (empty = default ns devtmpfs cgpids tmpfsx; include_net=true defaults to netfilter,ipset)
-        required: false
-        type: string
-        default: ""
       with_bus:
         description: diff mode only - also run the devtmpfs trigger=bus gate as a parallel job in the same run
         type: boolean
@@ -71,10 +62,37 @@ permissions:
   actions: read
 
 jobs:
+  # Reject impossible mode/kernel pairs before any expensive job starts.  The
+  # stock image job builds ns/diag/devtmpfs/netfilter/ipset only, and the tmpfsx
+  # initramfs assumes the oracle config; both combinations would otherwise waste
+  # a full build and then fail at boot.
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the selected initramfs against the kernel it boots
+        shell: bash
+        env:
+          MODE: ${{ inputs.mode }}
+          KERNEL: ${{ inputs.kernel }}
+        run: |
+          set -eu
+          if [ "$MODE" = "cgpids" ] && [ "$KERNEL" = "stock" ]; then
+            echo "mode=cgpids needs kernel=oracle or oracle-nopids:" >&2
+            echo "the stock image job does not build dnsk_cgpids.ko" >&2
+            exit 1
+          fi
+          if [ "$MODE" = "tmpfsx" ] && [ "$KERNEL" = "stock" ]; then
+            echo "mode=tmpfsx uses the oracle-only ACL/xattr initramfs:" >&2
+            echo "set kernel=oracle or oracle-nopids" >&2
+            exit 1
+          fi
+
   image:
+    needs: validate
     # diff mode reuses two prebuilt Images; it must never build the qemu-6.12
     # artifact from image_run_id, which in that mode names a device-image run.
-    if: ${{ inputs.mode != 'diff' && inputs.image_run_id == '' }}
+    if: ${{ inputs.mode != 'diff' && inputs.mode != 'active-devtmpfs-bus' && inputs.mode != 'active-unload-concurrent' && inputs.image_run_id == '' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/ylarod/ddk-min:android16-6.12-20260828
@@ -234,7 +252,7 @@ jobs:
           if-no-files-found: error
 
   boot:
-    needs: image
+    needs: [validate, image]
     if: ${{ inputs.mode != 'diff' && inputs.mode != 'active-devtmpfs-bus' && inputs.mode != 'active-unload-concurrent' && always() && (needs.image.result == 'success' || inputs.image_run_id != '') }}
     runs-on: ubuntu-latest
     steps:
@@ -696,13 +714,13 @@ jobs:
           # Module names are [a-z] separated by commas; validate so a stray
           # space or quote can never reach the kernel command line.
           case "$DIFF_LOAD_IN" in
-          *[!a-z,]*) echo "diff_load must be comma-separated module names: $DIFF_LOAD_IN" >&2; exit 1 ;;
+          *[!a-z,]*) echo "module list must be comma-separated names: $DIFF_LOAD_IN" >&2; exit 1 ;;
           esac
           NET_FLAG=""
           if [ "$INCLUDE_NET" = "true" ]; then
             NET_FLAG="dnsk_diff_net=1"
-            # Net probes need netfilter+ipset loaded unless diff_load says
-            # otherwise.  Comma-separated: a kernel arg cannot contain a space.
+            # Net probes need netfilter+ipset loaded unless the matrix load
+            # list says otherwise.  Comma-separated: a kernel arg cannot contain a space.
             [ -n "$DIFF_LOAD_IN" ] || DIFF_LOAD_IN="netfilter,ipset"
           fi
           if [ -n "$DIFF_LOAD_IN" ]; then

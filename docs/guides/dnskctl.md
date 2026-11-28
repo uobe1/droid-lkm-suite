@@ -30,10 +30,13 @@
 | `stop-all [--json]` | 先卸 feature 再卸 core, 每步复验 |
 | `profile <name>` | 加载一个命名 profile |
 
-`load` 的符号绑定后端由 `DNSK_LOADER` 选择:
+`load` 与 `unload` 的后端由 `DNSK_LOADER` 选择, 两者始终一致:
 
-- `ksud`(默认)-- 走 `/proc/kallsyms` 加 KernelSU 驱动
-- `lkmins` -- 只走 `/proc/kallsyms` 再调 `init_module(2)`
+- `lkmins`(默认)-- 加载调 `lkmctl insmod`, 卸载调 `lkmctl rmmod`
+- `ksud` -- 加载走 KernelSU, 卸载走 busybox `rmmod`
+
+`unload` 的引用检查, 依赖检查, cgpids quiesce 与 dmesg 告警扫描在两条路径上都
+执行, `lkmctl` 只替换最后的 `delete_module(2)` 调用
 
 ## 开机行为
 

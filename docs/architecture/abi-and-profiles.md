@@ -96,7 +96,7 @@ BTF(256, `can_fork@104`, 无 `css_killed`).
 
 - 换 KMI/内核版本: 重新生成, 不能复用旧 profile
 - 改任一 config knob, 或设备 BTF 的 size/偏移与当前 profile 不一致: 新增/
- 修正 profile, 用实测值, 不猜测
+ 修正 profile, 用实际值, 不猜测
 - `xtables_compat`, `PAGE_SIZE`, `ARM64_VA_BITS`, `MAX_SKB_FRAGS`, cgroup
  controller 集变化: 对应 `DNSK_*` 与 stamp 会变, 必须重建
 - 新增 feature 引入新的边界 struct: 同时加 preflight 检查和 profile knob;

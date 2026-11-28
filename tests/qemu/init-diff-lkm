@@ -11,6 +11,8 @@
 BB=/bin/busybox
 export PATH=/usr/bin:/bin:/sbin:/usr/sbin:/data/adb/modules/droid_lkm_suite/bin
 export ANDROID_ROOT=/system ANDROID_DATA=/data
+# This image carries ksud, not lkmctl; exercise the ksud backend explicitly.
+export DNSK_LOADER=ksud
 
 MODDIR=/data/adb/modules/droid_lkm_suite
 CTL=$MODDIR/bin/dnskctl

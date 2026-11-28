@@ -1,0 +1,9 @@
+---
+# Report YAML defects (duplicate keys, bad indentation, tabs, trailing
+# whitespace), not formatting taste.
+extends: default
+
+rules:
+  comments-indentation: disable
+  document-start: disable
+  line-length: disable

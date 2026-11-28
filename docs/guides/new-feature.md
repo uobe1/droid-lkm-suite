@@ -75,7 +75,7 @@ features/<name>/
 |---|---|---|
 | `features/<name>/Kbuild` | `obj-m : = dnsk_<name>.o`, `-I$(src)/../../core/include`, ABI stamp 宏 | 构建报 "No rule to make target"; 或产出缺 stamp, preflight 报 "no dnsk_abi_profile stamp" |
 | `features/<name>/Makefile` | 开发者/CI 入口, 转发 `DNSK_*` 变量 | `make -C features/<name>` 直接报 "No targets specified" |
-| `.github/workflows/ci.yml` 与 `ci-fast.yml` 的 per-feature 构建清单 | 逐个 `make` + `cp` 到 `build/kmi/<kmi>/` | CI 全绿但 artifact 里没有该 `.ko`; `dnskctl load` 报 "module not shipped in this build" |
+| `.github/workflows/ci-fast.yml` 与 `qemu-core.yml` 的 per-feature 构建清单 | 逐个 `make` 后把 `.ko` 拷到 `out/` 并上传 artifact | CI 全绿但 artifact 里没有该 `.ko`; `dnskctl load` 报 "module not shipped in this build" |
 
 `tools/package.py` 用 `glob("dnsk_*.ko")` 打包, **没有 feature 白名单**--
 所以"没进 ZIP"的真正原因是 CI 没构建, 不是打包脚本漏了名字

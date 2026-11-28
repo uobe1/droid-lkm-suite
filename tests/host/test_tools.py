@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -23,23 +26,21 @@ class KmiMatrixTests(unittest.TestCase):
     def test_profiles_are_scaffold_only(self):
         profiles = sorted((ROOT / "profiles").glob("android*.json"))
         self.assertEqual(len(profiles), 8)
+        features = {"core", "ns", "devtmpfs", "netfilter", "ipset", "cgpids",
+                    "userns", "tmpfsx"}
         for path in profiles:
             data = json.loads(path.read_text())
             self.assertFalse(data["validated"], path)
+            self.assertEqual(data["schema"], 2, path)
             if path.stem == "android16-6.12":
                 self.assertEqual(data["stage"], "M1-ns-development", path)
-                self.assertEqual(data["features"]["ns"]["status"], "development", path)
-                self.assertEqual(data["features"]["devtmpfs"]["status"], "development", path)
             else:
                 self.assertEqual(data["stage"], "M0-core-scaffold", path)
-                self.assertEqual(data["features"]["ns"]["status"], "not-shipped", path)
-                self.assertEqual(data["features"]["devtmpfs"]["status"], "not-shipped", path)
-            self.assertEqual(data["features"]["core"]["status"], "scaffold", path)
+            self.assertEqual(set(data["features"]), features, path)
             for name, feature in data["features"].items():
-                if name in ("core", "ns", "devtmpfs") and path.stem == "android16-6.12":
-                    continue
-                if name != "core":
-                    self.assertEqual(feature["status"], "not-shipped", path)
+                # Implementation status is recorded in docs/status.md only.
+                self.assertNotIn("status", feature, path)
+                self.assertIn("target_level", feature, path)
 
 
 class BuildFlagsTests(unittest.TestCase):
@@ -184,6 +185,67 @@ class PackagingInputTests(unittest.TestCase):
         self.assertIn("dev artifact", text)
         self.assertIn("mqueue verified", text)
         self.assertIn("No release support", text)
+
+
+class LoaderReuseTests(unittest.TestCase):
+    """The lkmins backend must replace only the load/unload call itself."""
+
+    def test_unload_follows_the_selected_loader(self):
+        text = (ROOT / "tools" / "dnskctl").read_text()
+        self.assertIn('"$lkmctl" rmmod "$name"', text)
+        self.assertIn('"$bb" rmmod "$name"', text)
+        # The safety gates are what make dnskctl's unload different from a bare
+        # rmmod; they must run on both paths.
+        for gate in ("module_holders", "quiesce", "dmesg_alarms_since"):
+            self.assertIn(gate, text)
+
+    def test_default_loader_is_lkmins(self):
+        text = (ROOT / "tools" / "dnskctl").read_text()
+        self.assertNotIn("${DNSK_LOADER:-ksud}", text)
+        self.assertGreaterEqual(text.count("${DNSK_LOADER:-lkmins}"), 4)
+
+    def test_package_requires_and_ships_lkmctl(self):
+        text = (ROOT / "tools" / "package.py").read_text()
+        self.assertIn('"--lkmctl"', text)
+        self.assertIn("required=True", text)
+        self.assertIn('"bin/lkmctl"', text)
+
+    def test_unload_command_doc_is_one_complete_line(self):
+        lines = (ROOT / "tools" / "dnskctl").read_text().splitlines()
+        declared = [line for line in lines if "@command unload" in line]
+        self.assertEqual(len(declared), 1)
+        self.assertIn("quiesce", declared[0])
+        self.assertIn("post-check", declared[0])
+        page = (ROOT / "docs" / "api" / "userspace.md").read_text()
+        rows = [line for line in page.splitlines()
+                if line.startswith("| `unload <feature>`")]
+        self.assertEqual(len(rows), 1)
+        self.assertIn("quiesce", rows[0])
+        self.assertIn("post-check", rows[0])
+
+
+class UnloadLoaderValidationTests(unittest.TestCase):
+    def test_unload_rejects_unknown_loader(self):
+        sh = shutil.which("sh")
+        if not sh:
+            self.skipTest("no POSIX shell")
+        with tempfile.TemporaryDirectory() as td:
+            bindir = Path(td) / "bin"
+            bindir.mkdir()
+            # need_root() runs before loader validation; report uid 0 so the
+            # test reaches the branch under test without real privileges.
+            fake_id = bindir / "id"
+            fake_id.write_text("#!/bin/sh\necho 0\n")
+            fake_id.chmod(0o755)
+            env = dict(os.environ)
+            env["PATH"] = f"{bindir}:{env.get('PATH', '')}"
+            env["DNSK_LOADER"] = "bogus"
+            proc = subprocess.run(
+                [sh, str(ROOT / "tools" / "dnskctl"), "unload", "core"],
+                text=True, capture_output=True, env=env, check=False,
+            )
+        self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("DNSK_LOADER must be ksud or lkmins", proc.stderr)
 
 
 if __name__ == "__main__":

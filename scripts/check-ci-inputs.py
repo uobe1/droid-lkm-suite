@@ -276,7 +276,7 @@ def check_copied_outputs_exist(texts: dict[Path, str]) -> None:
 
 
 SCRIPT_CALL_RE = re.compile(r"\b(?:sh|bash|source)\s+(?:\.\s+)?([^\s;&|]+)")
-INPUT_USE_RE = re.compile(r"inputs\.([A-Za-z_][A-Za-z0-9_-]*)")
+INPUT_USE_RE = re.compile(r"(?<![-\w.])inputs\.([A-Za-z_][A-Za-z0-9_-]*)")
 NEEDS_RE = re.compile(r"^\s+needs:\s*(.+)$")
 
 

@@ -7,6 +7,7 @@ Planned CI rootfs images:
 - Debian 13 with UFW and Fail2ban installed from pinned packages.
 - Droidspaces upstream checkout for the chroot workload.
 
-All images must be pinned by digest/SHA256 in `ci/manifest.json`; floating
-`latest` is not accepted for release evidence. No rootfs is committed to this
-repository.
+No image is in use yet and there is no `ci/manifest.json` in this repository.
+When an image enters use, pin it by digest in the workflow that consumes it and
+record the digest in the gate evidence; floating `latest` is not accepted for
+release evidence. No rootfs is committed to this repository.

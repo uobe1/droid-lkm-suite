@@ -91,6 +91,13 @@ def main() -> int:
     parser.add_argument("--module-root", type=Path, default=None)
     parser.add_argument("--build-root", type=Path, default=None)
     parser.add_argument("--bin-root", type=Path, default=None)
+    parser.add_argument(
+        "--lkmctl",
+        type=Path,
+        required=True,
+        help="droid-lkm-ins android lkmctl binary, shipped as bin/lkmctl "
+        "(the default loader)",
+    )
     parser.add_argument("--kmi", action="append", default=[])
     parser.add_argument("--out", type=Path, default=Path("out/droid_lkm_suite-dev.zip"))
     parser.add_argument("--dev", action="store_true", help="mark this as a dev artifact; required")
@@ -173,7 +180,8 @@ def main() -> int:
     dnskctl = (root / "tools" / "dnskctl").resolve()
     preflight = (bin_root / "dnsk-preflight").resolve()
     panic_decode = (module_root / "bin" / "panic_decode.sh").resolve()
-    for required in (dnskctl, preflight, panic_decode):
+    lkmctl = args.lkmctl.resolve()
+    for required in (dnskctl, preflight, panic_decode, lkmctl):
         if not required.is_file():
             print(f"missing packaging input: {required}", file=sys.stderr)
             return 1
@@ -210,6 +218,9 @@ def main() -> int:
         ):
             add_file(zf, src, arc, mode)
             record(src, arc)
+
+        add_file(zf, lkmctl, "bin/lkmctl", 0o755)
+        record(lkmctl, "bin/lkmctl")
 
         for kmi, core in core_files.items():
             arc = f"kmi/{kmi}/{core.name}"

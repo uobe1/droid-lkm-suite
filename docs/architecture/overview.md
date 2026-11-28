@@ -27,7 +27,7 @@
 
 ## Core ABI
 
-`dnsk_core_get()` 返回版本化 `struct dnsk_core_api`.Core 自身不导入任何非导出内核符号, 全部经运行时解析.Droidspaces 深移植的 feature(ns/devtmpfs/netfilter/ipset) 会引用内核内部符号, 目标设备由 KernelSU 的 `ksud insmod` 解析; 普通 `/system/insmod` 与 stock-GKI QEMU 无法加载这些 feature.所有 hook 由 core 持有, 计数, quiesce 和恢复, feature 不得自行安装永久 hook
+`dnsk_core_get()` 返回版本化 `struct dnsk_core_api`.Core 自身不导入任何非导出内核符号, 全部经运行时解析.Droidspaces 深移植的 feature(ns/devtmpfs/netfilter/ipset) 会引用内核内部符号, 目标设备由 KernelSU 的 `ksud insmod` 解析; 普通 `/system/insmod` 与 stock-GKI QEMU 无法加载这些 feature.core 提供四种受管 hook (kprobe/syscall/data/kretprobe); 深移植 feature (`ns`, `devtmpfs`) 另自带入口指令替换, 由 feature 自己负责 quiesce 与恢复, 见 [Hook 机制](hook-mechanism.md)
 
 ## Hook 机制
 
@@ -50,10 +50,10 @@
 - 依赖设备已有的 ramoops/pstore; 重启后 `dnskctl doctor --last-panic` 解析
 - boot guard 在 panic 后进入 safe mode, 只加载 core 诊断; 连续失败写 disable
 - 禁止在 panic 上下文写块设备/文件
-- userspace 崩溃取证 (tombstone/logcat) 仍未实现也未实测, 不得计入已完成的崩溃日志目标
+- userspace 崩溃取证 (tombstone/logcat) 仍未实现也未验证, 不得计入已完成的崩溃日志目标
 
 ## 验证
 
 - 源码等价模块: 同 KMI 源码 + 功能/容器工作负载
 - TMPFS/USER_NS/CGROUP_PIDS: AOSP 同 KMI Native oracle 差分
-- 全部 8 KMI 在首 tag 前通过各自 Native 能力矩阵; N/A 必须有文档依据
+- 只针对 KMI `android16-6.12`; N/A 必须有文档依据

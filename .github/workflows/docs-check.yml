@@ -1,9 +1,9 @@
 name: docs-check
 
-# Cheap, deterministic gate that runs before any kernel build.  It needs only
-# Python3, never pulls the DDK, and never touches the device.  Its job is to
-# prove the committed API pages still match the documentation comments and the
-# tracked Markdown still obeys docs/STYLE.md.
+# Cheap, deterministic gate that runs before any kernel build.  The docs job
+# needs only Python3; the lint job installs shellcheck, ruff, clang-format,
+# yamllint, actionlint and cppcheck from public packages.  Neither pulls the
+# DDK or touches the device.
 
 # Dispatch-only, like the other workflows in this repo: a push must not
 # silently consume a run, and the same gate must not execute twice (once on
@@ -19,10 +19,52 @@ permissions:
 jobs:
   docs:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: API pages match their comment sources
         run: python3 scripts/gen-api-docs.py --check
       - name: Tracked Markdown style
         run: python3 scripts/check-docs-style.py
+      - name: Workflow inputs are consistent
+        run: python3 scripts/check-ci-inputs.py
+      - name: Host unit tests
+        run: python3 -m unittest discover -s tests/host -p 'test_*.py'
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install static-analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck cppcheck
+          python3 -m pip install --user --break-system-packages ruff yamllint 'clang-format==18.1.8'
+          go install github.com/rhysd/actionlint/cmd/actionlint@latest
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: shellcheck (all tracked shell, including extensionless)
+        shell: bash
+        run: |
+          git ls-files -z | while IFS= read -r -d '' f; do
+            if head -n1 -- "$f" 2>/dev/null | grep -qE '^#!.*/(sh|bash)([[:space:]]|$)'; then
+              printf '%s\0' "$f"
+            fi
+          done | xargs -0 -r shellcheck
+      - name: ruff (scripts, tools, tests)
+        run: ruff check scripts tools tests
+      - name: clang-format (project C/H; vendor and kselftest excluded)
+        run: |
+          git ls-files -z '*.c' '*.h' \
+            | grep -zEv '(^|/)(vendor|selftests)/' \
+            | xargs -0 -r clang-format --dry-run --Werror
+      - name: yamllint
+        run: yamllint .github/workflows
+      - name: actionlint
+        run: actionlint
+      - name: cppcheck (userspace C only)
+        run: |
+          cppcheck --enable=warning,performance,portability --error-exitcode=1 \
+            --std=c11 --suppress=missingIncludeSystem -I core/include \
+            tools/dnsk_preflight.c

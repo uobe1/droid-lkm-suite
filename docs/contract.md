@@ -26,8 +26,10 @@
 
 ### 1.3 加载方式
 
-模块只能经 `ksud insmod` 或 `droid-lkm-ins`(`DNSK_LOADER=lkmins`) 加载
+模块只能经 `dnskctl load` 加载 (默认 `DNSK_LOADER=lkmins`, 可切 `ksud`)
 **不得**使用 `/system/bin/insmod` 或 busybox insmod 作为受支持路径
+卸载统一走 `dnskctl unload`, 后端与加载一致 (默认 `lkmins` 用 `lkmctl rmmod`,
+`ksud` 用 busybox `rmmod`), 引用/依赖/quiesce/dmesg 检查两条路径都执行
 
 ---
 
@@ -197,7 +199,7 @@ tracked 文档**不得**链接后三者 (新克隆会 404).只能写纯路径并
 
 | 项 | 判据 |
 |---|---|
-| 构建 | 8 个 KMI 各自构建通过 (或明确标注该 KMI 不支持) |
+| 构建 | 当前目标 KMI `android16-6.12` 构建通过 (其余 KMI 已搁置) |
 | ABI | preflight 通过, stamp 与 policy 一致 |
 | 功能 | QEMU 门控 + 真机门控通过 |
 | 语义 | O 类需内核态 + 用户态双向差分; V 类需明确标注差异点 |

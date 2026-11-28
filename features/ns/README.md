@@ -17,9 +17,9 @@ Vendored Droidspaces-LKM 6.12 PID/IPC namespace implementation.
   module text -- `stop_machine()`/`synchronize_rcu()` alone cannot see a task
   parked in a blocking SYSVIPC/mqueue syscall or the `do_exit` body.  Leftover
   per-task IPC state is inert heap and is reported, not WARNed, on unload.
-- **Unload completion (E5) is not yet proven.** A 2026-11-27 device
-  `rmmod dnsk_ns` panicked before the fix; the fixed QEMU run
-  `46040915897` shows `EAGAIN x60` with no WARN/Oops/panic, but the refcount
+- **Unload completion (E5) is not yet proven.** A device `rmmod dnsk_ns`
+  panicked; the QEMU concurrent gate
+  shows `EAGAIN x60` with no WARN/Oops/panic, but the refcount
   does not converge after the load stops.  Whether that is benign self-blocking
   or a leaked `try_module_get` is still undecided, so do not claim that unload
   restores stock behaviour.

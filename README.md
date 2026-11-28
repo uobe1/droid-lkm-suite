@@ -46,7 +46,7 @@ dnskctl start-all        # 或者一次全开
   (设备与 Termux 均无 `ipset` 工具)
 - 已与原生 GKI 内核做过语义差分: QEMU (beryl Image) 上全模块 0 差异; 差分不含 E5/E2/E3,
   真机语义差分未做
-- 卸载已改为两段式 quiesce + 在途引用, 裸 `rmmod` 在途时返回 `EAGAIN`; 但 E5
+- 卸载采用两段式 quiesce + 在途引用, 裸 `rmmod` 在途时返回 `EAGAIN`; E5
   (卸载后回原生态) 真机未通过, `ns` 及其余模块的独立卸载仍待验证
 
 逐项状态与证据: [docs/status.md](docs/status.md).
@@ -68,7 +68,7 @@ dnskctl start-all        # 或者一次全开
 
 ```sh
 make KDIR=/path/to/kernel M="$PWD" modules   # 云端/Codespace 内核构建
-make check                                   # 本地: API 文档漂移 + Markdown 风格
+make check                                   # 本地: API 漂移 + Markdown 风格 + workflow 输入 + host 单测
 make docs                                    # 本地: 从注释重新生成 docs/api/
 ```
 

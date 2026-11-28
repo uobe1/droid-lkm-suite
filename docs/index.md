@@ -8,9 +8,9 @@ Native/Real LKM container-subsystem completion for Android GKI
 ## 关键约束
 
 - Bootloader 锁定: 绝不写 boot/vendor_boot/dtbo/system/vendor_dlkm/system_dlkm
-- 只用 `ksud insmod`; 不使用 `/system/bin/insmod` 或 busybox insmod
+- 只用 `dnskctl load`/`unload`; 不使用 `/system/bin/insmod` 或 busybox insmod
 - Native 或 Real, 无 STUB/FAKE_SUCCESS
-- 首 tag 需要全部 8 个 KMI 与全部目标功能通过; 未完成不打 tag
+- 当前只针对 KMI `android16-6.12`; 其余 7 个 KMI 已搁置, 不建 tag
 
 ## 导航
 

@@ -35,6 +35,7 @@ nav:
       - Hook 机制: architecture/hook-mechanism.md
       - 卸载安全: architecture/unload-safety.md
       - ABI 与 profile: architecture/abi-and-profiles.md
+  - 实现契约: contract.md
   - 状态: status.md
   - API:
       - Kernel API: api/kernel.md

@@ -7,7 +7,7 @@
 | unit | 用户态工具, KMI 解析, 打包, panic 解析, 策略 |
 | host | dnskctl/boot guard/preflight 负例, KSU ZIP 结构 |
 | qemu | 模块加载/卸载, 功能, 崩溃扫描, Native vs LKM 差分 |
-| device | ksud 加载, ns/ipc/devtmpfs smoke, 已有 droidspaces 容器, pstore 取证 |
+| device | `dnskctl` 加载 (默认 `lkmins`), ns/ipc/devtmpfs smoke, 已有 droidspaces 容器, pstore 取证 |
 | differential | TMPFS/USER_NS/CGROUP_PIDS 与 AOSP Native oracle |
 | bench | fork/clone, unshare/setns, SysV/mqueue, nft/ipset, tmpfs xattr/ACL, userns |
 

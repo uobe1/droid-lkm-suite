@@ -15,7 +15,6 @@ The property pinned here is the one a userspace probe observes:
     bookkeeping of the backfill balances across load/join/exit/unload.
 """
 
-import re
 import unittest
 from pathlib import Path
 

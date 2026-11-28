@@ -15,9 +15,9 @@ core 的 hook API 只有四种类型 (`enum dnsk_hook_type`)
 | `DNSK_HOOK_DATA` | 改写一个指针槽 | `target`, `replacement` | 把旧值(可以为 NULL)写回 | 只替换 ops 表项/函数指针, 不需要改代码 |
 | `DNSK_HOOK_KRETPROBE` | 在 `symbol` 上挂 entry + return handler | `symbol`, `target`(entry), `replacement`(return) | `unregister_kretprobe()` | 需要读取或改写函数返回值 |
 
-这四种都通过 `dnsk_hook_add()` / `dnsk_hook_del()` 注册, 由 core 持有
+这四种都通过 `dnsk_hook_add()` / `dnsk_hook_del()` 注册; core 执行安装与恢复, 但不替 feature 保活, 也不在卸载时自动注销
 
-feature **不得**在 core 之外自行安装永久 hook; core 负责计数, 注销和恢复原值
+深移植 feature (`ns`, `devtmpfs`) 另自带入口指令替换 (直接调用 `aarch64_insn_patch_text_nosync` 并用 `stop_machine` 串行化), 这类 hook 由 feature 自己负责卸载顺序与恢复; 规则见 [卸载安全](unload-safety.md)
 
 若内核已经提供了正式注册接口(nft/xt/ipset, cgroup cftypes, pernet 等), 优先直接注册: 这是最稳的路径, 失败时按逆序回滚, 不涉及代码改写
 

@@ -17,7 +17,7 @@ Current prototype:
   `module_exit` detaches that pointer from every touched superblock (via
   `iterate_supers`) before the module text is freed.
 
-POSIX ACL (route B, native only — decision 2026-11-21): ACLs live
+POSIX ACL (route B, native only): ACLs live
 exclusively in the kernel's `inode->i_acl` cache, mirroring
 `simple_set_acl()` (`posix_acl_update_mode` + `set_cached_acl` +
 `inode_set_ctime_current`; a removed ACL negative-caches NULL).  There is
@@ -30,15 +30,13 @@ reuses the kernel's `simple_acl_create()`.  Reads need no override: the
 kernel's `__get_acl()` negative-caches when both `get_acl`/`get_inode_acl`
 slots are NULL.  Only `i_op->set_acl` is written (required by
 `set_posix_acl`, fs/posix_acl.c:937-938).  `acl`/`noacl` mount options are
-no longer accepted — the module does not intercept them and the stock tmpfs
-parser rejects them with `EINVAL`, matching native tmpfs (which has no
-`acl`/`noacl` parameter at all; this is an intentional behaviour change
-from the earlier xattr-based route).  `SB_POSIXACL` is set unconditionally
+rejected with `EINVAL`: the module does not intercept them and the stock
+tmpfs parser has no such parameter, matching native tmpfs.  `SB_POSIXACL` is set unconditionally
 for every superblock the module touches, matching
 `shmem_fill_super()` under `CONFIG_TMPFS_POSIX_ACL=y`
-(mm/shmem.c:4721-4722).  Route B was re-verified on the
-device on 2026-11-27 (`sizing == fill`, ACL name reported once); E2/E3 evidence
-is still incomplete, so do not treat the whole feature as fully gated.
+(mm/shmem.c:4721-4722).  Route B passes the device gate
+(`sizing == fill`, ACL name reported once); E2/E3 evidence is
+incomplete, so the feature is not fully gated.
 
 `listxattr` size accounting: the device's GKI 6.12.30 build of
 `simple_xattr_list()` (fs/xattr.c) enters its `simple_xattr` rb-tree walk

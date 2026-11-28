@@ -58,6 +58,12 @@ for m in core devtmpfs netfilter ipset cgpids tmpfsx ns; do
 done
 echo "DNSK_LSMOD_ALL_PRESENT"
 
+# Idle baseline BEFORE any hammer: if this is already >0 the module leaks a
+# reference at steady state; if it is 0, any later non-zero is live activity.
+"$BB" sleep 2
+idle_ref=$("$BB" awk '$1=="dnsk_ns"{print $3}' /proc/modules 2>/dev/null)
+echo "DNSK_NS_REFCNT_IDLE=${idle_ref:-?}"
+
 # Window for every unload-safety judgement: nothing before this line counts.
 cursor=$("$BB" dmesg 2>/dev/null | "$BB" wc -l)
 
@@ -89,7 +95,8 @@ while [ "$tries" -lt 60 ]; do
 	*busy*|*Busy*|*BUSY*|*temporarily*|*Temporarily*|*unavailable*|*Unavailable*)
 		eagains=$((eagains + 1))
 		refc=$("$BB" awk '$1=="dnsk_ns"{print $3}' /proc/modules 2>/dev/null)
-		echo "DNSK_UNLOAD_NS_EAGAIN try=$tries refcnt=${refc:-?}"
+		hcount=$("$BB" ps 2>/dev/null | "$BB" grep -c ns_hammer)
+		echo "DNSK_UNLOAD_NS_EAGAIN try=$tries refcnt=${refc:-?} hammers=$hcount"
 		# The hammer holds references for as long as it runs, so a retry can
 		# never win while it is alive.  Prove the block with a few EAGAINs,
 		# then stop the load and let the retry succeed on a drained module.
@@ -109,8 +116,12 @@ while [ "$tries" -lt 60 ]; do
 	tries=$((tries + 1))
 done
 if [ "$ns_ok" -ne 1 ]; then
+	# If hammer processes survive, they (not a leak) hold the references.
+	"$BB" killall ns_hammer 2>/dev/null
+	"$BB" sleep 3
 	refc=$("$BB" awk '$1=="dnsk_ns"{print $3}' /proc/modules 2>/dev/null)
-	echo "DNSK_NS_REFCNT_FINAL=${refc:-?} eagain=$eagains hammer_stopped=$hammer_stopped"
+	hcount=$("$BB" ps 2>/dev/null | "$BB" grep -c ns_hammer)
+	echo "DNSK_NS_REFCNT_FINAL=${refc:-?} hammers=$hcount eagain=$eagains hammer_stopped=$hammer_stopped"
 	fail "ns_never_unloaded refcnt=${refc:-?}"
 fi
 

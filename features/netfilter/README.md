@@ -22,7 +22,7 @@ the nftables target subset, `xt_addrtype`, `xt_REJECT` and `xt_RECENT`.
   after the nft units because they depend only on x_tables core, and keeping
   them last leaves the existing nft registration order unchanged. There is no
   xt/nft ordering dependency.
-- `addrtype` and `recent` were exercised on the device (2026-11-27: rules
+- `addrtype` and `recent` pass the device gate (rules
   installed, `/proc/net/xt_recent/dnskdev` present, packet counters moved);
   see `docs/status.md`. `REJECT` registration is covered by the same gate.
 - Native `xt_REJECT`/`xt_recent` must not already be built in or loaded: a
@@ -35,9 +35,9 @@ the nftables target subset, `xt_addrtype`, `xt_REJECT` and `xt_RECENT`.
 
 ## Status and device notes
 
-- Inactive (`activate=0`) unload previously NULL-dereferenced in
-  `nft_unregister_expr`; guarded by a `registered` flag. Regression test is
-  `tests/device/netfilter-inactive-smoke.sh`.
+- Inactive (`activate=0`) unload must not call `nft_unregister_expr` for an
+  expression that was never registered; a `registered` flag guards it.
+  Regression test is `tests/device/netfilter-inactive-smoke.sh`.
 - 设备 6.12.30 MTK 的 `struct xt_match/xt_target` 是 104 字节
   (`CONFIG_NETFILTER_XTABLES_COMPAT=n`); 设备包必须用
   `DNSK_XT_NOCOMPAT=1` 构建. `core/include/dnsk_xt_layout.h` 用静态断言锁定

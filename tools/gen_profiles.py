@@ -52,17 +52,12 @@ def main() -> None:
         pidfs = "supported" if (major, minor) >= (6, 12) else "n/a"
         dev_ns = kmi == "android16-6.12"
         profile = {
-            "schema": 1,
+            "schema": 2,
             "kmi": kmi,
             "validated": False,
             "stage": "M1-ns-development" if dev_ns else "M0-core-scaffold",
             "features": {
                 name: {
-                    "status": (
-                        "scaffold" if name == "core" else
-                        "development" if dev_ns and name in ("ns", "devtmpfs") else
-                        "not-shipped"
-                    ),
                     "target_level": "n/a" if name == "core" else {
                         "ns": "R",
                         "devtmpfs": "R",
@@ -88,7 +83,7 @@ def main() -> None:
             },
             "notes": [
                 "Native capability is a KMI/upstream property, not a test result.",
-                "Feature status stays not-shipped until its acceptance evidence exists.",
+                "Per-feature implementation status lives in docs/status.md; it is not duplicated here.",
             ],
         }
         path = out / f"{kmi}.json"

@@ -44,6 +44,21 @@ class CoreApiTest(unittest.TestCase):
         self.assertIn("DNSK_RW_F_RO", text)
         self.assertNotIn("dnsk_rw_kmem_read(&old", text)
 
+    def test_direct_rw_paths_validate_the_address(self):
+        """A NULL or unmapped direct target must be rejected, not dereferenced.
+
+        READ goes through dnsk_rw_kmem_read(), but the direct WRITE/XCHG/CAS
+        paths once checked only the page offset, so addr == NULL passed the
+        check and reached memcpy()/the atomics.  PROBE writes through dst and
+        needs the same treatment.
+        """
+        text = RW.read_text()
+        start = text.index("static int dnsk_rw_do_op")
+        end = text.index("struct dnsk_rw_lock_ctx")
+        body = text[start:end]
+        self.assertGreaterEqual(body.count("dnsk_rw_check("), 3, body)
+        self.assertIn("(unsigned long)req->dst & 7", body)
+
     def test_atomic_patch_rmw(self):
         text = (ROOT / "core" / "dnsk_patch.c").read_text()
         self.assertIn("dnsk_patch_xchg64", text)

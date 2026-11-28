@@ -79,9 +79,6 @@ void dnsk_cgpids_files_exit(void);
 void dnsk_cgpids_install_sysops(void);
 void dnsk_cgpids_restore_sysops(void);
 
-int dnsk_cgpids_migration_init(void);
-void dnsk_cgpids_migration_exit(void);
-
 struct dnsk_core_api;
 struct dnsk_feature_desc;
 
