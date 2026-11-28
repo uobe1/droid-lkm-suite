@@ -26,8 +26,7 @@ int main(void)
 	}
 	errno = 0;
 	ret = syscall(SYS_setns, fd, CLONE_NEWIPC);
-	printf("pidfd_setns_ipc ret=%ld errno=%d (%s)\n", ret, errno,
-	       strerror(errno));
+	printf("pidfd_setns_ipc ret=%ld errno=%d (%s)\n", ret, errno, strerror(errno));
 	close(fd);
 	return ret < 0 && errno == EINVAL ? 0 : 1;
 }

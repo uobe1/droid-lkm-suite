@@ -98,8 +98,7 @@ static int test_inherit(const char *target, const struct acl_blob *acl)
 	if (n < 0)
 		return fail("chmod acl missing");
 	if (acl_perm(buf, n, ACL_MASK) != 0) {
-		fprintf(stderr, "ACL_TEST_FAIL chmod mask %d\n",
-			acl_perm(buf, n, ACL_MASK));
+		fprintf(stderr, "ACL_TEST_FAIL chmod mask %d\n", acl_perm(buf, n, ACL_MASK));
 		return 1;
 	}
 
@@ -132,13 +131,14 @@ int main(int argc, char **argv)
 	const char *target;
 	char path[256], buf[256] = {0};
 	struct acl_blob acl = {
-		.version = 2,
-		.entries = {
-			{ ACL_USER_OBJ, 6, 0 },
-			{ ACL_USER, 4, 1000 },
-			{ ACL_GROUP_OBJ, 4, 0 },
-			{ ACL_MASK, 6, 0 },
-			{ ACL_OTHER, 4, 0 },
+	    .version = 2,
+	    .entries =
+		{
+		    {ACL_USER_OBJ, 6, 0},
+		    {ACL_USER, 4, 1000},
+		    {ACL_GROUP_OBJ, 4, 0},
+		    {ACL_MASK, 6, 0},
+		    {ACL_OTHER, 4, 0},
 		},
 	};
 	int fsfd, mfd, fd;
@@ -147,8 +147,7 @@ int main(int argc, char **argv)
 	ssize_t n;
 
 	if (argc < 2 || argc > 3) {
-		fprintf(stderr, "usage: %s <mountpoint> [existing|inherit]\n",
-			argv[0]);
+		fprintf(stderr, "usage: %s <mountpoint> [existing|inherit]\n", argv[0]);
 		return 2;
 	}
 	target = argv[1];
@@ -159,17 +158,14 @@ int main(int argc, char **argv)
 		fsfd = syscall(SYS_fsopen, "tmpfs", 0);
 		if (fsfd < 0)
 			return fail("fsopen");
-		if (syscall(SYS_fsconfig, fsfd, FSCONFIG_SET_FLAG, "acl",
-			    NULL, 0) < 0)
+		if (syscall(SYS_fsconfig, fsfd, FSCONFIG_SET_FLAG, "acl", NULL, 0) < 0)
 			return fail("fsconfig acl");
-		if (syscall(SYS_fsconfig, fsfd, FSCONFIG_CMD_CREATE, NULL,
-			    NULL, 0) < 0)
+		if (syscall(SYS_fsconfig, fsfd, FSCONFIG_CMD_CREATE, NULL, NULL, 0) < 0)
 			return fail("fsconfig create");
 		mfd = syscall(SYS_fsmount, fsfd, 0, 0);
 		if (mfd < 0)
 			return fail("fsmount");
-		if (syscall(SYS_move_mount, mfd, "", AT_FDCWD, target,
-			    MOVE_MOUNT_F_EMPTY_PATH) < 0)
+		if (syscall(SYS_move_mount, mfd, "", AT_FDCWD, target, MOVE_MOUNT_F_EMPTY_PATH) < 0)
 			return fail("move_mount");
 		close(mfd);
 		close(fsfd);
@@ -193,8 +189,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "note: ACL blob was normalized\n");
 	if (removexattr(path, "system.posix_acl_access") < 0)
 		return fail("removexattr acl");
-	if (getxattr(path, "system.posix_acl_access", buf, sizeof(buf)) >= 0 ||
-	    errno != ENODATA) {
+	if (getxattr(path, "system.posix_acl_access", buf, sizeof(buf)) >= 0 || errno != ENODATA) {
 		fprintf(stderr, "ACL_TEST_FAIL acl still present\n");
 		return 1;
 	}

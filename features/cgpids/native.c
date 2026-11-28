@@ -122,10 +122,8 @@ static u16 *dnsk_have_canfork;
 static u16 *dnsk_have_release;
 static spinlock_t *dnsk_css_set_lock;
 static struct hlist_head *dnsk_css_set_table;
-static struct cgroup_subsys_state *(*dnsk_native_of_css)(
-	struct kernfs_open_file *of);
-static int (*dnsk_add_dfl_cftypes)(struct cgroup_subsys *ss,
-				   struct cftype *cfts);
+static struct cgroup_subsys_state *(*dnsk_native_of_css)(struct kernfs_open_file *of);
+static int (*dnsk_add_dfl_cftypes)(struct cgroup_subsys *ss, struct cftype *cfts);
 static void (*dnsk_static_key_enable)(struct static_key *key);
 static void (*dnsk_static_key_disable)(struct static_key *key);
 static void (*dnsk_cgroup_file_notify)(struct cgroup_file *cfile);
@@ -150,7 +148,7 @@ module_param_named(rw_probe, dnsk_rw_probe, bool, 0444);
 
 static void dnsk_rwprobe_probe(const char *name)
 {
-	struct dnsk_rw_req req = { 0 };
+	struct dnsk_rw_req req = {0};
 	void *addr = NULL;
 
 	req.opcode = DNSK_RW_PROBE;
@@ -182,9 +180,9 @@ enum dnsk_ref_kind {
 };
 
 enum dnsk_reloc_result {
-	DNSK_RELOC_NONE = 0,	/* not an ADRP + ADD/LDR pair into the window */
-	DNSK_RELOC_PATCH = 1,	/* buf[0..1] hold the retargeted words */
-	DNSK_RELOC_FAR = 2,	/* target matched but ADRP cannot reach new page */
+	DNSK_RELOC_NONE = 0,  /* not an ADRP + ADD/LDR pair into the window */
+	DNSK_RELOC_PATCH = 1, /* buf[0..1] hold the retargeted words */
+	DNSK_RELOC_FAR = 2,   /* target matched but ADRP cannot reach new page */
 };
 
 /*
@@ -266,8 +264,7 @@ static inline u32 dnsk_repack_ldr_uimm64(u32 insn, u32 off)
 }
 
 /* Classify an instruction pair as an ADRP + ADD/LDR reference. */
-static inline enum dnsk_ref_kind
-dnsk_ref_pair(u64 pc, u32 i0, u32 i1, u64 *tgt)
+static inline enum dnsk_ref_kind dnsk_ref_pair(u64 pc, u32 i0, u32 i1, u64 *tgt)
 {
 	u64 pg;
 
@@ -295,8 +292,8 @@ static inline bool dnsk_ref_in_window(u64 tgt, u64 base)
  * the two retargeted words in buf[0]/buf[1].  Shared by dnsk_rwprobe_reloc()
  * and the host unit test.
  */
-static inline enum dnsk_reloc_result
-dnsk_reloc_pair(u64 pc, u32 i0, u32 i1, u64 olda, u64 neua, u32 buf[2])
+static inline enum dnsk_reloc_result dnsk_reloc_pair(u64 pc, u32 i0, u32 i1, u64 olda, u64 neua,
+						     u32 buf[2])
 {
 	u64 tgt, na;
 	s64 delta_pages;
@@ -340,8 +337,8 @@ static void dnsk_rwprobe_scan_refs(void *target)
 		else
 			adrp_ldr++;
 	}
-	pr_info("dnsk_rwprobe: refs add=%d ldr=%d range=%px-%px\n",
-		adrp_add, adrp_ldr, stext, etext);
+	pr_info("dnsk_rwprobe: refs add=%d ldr=%d range=%px-%px\n", adrp_add, adrp_ldr, stext,
+		etext);
 }
 
 /*
@@ -402,8 +399,7 @@ static int dnsk_rwprobe_reloc(void)
 	enum dnsk_ref_kind kind;
 	enum dnsk_reloc_result res;
 
-	neo = kzalloc((DNSK_CGROUP_SUBSYS_COUNT + 1) * sizeof(void *),
-		      GFP_KERNEL);
+	neo = kzalloc((DNSK_CGROUP_SUBSYS_COUNT + 1) * sizeof(void *), GFP_KERNEL);
 	if (!neo)
 		return -ENOMEM;
 	for (i = 0; i < DNSK_CGROUP_SUBSYS_COUNT; i++)
@@ -419,7 +415,7 @@ static int dnsk_rwprobe_reloc(void)
 		if (res != DNSK_RELOC_PATCH)
 			continue;
 		{
-			struct dnsk_rw_req req = { 0 };
+			struct dnsk_rw_req req = {0};
 
 			req.opcode = DNSK_RW_WRITE;
 			req.addr = (void *)p;
@@ -444,8 +440,8 @@ static int dnsk_rwprobe_reloc(void)
 		if (kind != DNSK_REF_NONE && dnsk_ref_in_window(tgt, olda))
 			residual++;
 	}
-	pr_info("dnsk_rwprobe: reloc %px->%px patched=%d residual=%d\n",
-		old, neo, patched, residual);
+	pr_info("dnsk_rwprobe: reloc %px->%px patched=%d residual=%d\n", old, neo, patched,
+		residual);
 	if (residual)
 		pr_warn("dnsk_rwprobe: %d reference(s) still target %px, reloc incomplete\n",
 			residual, old);
@@ -459,7 +455,7 @@ static int dnsk_rwprobe_reloc(void)
 
 static void dnsk_rwprobe_run(void)
 {
-	struct dnsk_rw_req req = { 0 };
+	struct dnsk_rw_req req = {0};
 	struct cgroup_subsys *ss;
 	void *namep;
 	char name[40];
@@ -509,11 +505,9 @@ static void dnsk_rwprobe_run(void)
 			dnsk_native_api->rw(&req);
 		}
 		if (!name[0])
-			pr_info("dnsk_rwprobe: slot %d ss=%px name unreadable\n",
-				i, ss);
+			pr_info("dnsk_rwprobe: slot %d ss=%px name unreadable\n", i, ss);
 		else
-			pr_info("dnsk_rwprobe: slot %d ss=%px name=%s\n",
-				i, ss, name);
+			pr_info("dnsk_rwprobe: slot %d ss=%px name=%s\n", i, ss, name);
 	}
 	dnsk_rwprobe_scan_refs(arr);
 }
@@ -524,58 +518,53 @@ static void dnsk_rwprobe_run(void)
 #define DNSK_PIDS(ptr) container_of(ptr, struct dnsk_pids_css, css)
 #define DNSK_PARENT(p) container_of((p)->css.parent, struct dnsk_pids_css, css)
 
-static ssize_t dnsk_pids_max_write(struct kernfs_open_file *of, char *buf,
-				   size_t nbytes, loff_t off);
+static ssize_t dnsk_pids_max_write(struct kernfs_open_file *of, char *buf, size_t nbytes,
+				   loff_t off);
 static int dnsk_pids_max_show(struct seq_file *sf, void *v);
-static s64 dnsk_pids_current_read(struct cgroup_subsys_state *css,
-				  struct cftype *cft);
-static s64 dnsk_pids_peak_read(struct cgroup_subsys_state *css,
-			       struct cftype *cft);
+static s64 dnsk_pids_current_read(struct cgroup_subsys_state *css, struct cftype *cft);
+static s64 dnsk_pids_peak_read(struct cgroup_subsys_state *css, struct cftype *cft);
 static int dnsk_pids_events_show(struct seq_file *sf, void *v);
 static int dnsk_pids_events_local_show(struct seq_file *seq, void *v);
 
 static struct cftype dnsk_native_files[] = {
-	{
-		.name = "max",
-		.write = dnsk_pids_max_write,
-		.seq_show = dnsk_pids_max_show,
-		.flags = CFTYPE_NOT_ON_ROOT,
-	},
-	{
-		.name = "current",
-		.read_s64 = dnsk_pids_current_read,
-		.flags = CFTYPE_NOT_ON_ROOT,
-	},
-	{
-		.name = "peak",
-		.read_s64 = dnsk_pids_peak_read,
-		.flags = CFTYPE_NOT_ON_ROOT,
-	},
-	{
-		.name = "events",
-		.seq_show = dnsk_pids_events_show,
-		.file_offset = offsetof(struct dnsk_pids_css, events_file),
-		.flags = CFTYPE_NOT_ON_ROOT,
-	},
-	{
-		.name = "events.local",
-		.seq_show = dnsk_pids_events_local_show,
-		.file_offset = offsetof(struct dnsk_pids_css, events_local_file),
-		.flags = CFTYPE_NOT_ON_ROOT,
-	},
-	{ }
-};
+    {
+	.name = "max",
+	.write = dnsk_pids_max_write,
+	.seq_show = dnsk_pids_max_show,
+	.flags = CFTYPE_NOT_ON_ROOT,
+    },
+    {
+	.name = "current",
+	.read_s64 = dnsk_pids_current_read,
+	.flags = CFTYPE_NOT_ON_ROOT,
+    },
+    {
+	.name = "peak",
+	.read_s64 = dnsk_pids_peak_read,
+	.flags = CFTYPE_NOT_ON_ROOT,
+    },
+    {
+	.name = "events",
+	.seq_show = dnsk_pids_events_show,
+	.file_offset = offsetof(struct dnsk_pids_css, events_file),
+	.flags = CFTYPE_NOT_ON_ROOT,
+    },
+    {
+	.name = "events.local",
+	.seq_show = dnsk_pids_events_local_show,
+	.file_offset = offsetof(struct dnsk_pids_css, events_local_file),
+	.flags = CFTYPE_NOT_ON_ROOT,
+    },
+    {}};
 
-static __nocfi noinline struct cgroup_subsys_state *
-dnsk_call_of_css(struct kernfs_open_file *of)
+static __nocfi noinline struct cgroup_subsys_state *dnsk_call_of_css(struct kernfs_open_file *of)
 {
 	return dnsk_native_of_css(of);
 }
 
 static struct cgroup_subsys_state *dnsk_seq_css(struct seq_file *seq)
 {
-	struct kernfs_open_file *of =
-		*(void **)((char *)seq + DNSK_SEQ_FILE_PRIVATE);
+	struct kernfs_open_file *of = *(void **)((char *)seq + DNSK_SEQ_FILE_PRIVATE);
 
 	return dnsk_native_of_css ? dnsk_call_of_css(of) : NULL;
 }
@@ -615,8 +604,7 @@ static void dnsk_native_charge(struct dnsk_pids_css *p, int num)
 	}
 }
 
-static int dnsk_native_try_charge(struct dnsk_pids_css *p, int num,
-				struct dnsk_pids_css **fail)
+static int dnsk_native_try_charge(struct dnsk_pids_css *p, int num, struct dnsk_pids_css **fail)
 {
 	struct dnsk_pids_css *pos, *q;
 
@@ -640,8 +628,7 @@ revert:
 	return -EAGAIN;
 }
 
-static void dnsk_pids_event(struct dnsk_pids_css *forking,
-			    struct dnsk_pids_css *over)
+static void dnsk_pids_event(struct dnsk_pids_css *forking, struct dnsk_pids_css *over)
 {
 	struct dnsk_pids_css *p = forking;
 
@@ -663,10 +650,10 @@ static int dnsk_pids_can_attach(struct cgroup_taskset *tset)
 	struct task_struct *task;
 	struct cgroup_subsys_state *dst_css;
 
-	cgroup_taskset_for_each(task, dst_css, tset) {
+	cgroup_taskset_for_each(task, dst_css, tset)
+	{
 		struct dnsk_pids_css *dst = DNSK_PIDS(dst_css);
-		struct cgroup_subsys_state *old_css =
-			task_css(task, DNSK_CGROUP_SUBSYS_SLOT);
+		struct cgroup_subsys_state *old_css = task_css(task, DNSK_CGROUP_SUBSYS_SLOT);
 		struct dnsk_pids_css *old;
 
 		if (!old_css)
@@ -683,10 +670,10 @@ static void dnsk_pids_cancel_attach(struct cgroup_taskset *tset)
 	struct task_struct *task;
 	struct cgroup_subsys_state *dst_css;
 
-	cgroup_taskset_for_each(task, dst_css, tset) {
+	cgroup_taskset_for_each(task, dst_css, tset)
+	{
 		struct dnsk_pids_css *dst = DNSK_PIDS(dst_css);
-		struct cgroup_subsys_state *old_css =
-			task_css(task, DNSK_CGROUP_SUBSYS_SLOT);
+		struct cgroup_subsys_state *old_css = task_css(task, DNSK_CGROUP_SUBSYS_SLOT);
 		struct dnsk_pids_css *old;
 
 		if (!old_css)
@@ -711,25 +698,21 @@ static int dnsk_pids_can_fork(struct task_struct *task, struct css_set *cset)
 	return ret;
 }
 
-static void dnsk_pids_cancel_fork(struct task_struct *task,
-				  struct css_set *cset)
+static void dnsk_pids_cancel_fork(struct task_struct *task, struct css_set *cset)
 {
 	if (cset && cset->subsys[DNSK_CGROUP_SUBSYS_SLOT])
-		dnsk_native_uncharge(
-			DNSK_PIDS(cset->subsys[DNSK_CGROUP_SUBSYS_SLOT]), 1);
+		dnsk_native_uncharge(DNSK_PIDS(cset->subsys[DNSK_CGROUP_SUBSYS_SLOT]), 1);
 }
 
 static void dnsk_pids_release(struct task_struct *task)
 {
-	struct cgroup_subsys_state *css =
-		task_css(task, DNSK_CGROUP_SUBSYS_SLOT);
+	struct cgroup_subsys_state *css = task_css(task, DNSK_CGROUP_SUBSYS_SLOT);
 
 	if (css)
 		dnsk_native_uncharge(DNSK_PIDS(css), 1);
 }
 
-static struct cgroup_subsys_state *
-dnsk_pids_alloc(struct cgroup_subsys_state *parent)
+static struct cgroup_subsys_state *dnsk_pids_alloc(struct cgroup_subsys_state *parent)
 {
 	struct dnsk_pids_css *pids = kzalloc(sizeof(*pids), GFP_KERNEL);
 
@@ -744,8 +727,8 @@ static void dnsk_pids_free(struct cgroup_subsys_state *css)
 	kfree(DNSK_PIDS(css));
 }
 
-static ssize_t dnsk_pids_max_write(struct kernfs_open_file *of, char *buf,
-				   size_t nbytes, loff_t off)
+static ssize_t dnsk_pids_max_write(struct kernfs_open_file *of, char *buf, size_t nbytes,
+				   loff_t off)
 {
 	struct cgroup_subsys_state *css = dnsk_call_of_css(of);
 	struct dnsk_pids_css *pids;
@@ -787,14 +770,12 @@ static int dnsk_pids_max_show(struct seq_file *sf, void *v)
 	return 0;
 }
 
-static s64 dnsk_pids_current_read(struct cgroup_subsys_state *css,
-				  struct cftype *cft)
+static s64 dnsk_pids_current_read(struct cgroup_subsys_state *css, struct cftype *cft)
 {
 	return atomic64_read(&DNSK_PIDS(css)->counter);
 }
 
-static s64 dnsk_pids_peak_read(struct cgroup_subsys_state *css,
-			       struct cftype *cft)
+static s64 dnsk_pids_peak_read(struct cgroup_subsys_state *css, struct cftype *cft)
 {
 	return READ_ONCE(DNSK_PIDS(css)->watermark);
 }
@@ -805,8 +786,7 @@ static int dnsk_pids_events_show(struct seq_file *sf, void *v)
 
 	if (!css)
 		return -ENODEV;
-	seq_printf(sf, "max %lld\n",
-		   (s64)atomic64_read(&DNSK_PIDS(css)->events[DNSK_PIDCG_MAX]));
+	seq_printf(sf, "max %lld\n", (s64)atomic64_read(&DNSK_PIDS(css)->events[DNSK_PIDCG_MAX]));
 	return 0;
 }
 
@@ -817,8 +797,7 @@ static int dnsk_pids_events_local_show(struct seq_file *seq, void *v)
 	if (!css)
 		return -ENODEV;
 	seq_printf(seq, "max %lld\n",
-		   (s64)atomic64_read(
-			   &DNSK_PIDS(css)->events_local[DNSK_PIDCG_MAX]));
+		   (s64)atomic64_read(&DNSK_PIDS(css)->events_local[DNSK_PIDCG_MAX]));
 	return 0;
 }
 
@@ -831,7 +810,7 @@ static void dnsk_cset_set_slot(struct cgroup_subsys_state *css)
 		struct css_set *cset;
 
 		hlist_for_each_entry(cset, &dnsk_css_set_table[i], hlist)
-			WRITE_ONCE(cset->subsys[DNSK_CGROUP_SUBSYS_SLOT], css);
+		    WRITE_ONCE(cset->subsys[DNSK_CGROUP_SUBSYS_SLOT], css);
 	}
 	spin_unlock(dnsk_css_set_lock);
 }
@@ -859,8 +838,7 @@ static int dnsk_native_resolve(struct dnsk_core_api *api)
 	if (key_array)
 		dnsk_on_dfl_keys = key_array;
 	if (dnsk_on_dfl_keys)
-		dnsk_on_dfl_key = (struct static_key *)
-			dnsk_on_dfl_keys[DNSK_CGROUP_SUBSYS_SLOT];
+		dnsk_on_dfl_key = (struct static_key *)dnsk_on_dfl_keys[DNSK_CGROUP_SUBSYS_SLOT];
 
 	if (!dnsk_subsys_array)
 		pr_err("dnsk_cgpids: missing cgroup_subsys\n");
@@ -884,12 +862,10 @@ static int dnsk_native_resolve(struct dnsk_core_api *api)
 		pr_err("dnsk_cgpids: missing static_key_enable\n");
 	if (!dnsk_on_dfl_key)
 		pr_err("dnsk_cgpids: missing cgroup_subsys_on_dfl_key slot\n");
-	if (!dnsk_subsys_array || !dnsk_root || !dnsk_init_cset ||
-	    !dnsk_have_canfork || !dnsk_have_release || !dnsk_css_set_lock ||
-	    !dnsk_css_set_table || !dnsk_cgroup_mutex ||
-	    !dnsk_native_of_css || !dnsk_add_dfl_cftypes ||
-	    !dnsk_inhibit_mask || !dnsk_static_key_enable ||
-	    !dnsk_on_dfl_key)
+	if (!dnsk_subsys_array || !dnsk_root || !dnsk_init_cset || !dnsk_have_canfork ||
+	    !dnsk_have_release || !dnsk_css_set_lock || !dnsk_css_set_table || !dnsk_cgroup_mutex ||
+	    !dnsk_native_of_css || !dnsk_add_dfl_cftypes || !dnsk_inhibit_mask ||
+	    !dnsk_static_key_enable || !dnsk_on_dfl_key)
 		return -ENOENT;
 	return 0;
 }
@@ -915,8 +891,7 @@ static void dnsk_build_ss(void)
 }
 
 /* cgroup_add_dfl_cftypes is not exported and has no KCFI preamble. */
-static __nocfi noinline int dnsk_call_add_dfl(struct cgroup_subsys *ss,
-					      struct cftype *cfts)
+static __nocfi noinline int dnsk_call_add_dfl(struct cgroup_subsys *ss, struct cftype *cfts)
 {
 	return dnsk_add_dfl_cftypes(ss, cfts);
 }
@@ -932,8 +907,7 @@ static __nocfi noinline void dnsk_call_skey_disable(struct static_key *key)
 		dnsk_static_key_disable(key);
 }
 
-static struct cgroup_subsys_state *
-dnsk_make_root_css(void)
+static struct cgroup_subsys_state *dnsk_make_root_css(void)
 {
 	struct cgroup_subsys_state *css;
 
@@ -950,10 +924,8 @@ dnsk_make_root_css(void)
 	INIT_LIST_HEAD(&css->rstat_css_node);
 	atomic_set(&css->online_cnt, 1);
 
-	rcu_assign_pointer(dnsk_root->cgrp.subsys[DNSK_CGROUP_SUBSYS_SLOT],
-			   css);
-	rcu_assign_pointer(dnsk_init_cset->subsys[DNSK_CGROUP_SUBSYS_SLOT],
-			   css);
+	rcu_assign_pointer(dnsk_root->cgrp.subsys[DNSK_CGROUP_SUBSYS_SLOT], css);
+	rcu_assign_pointer(dnsk_init_cset->subsys[DNSK_CGROUP_SUBSYS_SLOT], css);
 	dnsk_cset_set_slot(css);
 	return css;
 }
@@ -966,10 +938,8 @@ dnsk_make_root_css(void)
  */
 static void dnsk_restore_root_css(struct cgroup_subsys_state *old)
 {
-	rcu_assign_pointer(dnsk_root->cgrp.subsys[DNSK_CGROUP_SUBSYS_SLOT],
-			   old);
-	rcu_assign_pointer(dnsk_init_cset->subsys[DNSK_CGROUP_SUBSYS_SLOT],
-			   old);
+	rcu_assign_pointer(dnsk_root->cgrp.subsys[DNSK_CGROUP_SUBSYS_SLOT], old);
+	rcu_assign_pointer(dnsk_init_cset->subsys[DNSK_CGROUP_SUBSYS_SLOT], old);
 	dnsk_cset_set_slot(old);
 }
 
@@ -1005,22 +975,20 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 		goto out_put;
 	}
 	if (strcmp(DNSK_SS_PTR(old_ss, DNSK_CGROUP_SUBSYS_NAME), "net_prio")) {
-		pr_err("dnsk_cgpids: slot %d is %s, not net_prio\n",
-		       DNSK_CGROUP_SUBSYS_SLOT,
+		pr_err("dnsk_cgpids: slot %d is %s, not net_prio\n", DNSK_CGROUP_SUBSYS_SLOT,
 		       (char *)DNSK_SS_PTR(old_ss, DNSK_CGROUP_SUBSYS_NAME));
 		ret = -EPROTO;
 		goto out_put;
 	}
-	old_root_css = rcu_dereference_protected(
-		dnsk_root->cgrp.subsys[DNSK_CGROUP_SUBSYS_SLOT], 1);
+	old_root_css =
+	    rcu_dereference_protected(dnsk_root->cgrp.subsys[DNSK_CGROUP_SUBSYS_SLOT], 1);
 	if (!old_root_css) {
 		ret = -ENOENT;
 		goto out_put;
 	}
 
 	dnsk_build_ss();
-	ret = dnsk_call_add_dfl((struct cgroup_subsys *)dnsk_ss,
-				dnsk_native_files);
+	ret = dnsk_call_add_dfl((struct cgroup_subsys *)dnsk_ss, dnsk_native_files);
 	if (ret)
 		goto out_put;
 
@@ -1036,17 +1004,14 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 		goto out_disable_key;
 	}
 
-	ret = dnsk_native_api->patch_pointer(
-		&dnsk_subsys_array[DNSK_CGROUP_SUBSYS_SLOT], dnsk_ss);
+	ret = dnsk_native_api->patch_pointer(&dnsk_subsys_array[DNSK_CGROUP_SUBSYS_SLOT], dnsk_ss);
 	if (ret) {
 		dnsk_restore_root_css(old_root_css);
 		goto out_disable_key;
 	}
 
-	WRITE_ONCE(*dnsk_have_canfork,
-		   *dnsk_have_canfork | BIT(DNSK_CGROUP_SUBSYS_SLOT));
-	WRITE_ONCE(*dnsk_have_release,
-		   *dnsk_have_release | BIT(DNSK_CGROUP_SUBSYS_SLOT));
+	WRITE_ONCE(*dnsk_have_canfork, *dnsk_have_canfork | BIT(DNSK_CGROUP_SUBSYS_SLOT));
+	WRITE_ONCE(*dnsk_have_release, *dnsk_have_release | BIT(DNSK_CGROUP_SUBSYS_SLOT));
 	mutex_unlock(dnsk_cgroup_mutex);
 
 	dnsk_saved_ss = old_ss;
@@ -1054,10 +1019,8 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 	dnsk_own_root_css = css;
 	dnsk_saved_inhibit = old_inhibit;
 	dnsk_saved_key_was_enabled = key_was_enabled;
-	dnsk_saved_have_canfork =
-		*dnsk_have_canfork & ~BIT(DNSK_CGROUP_SUBSYS_SLOT);
-	dnsk_saved_have_release =
-		*dnsk_have_release & ~BIT(DNSK_CGROUP_SUBSYS_SLOT);
+	dnsk_saved_have_canfork = *dnsk_have_canfork & ~BIT(DNSK_CGROUP_SUBSYS_SLOT);
+	dnsk_saved_have_release = *dnsk_have_release & ~BIT(DNSK_CGROUP_SUBSYS_SLOT);
 	dnsk_native_ready = true;
 	/*
 	 * This kernel's cgroup_subsys has no `owner` field (verified against the
@@ -1069,8 +1032,7 @@ int dnsk_cgpids_native_init(struct dnsk_core_api *api)
 	 * back, so unloading becomes possible while nothing runs our code.
 	 */
 	dnsk_self_ref = true;
-	pr_info("dnsk_cgpids: native pids registered in slot %d\n",
-		DNSK_CGROUP_SUBSYS_SLOT);
+	pr_info("dnsk_cgpids: native pids registered in slot %d\n", DNSK_CGROUP_SUBSYS_SLOT);
 	return 0;
 
 out_disable_key:
@@ -1094,8 +1056,7 @@ int dnsk_cgpids_native_exit(void)
 	/* The root css counts every task still attached to the emulated
 	 * controller.  Read it from the object we installed, never from the slot:
 	 * the slot can already have been handed back to the previous subsystem. */
-	live = dnsk_own_root_css ?
-		atomic64_read(&DNSK_PIDS(dnsk_own_root_css)->counter) : 0;
+	live = dnsk_own_root_css ? atomic64_read(&DNSK_PIDS(dnsk_own_root_css)->counter) : 0;
 	/*
 	 * Refuse to hand the slot back while tasks are still accounted to it.
 	 * cgroup core would keep calling our css_free/release callbacks after this
@@ -1113,8 +1074,8 @@ int dnsk_cgpids_native_exit(void)
 	mutex_lock(dnsk_cgroup_mutex);
 	WRITE_ONCE(*dnsk_have_canfork, dnsk_saved_have_canfork);
 	WRITE_ONCE(*dnsk_have_release, dnsk_saved_have_release);
-	ret = dnsk_native_api->patch_pointer(
-		&dnsk_subsys_array[DNSK_CGROUP_SUBSYS_SLOT], dnsk_saved_ss);
+	ret = dnsk_native_api->patch_pointer(&dnsk_subsys_array[DNSK_CGROUP_SUBSYS_SLOT],
+					     dnsk_saved_ss);
 	if (ret)
 		pr_err("dnsk_cgpids: slot restore failed: %d\n", ret);
 	dnsk_restore_root_css(dnsk_saved_root_css);
@@ -1134,8 +1095,7 @@ int dnsk_cgpids_native_exit(void)
 		dnsk_self_ref = false;
 		module_put(THIS_MODULE);
 	}
-	pr_info("dnsk_cgpids: native pids released slot %d\n",
-		DNSK_CGROUP_SUBSYS_SLOT);
+	pr_info("dnsk_cgpids: native pids released slot %d\n", DNSK_CGROUP_SUBSYS_SLOT);
 	return 0;
 }
 

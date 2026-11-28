@@ -65,18 +65,18 @@ static void dnsk_api_log(int level, const char *fmt, ...)
 }
 
 static struct dnsk_core_api dnsk_api = {
-	.magic = DNSK_CORE_MAGIC,
-	.abi = DNSK_CORE_ABI,
-	.size = sizeof(struct dnsk_core_api),
-	.resolve = dnsk_api_resolve,
-	.hook_install = dnsk_api_hook_install,
-	.hook_uninstall = dnsk_api_hook_uninstall,
-	.feature_add = dnsk_api_feature_add,
-	.feature_del = dnsk_api_feature_del,
-	.log = dnsk_api_log,
-	.patch_pointer = dnsk_api_patch_pointer,
-	.rw = dnsk_api_rw,
-	.owner = THIS_MODULE,
+    .magic = DNSK_CORE_MAGIC,
+    .abi = DNSK_CORE_ABI,
+    .size = sizeof(struct dnsk_core_api),
+    .resolve = dnsk_api_resolve,
+    .hook_install = dnsk_api_hook_install,
+    .hook_uninstall = dnsk_api_hook_uninstall,
+    .feature_add = dnsk_api_feature_add,
+    .feature_del = dnsk_api_feature_del,
+    .log = dnsk_api_log,
+    .patch_pointer = dnsk_api_patch_pointer,
+    .rw = dnsk_api_rw,
+    .owner = THIS_MODULE,
 };
 
 struct dnsk_core_api *dnsk_core_get(u16 abi, u16 size)
@@ -112,7 +112,8 @@ static int __init dnsk_core_init(void)
 
 	ret = dnsk_patch_init();
 	if (ret)
-		dnsk_warn("patching unavailable; data slots and inline entry installs will fail closed\n");
+		dnsk_warn("patching unavailable; data slots and inline entry installs will fail "
+			  "closed\n");
 
 	ret = dnsk_diag_init();
 	if (ret)

@@ -250,7 +250,7 @@ def split_command(raw):
 
 def userspace_entries(path):
     blocks = list(comment_blocks(path))
-    documented = [b for b in blocks if b and any(BRIEF.match(l) for l in b)]
+    documented = [b for b in blocks if b and any(BRIEF.match(line) for line in b)]
     if not documented:
         raise DocError(f'{path.name}: no @brief Doxygen block found')
     result = []

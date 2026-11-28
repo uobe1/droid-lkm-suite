@@ -211,7 +211,7 @@ enum dnsk_rw_lock_type {
  *
  * Flush the instruction cache after writing.
  */
-#define DNSK_RW_F_TEXT   (1u << 1)
+#define DNSK_RW_F_TEXT (1u << 1)
 /**
  * define DNSK_RW_F_RO - the target may be read-only
  *
@@ -219,7 +219,7 @@ enum dnsk_rw_lock_type {
  * spinlock.  Without this flag XCHG/CAS/WRITE use hardware atomics or a
  * direct store.
  */
-#define DNSK_RW_F_RO     (1u << 2)
+#define DNSK_RW_F_RO (1u << 2)
 
 /**
  * struct dnsk_rw_req - one kernel read, write, exchange or probe

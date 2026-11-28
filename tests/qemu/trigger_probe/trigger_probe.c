@@ -25,9 +25,9 @@
 #include <linux/notifier.h>
 #include <linux/platform_device.h>
 
-#define PROBE_NODE	"/dev/dnsktrig"
-#define PROBE_NAME	"dnsktrig"
-#define PROBE_MAJOR	240
+#define PROBE_NODE "/dev/dnsktrig"
+#define PROBE_NAME "dnsktrig"
+#define PROBE_MAJOR 240
 
 static struct platform_device *probe_pdev;
 static struct notifier_block probe_nb;
@@ -47,8 +47,7 @@ static bool node_present(void)
 	return true;
 }
 
-static int probe_notify(struct notifier_block *nb, unsigned long action,
-			void *data)
+static int probe_notify(struct notifier_block *nb, unsigned long action, void *data)
 {
 	struct device *dev = data;
 
@@ -57,16 +56,14 @@ static int probe_notify(struct notifier_block *nb, unsigned long action,
 
 	switch (action) {
 	case BUS_NOTIFY_ADD_DEVICE:
-		pr_info("dnsk_trigger: add %s present=%d\n",
-			dev_name(dev), node_present());
+		pr_info("dnsk_trigger: add %s present=%d\n", dev_name(dev), node_present());
 		if (node_present())
 			pr_info("DNSK_TRIGGER_BUS_ADD_NODE_PRESENT\n");
 		else
 			pr_info("DNSK_TRIGGER_ENTRY_ADD_NO_NODE\n");
 		break;
 	case BUS_NOTIFY_DEL_DEVICE:
-		pr_info("dnsk_trigger: del %s present=%d\n",
-			dev_name(dev), node_present());
+		pr_info("dnsk_trigger: del %s present=%d\n", dev_name(dev), node_present());
 		if (node_present())
 			pr_info("DNSK_TRIGGER_BUS_DEL_NODE_PRESENT\n");
 		else

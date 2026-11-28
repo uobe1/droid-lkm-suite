@@ -38,7 +38,7 @@ The only supported user-space entry point for loading, unloading and inspecting 
 
 dnsk-preflight - device-side fact check before a module is loaded
 
-This is intentionally conservative: it checks the facts dnsk_core depends on and refuses to report success when a required symbol or environment fact is missing.  It emits a single-line JSON object on stdout; dnskctl load refuses to continue when @json ok is false.
+This is intentionally conservative: it checks the facts dnsk_core depends on and refuses to report success when a required symbol or environment fact is missing.  It emits a single-line JSON object on stdout; dnskctl load refuses to continue when @json ok is false. selected
 
 | JSON 键 | 含义 |
 | --- | --- |
@@ -49,7 +49,7 @@ This is intentionally conservative: it checks the facts dnsk_core depends on and
 | `supported` | whether this KMI is in the supported list |
 | `page_size` | kernel page size in bytes |
 | `btf` | whether /sys/kernel/btf/vmlinux is usable |
-| `ksud` | resolved ksud path; empty when absent or when the lkmins backend is selected |
+| `ksud` | resolved ksud path; empty when absent or when the lkmins backend is |
 | `btf_layout` | object: BTF structure sizes read from the device |
 | `btf_layout.xt_match_size` | sizeof(struct xt_match) |
 | `btf_layout.xt_target_size` | sizeof(struct xt_target) |

@@ -103,28 +103,24 @@ static void dnsk_migrate_pre(struct cgroup_mgctx *mgctx)
 
 	spin_lock_irqsave(&dnsk_migrate_lock, flags);
 	dnsk_migrate_nr = 0;
-	list_for_each(pos, head) {
-		struct css_set *cset = (void *)((char *)pos -
-					       offsetof(struct css_set, mg_node));
-		struct cgroup *src = *(struct cgroup **)((char *)cset +
-						offsetof(struct css_set,
-							 mg_src_cgrp));
-		struct css_set *dset = *(struct css_set **)((char *)cset +
-						offsetof(struct css_set,
-							 mg_dst_cset));
+	list_for_each(pos, head)
+	{
+		struct css_set *cset = (void *)((char *)pos - offsetof(struct css_set, mg_node));
+		struct cgroup *src =
+		    *(struct cgroup **)((char *)cset + offsetof(struct css_set, mg_src_cgrp));
+		struct css_set *dset =
+		    *(struct css_set **)((char *)cset + offsetof(struct css_set, mg_dst_cset));
 		struct cgroup *dst;
 		struct list_head *tp;
 		int count = 0;
 
 		if (!dset)
 			continue;
-		dst = *(struct cgroup **)((char *)dset +
-					  offsetof(struct css_set, dfl_cgrp));
+		dst = *(struct cgroup **)((char *)dset + offsetof(struct css_set, dfl_cgrp));
 		if (!src || !dst || src == dst)
 			continue;
 		list_for_each(tp, (struct list_head *)((char *)cset +
-				offsetof(struct css_set, mg_tasks)))
-			count++;
+						       offsetof(struct css_set, mg_tasks))) count++;
 		if (!count)
 			continue;
 		if (dnsk_migrate_nr >= DNSK_MIGRATE_MAX) {
@@ -149,10 +145,8 @@ static void dnsk_migrate_post(int ret)
 	spin_lock_irqsave(&dnsk_migrate_lock, flags);
 	if (ret) {
 		for (i = 0; i < dnsk_migrate_nr; i++) {
-			dnsk_pids_charge(dnsk_migrate_recs[i].src,
-					 dnsk_migrate_recs[i].count);
-			dnsk_pids_uncharge(dnsk_migrate_recs[i].dst,
-					   dnsk_migrate_recs[i].count);
+			dnsk_pids_charge(dnsk_migrate_recs[i].src, dnsk_migrate_recs[i].count);
+			dnsk_pids_uncharge(dnsk_migrate_recs[i].dst, dnsk_migrate_recs[i].count);
 		}
 	}
 	dnsk_migrate_nr = 0;
@@ -196,13 +190,10 @@ static int dnsk_resolve_symbols(struct dnsk_core_api *api)
 	dnsk_cgroup_addrm_files = api->resolve("cgroup_addrm_files");
 	dnsk_kernfs_activate = api->resolve("kernfs_activate");
 
-	if (!dnsk_tasklist_lock || !dnsk_of_css || !dnsk_cgroup_mutex ||
-	    !dnsk_cgroup_base_files ||
-	    !dnsk_cgrp_dfl_root || !dnsk_cgroup_kf_syscall_ops ||
-	    !dnsk_memory_ss || !dnsk_have_canfork || !dnsk_have_release ||
-	    !dnsk_cgroup_mkdir || !dnsk_cgroup_rmdir ||
-	    !dnsk_cgroup_init_cftypes || !dnsk_cgroup_addrm_files ||
-	    !dnsk_kernfs_activate) {
+	if (!dnsk_tasklist_lock || !dnsk_of_css || !dnsk_cgroup_mutex || !dnsk_cgroup_base_files ||
+	    !dnsk_cgrp_dfl_root || !dnsk_cgroup_kf_syscall_ops || !dnsk_memory_ss ||
+	    !dnsk_have_canfork || !dnsk_have_release || !dnsk_cgroup_mkdir || !dnsk_cgroup_rmdir ||
+	    !dnsk_cgroup_init_cftypes || !dnsk_cgroup_addrm_files || !dnsk_kernfs_activate) {
 		pr_err("dnsk_cgpids: missing cgroup symbols\n");
 		return -ENOENT;
 	}
@@ -213,8 +204,7 @@ static int dnsk_patch_slots(void)
 {
 	dnsk_subsys_id = DNSK_SUBSYS_ID(dnsk_memory_ss);
 	if (dnsk_subsys_id < 0 || dnsk_subsys_id >= 16) {
-		pr_err("dnsk_cgpids: bad memory subsys id %d\n",
-		       dnsk_subsys_id);
+		pr_err("dnsk_cgpids: bad memory subsys id %d\n", dnsk_subsys_id);
 		return -EPROTO;
 	}
 	if (DNSK_SUBSYS_PTR(dnsk_memory_ss, DNSK_CGROUP_SUBSYS_CAN_FORK) ||
@@ -229,28 +219,20 @@ static int dnsk_patch_slots(void)
 		return -EBUSY;
 	}
 
-	dnsk_saved_can_fork = DNSK_SUBSYS_PTR(dnsk_memory_ss,
-					      DNSK_CGROUP_SUBSYS_CAN_FORK);
-	dnsk_saved_cancel_fork = DNSK_SUBSYS_PTR(dnsk_memory_ss,
-						DNSK_CGROUP_SUBSYS_CANCEL_FORK);
-	dnsk_saved_release = DNSK_SUBSYS_PTR(dnsk_memory_ss,
-					     DNSK_CGROUP_SUBSYS_RELEASE);
+	dnsk_saved_can_fork = DNSK_SUBSYS_PTR(dnsk_memory_ss, DNSK_CGROUP_SUBSYS_CAN_FORK);
+	dnsk_saved_cancel_fork = DNSK_SUBSYS_PTR(dnsk_memory_ss, DNSK_CGROUP_SUBSYS_CANCEL_FORK);
+	dnsk_saved_release = DNSK_SUBSYS_PTR(dnsk_memory_ss, DNSK_CGROUP_SUBSYS_RELEASE);
 	dnsk_saved_canfork_mask = *dnsk_have_canfork;
 	dnsk_saved_release_mask = *dnsk_have_release;
 
-	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss,
-				   DNSK_CGROUP_SUBSYS_CAN_FORK),
+	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss, DNSK_CGROUP_SUBSYS_CAN_FORK),
 		   (void *)dnsk_can_fork);
-	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss,
-				   DNSK_CGROUP_SUBSYS_CANCEL_FORK),
+	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss, DNSK_CGROUP_SUBSYS_CANCEL_FORK),
 		   (void *)dnsk_cancel_fork);
-	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss,
-				   DNSK_CGROUP_SUBSYS_RELEASE),
+	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss, DNSK_CGROUP_SUBSYS_RELEASE),
 		   (void *)dnsk_release);
-	WRITE_ONCE(*dnsk_have_canfork,
-		   dnsk_saved_canfork_mask | BIT(dnsk_subsys_id));
-	WRITE_ONCE(*dnsk_have_release,
-		   dnsk_saved_release_mask | BIT(dnsk_subsys_id));
+	WRITE_ONCE(*dnsk_have_canfork, dnsk_saved_canfork_mask | BIT(dnsk_subsys_id));
+	WRITE_ONCE(*dnsk_have_release, dnsk_saved_release_mask | BIT(dnsk_subsys_id));
 	dnsk_slots_ready = true;
 	return 0;
 }
@@ -259,36 +241,29 @@ static void dnsk_unpatch_slots(void)
 {
 	if (!dnsk_slots_ready)
 		return;
-	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss,
-				   DNSK_CGROUP_SUBSYS_CAN_FORK),
+	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss, DNSK_CGROUP_SUBSYS_CAN_FORK),
 		   dnsk_saved_can_fork);
-	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss,
-				   DNSK_CGROUP_SUBSYS_CANCEL_FORK),
+	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss, DNSK_CGROUP_SUBSYS_CANCEL_FORK),
 		   dnsk_saved_cancel_fork);
-	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss,
-				   DNSK_CGROUP_SUBSYS_RELEASE),
-		   dnsk_saved_release);
+	WRITE_ONCE(DNSK_SUBSYS_PTR(dnsk_memory_ss, DNSK_CGROUP_SUBSYS_RELEASE), dnsk_saved_release);
 	WRITE_ONCE(*dnsk_have_canfork, dnsk_saved_canfork_mask);
 	WRITE_ONCE(*dnsk_have_release, dnsk_saved_release_mask);
 	dnsk_slots_ready = false;
 }
-
-
 
 /*
  * Public entry points, called by main.c which owns the load-time switch.
  * Everything they touch is private to this file.
  */
 
-int dnsk_cgpids_virtual_init(struct dnsk_core_api *api,
-			     const struct dnsk_feature_desc *desc)
+int dnsk_cgpids_virtual_init(struct dnsk_core_api *api, const struct dnsk_feature_desc *desc)
 {
 	struct dnsk_inline_hook_req hook = {
-		.key = DNSK_MIGRATE_KEY,
-		.symbol = "cgroup_migrate_execute",
-		.owner = THIS_MODULE,
-		.replacement = dnsk_migrate_execute,
-		.origin_out = &dnsk_migrate_origin,
+	    .key = DNSK_MIGRATE_KEY,
+	    .symbol = "cgroup_migrate_execute",
+	    .owner = THIS_MODULE,
+	    .replacement = dnsk_migrate_execute,
+	    .origin_out = &dnsk_migrate_origin,
 	};
 	int ret;
 
@@ -318,20 +293,17 @@ int dnsk_cgpids_virtual_init(struct dnsk_core_api *api,
 		goto out_hook;
 	virtual_feature_ready = true;
 
-	pr_info("dnsk_cgpids: v2 virtual pids controller ready (subsys %d)\n",
-		dnsk_subsys_id);
+	pr_info("dnsk_cgpids: v2 virtual pids controller ready (subsys %d)\n", dnsk_subsys_id);
 	return 0;
 
-out_hook:
-	{
-		int ur = api->hook_uninstall(DNSK_MIGRATE_KEY);
+out_hook: {
+	int ur = api->hook_uninstall(DNSK_MIGRATE_KEY);
 
-		if (ur)
-			pr_err("dnsk_cgpids: rollback could not restore %s: %d\n",
-			       DNSK_MIGRATE_KEY, ur);
-		else
-			virtual_hook_ready = false;
-	}
+	if (ur)
+		pr_err("dnsk_cgpids: rollback could not restore %s: %d\n", DNSK_MIGRATE_KEY, ur);
+	else
+		virtual_hook_ready = false;
+}
 out_slots:
 	dnsk_unpatch_slots();
 out_sysops:
@@ -350,8 +322,9 @@ void dnsk_cgpids_virtual_exit(struct dnsk_core_api *api)
 		int ret = api->hook_uninstall(DNSK_MIGRATE_KEY);
 
 		if (ret)
-			pr_err("dnsk_cgpids: %s restore failed; module text is still reachable: %d\n",
-			       DNSK_MIGRATE_KEY, ret);
+			pr_err(
+			    "dnsk_cgpids: %s restore failed; module text is still reachable: %d\n",
+			    DNSK_MIGRATE_KEY, ret);
 		else
 			virtual_hook_ready = false;
 	}

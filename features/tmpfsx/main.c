@@ -30,8 +30,7 @@ static struct dnsk_core_api *dnsk_api;
 static void *dnsk_iops;
 static void *dnsk_dops;
 static void *dnsk_fc_ops;
-static void (*dnsk_iterate_supers)(void (*fn)(struct super_block *, void *),
-				   void *arg);
+static void (*dnsk_iterate_supers)(void (*fn)(struct super_block *, void *), void *arg);
 static bool dnsk_init_ready;
 static bool dnsk_fill_ready;
 static bool dnsk_evict_ready;
@@ -82,7 +81,7 @@ static void dnsk_wire_sb(struct super_block *sb, void *arg)
 static __nocfi int dnsk_fill_super(struct super_block *sb, struct fs_context *fc)
 {
 	int (*origin)(struct super_block *, struct fs_context *) =
-		READ_ONCE(dnsk_origin_fill_super);
+	    READ_ONCE(dnsk_origin_fill_super);
 
 	if (unlikely(!origin))
 		return -EAGAIN;
@@ -158,8 +157,7 @@ static int dnsk_unpatch_all(void)
 	for (i = dnsk_data_nr - 1; i >= 0; i--) {
 		if (!dnsk_data_hooks[i].ready)
 			continue;
-		if (dnsk_api->patch_pointer(dnsk_data_hooks[i].slot,
-					    dnsk_data_hooks[i].orig)) {
+		if (dnsk_api->patch_pointer(dnsk_data_hooks[i].slot, dnsk_data_hooks[i].orig)) {
 			pr_err("dnsk_tmpfsx: restore %s failed; slot left patched\n",
 			       dnsk_data_hooks[i].key);
 			failed++;
@@ -172,15 +170,15 @@ static int dnsk_unpatch_all(void)
 	return failed ? -EIO : 0;
 }
 
-static int dnsk_add_inline_hook(const char *key, const char *symbol,
-				void *replacement, void **origin_out)
+static int dnsk_add_inline_hook(const char *key, const char *symbol, void *replacement,
+				void **origin_out)
 {
 	struct dnsk_inline_hook_req req = {
-		.key = key,
-		.symbol = symbol,
-		.owner = THIS_MODULE,
-		.replacement = replacement,
-		.origin_out = origin_out,
+	    .key = key,
+	    .symbol = symbol,
+	    .owner = THIS_MODULE,
+	    .replacement = replacement,
+	    .origin_out = origin_out,
 	};
 
 	return dnsk_api->hook_install(&req);
@@ -194,8 +192,7 @@ static int dnsk_del_inline_hooks(void)
 	if (dnsk_evict_ready) {
 		ret = dnsk_api->hook_uninstall(DNSK_TMPFSX_KEY_EVICT);
 		if (ret) {
-			pr_err("dnsk_tmpfsx: restore %s failed: %d\n",
-			       DNSK_TMPFSX_KEY_EVICT, ret);
+			pr_err("dnsk_tmpfsx: restore %s failed: %d\n", DNSK_TMPFSX_KEY_EVICT, ret);
 			failed++;
 		} else {
 			dnsk_evict_ready = false;
@@ -204,8 +201,7 @@ static int dnsk_del_inline_hooks(void)
 	if (dnsk_fill_ready) {
 		ret = dnsk_api->hook_uninstall(DNSK_TMPFSX_KEY_FILL);
 		if (ret) {
-			pr_err("dnsk_tmpfsx: restore %s failed: %d\n",
-			       DNSK_TMPFSX_KEY_FILL, ret);
+			pr_err("dnsk_tmpfsx: restore %s failed: %d\n", DNSK_TMPFSX_KEY_FILL, ret);
 			failed++;
 		} else {
 			dnsk_fill_ready = false;
@@ -214,8 +210,7 @@ static int dnsk_del_inline_hooks(void)
 	if (dnsk_init_ready) {
 		ret = dnsk_api->hook_uninstall("tmpfsx.init_fs_context");
 		if (ret) {
-			pr_err("dnsk_tmpfsx: restore init_fs_context failed: %d\n",
-			       ret);
+			pr_err("dnsk_tmpfsx: restore init_fs_context failed: %d\n", ret);
 			failed++;
 		} else {
 			dnsk_init_ready = false;
@@ -235,9 +230,8 @@ static int dnsk_resolve_symbols(void)
 	int ret;
 
 	dnsk_iops = dnsk_api->resolve("shmem_inode_operations");
-	if (dnsk_iops &&
-	    READ_ONCE(*(void **)((char *)dnsk_iops +
-				 offsetof(struct inode_operations, listxattr)))) {
+	if (dnsk_iops && READ_ONCE(*(void **)((char *)dnsk_iops +
+					      offsetof(struct inode_operations, listxattr)))) {
 		/* Native CONFIG_TMPFS_XATTR: never replace its handlers. */
 		pr_info("dnsk_tmpfsx: native tmpfs xattr present; keeping native\n");
 		dnsk_keep_native = true;
@@ -260,79 +254,64 @@ static int dnsk_resolve_symbols(void)
 	native_acl_default = dnsk_api->resolve("posix_acl_default_xattr_handler");
 	fc_ops = dnsk_api->resolve("shmem_fs_context_ops");
 
-	if (!dnsk_iops || !dnsk_dops || !dnsk_iterate_supers || !xattr_set ||
-	    !xattr_get || !xattr_list || !xattrs_free || !fc_ops) {
+	if (!dnsk_iops || !dnsk_dops || !dnsk_iterate_supers || !xattr_set || !xattr_get ||
+	    !xattr_list || !xattrs_free || !fc_ops) {
 		pr_err("dnsk_tmpfsx: missing tmpfs, xattr or fs_context symbols\n");
 		return -ENOENT;
 	}
-	parse_param = READ_ONCE(*(void **)((char *)fc_ops +
-				offsetof(struct fs_context_operations,
-					 parse_param)));
+	parse_param = READ_ONCE(
+	    *(void **)((char *)fc_ops + offsetof(struct fs_context_operations, parse_param)));
 	if (!parse_param) {
 		pr_err("dnsk_tmpfsx: shmem fs_context has no parse_param\n");
 		return -EOPNOTSUPP;
 	}
-	parse_monolithic = READ_ONCE(*(void **)((char *)fc_ops +
-				offsetof(struct fs_context_operations,
-					 parse_monolithic)));
+	parse_monolithic = READ_ONCE(
+	    *(void **)((char *)fc_ops + offsetof(struct fs_context_operations, parse_monolithic)));
 	if (!parse_monolithic) {
 		pr_err("dnsk_tmpfsx: shmem fs_context has no parse_monolithic\n");
 		return -EOPNOTSUPP;
 	}
 	dnsk_fc_ops = fc_ops;
-	ret = dnsk_tmpfsx_mount_init(
-		(int (*)(struct fs_context *, struct fs_parameter *))parse_param,
-		(int (*)(struct fs_context *, void *))parse_monolithic);
+	ret =
+	    dnsk_tmpfsx_mount_init((int (*)(struct fs_context *, struct fs_parameter *))parse_param,
+				   (int (*)(struct fs_context *, void *))parse_monolithic);
 	if (ret)
 		return ret;
-	ret = dnsk_tmpfsx_xattr_init((dnsk_xattr_set_fn)xattr_set,
-				     (dnsk_xattr_get_fn)xattr_get,
+	ret = dnsk_tmpfsx_xattr_init((dnsk_xattr_set_fn)xattr_set, (dnsk_xattr_get_fn)xattr_get,
 				     (dnsk_xattr_list_fn)xattr_list,
-				     (dnsk_xattrs_free_fn)xattrs_free,
-				     listsecurity);
+				     (dnsk_xattrs_free_fn)xattrs_free, listsecurity);
 	if (ret)
 		return ret;
 	if (!listsecurity)
-		pr_warn("dnsk_tmpfsx: security_inode_listsecurity unresolved; listxattr ACL size accounting stays unpatched\n");
+		pr_warn("dnsk_tmpfsx: security_inode_listsecurity unresolved; listxattr ACL size "
+			"accounting stays unpatched\n");
 	if ((native_acl_access && native_acl_default) ||
-	    READ_ONCE(*(void **)((char *)dnsk_iops +
-				 offsetof(struct inode_operations,
-					  get_inode_acl))) ||
-	    READ_ONCE(*(void **)((char *)dnsk_iops +
-				 offsetof(struct inode_operations, set_acl)))) {
+	    READ_ONCE(
+		*(void **)((char *)dnsk_iops + offsetof(struct inode_operations, get_inode_acl))) ||
+	    READ_ONCE(*(void **)((char *)dnsk_iops + offsetof(struct inode_operations, set_acl)))) {
 		pr_info("dnsk_tmpfsx: native ACL present; keeping native\n");
-	} else if (acl_update_mode && acl_set_cached && acl_set_ctime &&
-		   acl_sac && acl_chmod) {
-		ret = dnsk_tmpfsx_acl_init(acl_update_mode, acl_set_cached,
-					   acl_set_ctime, &dnsk_acl_ops);
+	} else if (acl_update_mode && acl_set_cached && acl_set_ctime && acl_sac && acl_chmod) {
+		ret = dnsk_tmpfsx_acl_init(acl_update_mode, acl_set_cached, acl_set_ctime,
+					   &dnsk_acl_ops);
 		if (ret)
 			return ret;
 		dnsk_acl_slots.create = (dnsk_create_fn)READ_ONCE(
-			*(void **)((char *)dnsk_dops +
-				   offsetof(struct inode_operations, create)));
+		    *(void **)((char *)dnsk_dops + offsetof(struct inode_operations, create)));
 		dnsk_acl_slots.mkdir = (dnsk_mkdir_fn)READ_ONCE(
-			*(void **)((char *)dnsk_dops +
-				   offsetof(struct inode_operations, mkdir)));
+		    *(void **)((char *)dnsk_dops + offsetof(struct inode_operations, mkdir)));
 		dnsk_acl_slots.symlink = (dnsk_symlink_fn)READ_ONCE(
-			*(void **)((char *)dnsk_dops +
-				   offsetof(struct inode_operations, symlink)));
+		    *(void **)((char *)dnsk_dops + offsetof(struct inode_operations, symlink)));
 		dnsk_acl_slots.mknod = (dnsk_mknod_fn)READ_ONCE(
-			*(void **)((char *)dnsk_dops +
-				   offsetof(struct inode_operations, mknod)));
+		    *(void **)((char *)dnsk_dops + offsetof(struct inode_operations, mknod)));
 		dnsk_acl_slots.tmpfile = (dnsk_tmpfile_fn)READ_ONCE(
-			*(void **)((char *)dnsk_dops +
-				   offsetof(struct inode_operations, tmpfile)));
+		    *(void **)((char *)dnsk_dops + offsetof(struct inode_operations, tmpfile)));
 		dnsk_acl_slots.setattr_iops = (dnsk_setattr_fn)READ_ONCE(
-			*(void **)((char *)dnsk_iops +
-				   offsetof(struct inode_operations, setattr)));
+		    *(void **)((char *)dnsk_iops + offsetof(struct inode_operations, setattr)));
 		dnsk_acl_slots.setattr_dops = (dnsk_setattr_fn)READ_ONCE(
-			*(void **)((char *)dnsk_dops +
-				   offsetof(struct inode_operations, setattr)));
+		    *(void **)((char *)dnsk_dops + offsetof(struct inode_operations, setattr)));
 		if (!dnsk_acl_slots.setattr_dops)
-			dnsk_acl_slots.setattr_dops =
-				(dnsk_setattr_fn)simple_setattr_fn;
-		ret = dnsk_tmpfsx_acl_iops_init(&dnsk_acl_slots, acl_sac,
-						acl_chmod);
+			dnsk_acl_slots.setattr_dops = (dnsk_setattr_fn)simple_setattr_fn;
+		ret = dnsk_tmpfsx_acl_iops_init(&dnsk_acl_slots, acl_sac, acl_chmod);
 		if (ret)
 			return ret;
 		dnsk_acl_ready = true;
@@ -343,11 +322,11 @@ static int dnsk_resolve_symbols(void)
 }
 
 static struct dnsk_feature_desc dnsk_tmpfsx_desc = {
-	.name = "tmpfsx",
-	.version = "0.1",
-	.status = DNSK_STATUS_DEVELOPMENT,
-	.caps = "tmpfs xattr handlers; ACL cache-only (route B), SB_POSIXACL default",
-	.owner = THIS_MODULE,
+    .name = "tmpfsx",
+    .version = "0.1",
+    .status = DNSK_STATUS_DEVELOPMENT,
+    .caps = "tmpfs xattr handlers; ACL cache-only (route B), SB_POSIXACL default",
+    .owner = THIS_MODULE,
 };
 
 static int __init dnsk_tmpfsx_init(void)
@@ -382,14 +361,12 @@ static int __init dnsk_tmpfsx_init(void)
 	dnsk_iterate_supers(dnsk_wire_sb, (void *)1UL);
 	dnsk_wired = true;
 
-	ret = dnsk_patch_slot(DNSK_TMPFSX_KEY_IOPS,
-			      (void **)((char *)dnsk_iops + listxattr_off),
+	ret = dnsk_patch_slot(DNSK_TMPFSX_KEY_IOPS, (void **)((char *)dnsk_iops + listxattr_off),
 			      (void *)dnsk_tmpfsx_listxattr);
 	if (ret)
 		goto out_wire;
 
-	ret = dnsk_patch_slot(DNSK_TMPFSX_KEY_DOPS,
-			      (void **)((char *)dnsk_dops + listxattr_off),
+	ret = dnsk_patch_slot(DNSK_TMPFSX_KEY_DOPS, (void **)((char *)dnsk_dops + listxattr_off),
 			      (void *)dnsk_tmpfsx_listxattr);
 	if (ret)
 		goto out_wire;
@@ -400,115 +377,103 @@ static int __init dnsk_tmpfsx_init(void)
 		 * the kernel's inode->i_acl cache (__get_acl() negative-caches
 		 * when both get_acl/get_inode_acl are NULL).
 		 */
-		ret = dnsk_patch_slot("tmpfsx.iops.set_acl",
-			(void **)((char *)dnsk_iops +
-				  offsetof(struct inode_operations, set_acl)),
-			dnsk_acl_ops.set_acl);
+		ret = dnsk_patch_slot(
+		    "tmpfsx.iops.set_acl",
+		    (void **)((char *)dnsk_iops + offsetof(struct inode_operations, set_acl)),
+		    dnsk_acl_ops.set_acl);
 		if (ret)
 			goto out_wire;
-		ret = dnsk_patch_slot("tmpfsx.dops.set_acl",
-			(void **)((char *)dnsk_dops +
-				  offsetof(struct inode_operations, set_acl)),
-			dnsk_acl_ops.set_acl);
+		ret = dnsk_patch_slot(
+		    "tmpfsx.dops.set_acl",
+		    (void **)((char *)dnsk_dops + offsetof(struct inode_operations, set_acl)),
+		    dnsk_acl_ops.set_acl);
 		if (ret)
 			goto out_wire;
 		if (dnsk_acl_slots.create) {
 			ret = dnsk_patch_slot("tmpfsx.dops.create",
-				(void **)((char *)dnsk_dops +
-					  offsetof(struct inode_operations,
-						   create)),
-				(void *)dnsk_tmpfsx_create);
+					      (void **)((char *)dnsk_dops +
+							offsetof(struct inode_operations, create)),
+					      (void *)dnsk_tmpfsx_create);
 			if (ret)
 				goto out_wire;
 		}
 		if (dnsk_acl_slots.mkdir) {
-			ret = dnsk_patch_slot("tmpfsx.dops.mkdir",
-				(void **)((char *)dnsk_dops +
-					  offsetof(struct inode_operations,
-						   mkdir)),
-				(void *)dnsk_tmpfsx_mkdir);
+			ret = dnsk_patch_slot(
+			    "tmpfsx.dops.mkdir",
+			    (void **)((char *)dnsk_dops + offsetof(struct inode_operations, mkdir)),
+			    (void *)dnsk_tmpfsx_mkdir);
 			if (ret)
 				goto out_wire;
 		}
 		if (dnsk_acl_slots.symlink) {
 			ret = dnsk_patch_slot("tmpfsx.dops.symlink",
-				(void **)((char *)dnsk_dops +
-					  offsetof(struct inode_operations,
-						   symlink)),
-				(void *)dnsk_tmpfsx_symlink);
+					      (void **)((char *)dnsk_dops +
+							offsetof(struct inode_operations, symlink)),
+					      (void *)dnsk_tmpfsx_symlink);
 			if (ret)
 				goto out_wire;
 		}
 		if (dnsk_acl_slots.mknod) {
-			ret = dnsk_patch_slot("tmpfsx.dops.mknod",
-				(void **)((char *)dnsk_dops +
-					  offsetof(struct inode_operations,
-						   mknod)),
-				(void *)dnsk_tmpfsx_mknod);
+			ret = dnsk_patch_slot(
+			    "tmpfsx.dops.mknod",
+			    (void **)((char *)dnsk_dops + offsetof(struct inode_operations, mknod)),
+			    (void *)dnsk_tmpfsx_mknod);
 			if (ret)
 				goto out_wire;
 		}
 		if (dnsk_acl_slots.tmpfile) {
 			ret = dnsk_patch_slot("tmpfsx.dops.tmpfile",
-				(void **)((char *)dnsk_dops +
-					  offsetof(struct inode_operations,
-						   tmpfile)),
-				(void *)dnsk_tmpfsx_tmpfile);
+					      (void **)((char *)dnsk_dops +
+							offsetof(struct inode_operations, tmpfile)),
+					      (void *)dnsk_tmpfsx_tmpfile);
 			if (ret)
 				goto out_wire;
 		}
 		if (dnsk_acl_slots.setattr_iops) {
 			ret = dnsk_patch_slot("tmpfsx.iops.setattr",
-				(void **)((char *)dnsk_iops +
-					  offsetof(struct inode_operations,
-						   setattr)),
-				(void *)dnsk_tmpfsx_setattr_iops);
+					      (void **)((char *)dnsk_iops +
+							offsetof(struct inode_operations, setattr)),
+					      (void *)dnsk_tmpfsx_setattr_iops);
 			if (ret)
 				goto out_wire;
 		}
 		if (dnsk_acl_slots.setattr_dops) {
 			ret = dnsk_patch_slot("tmpfsx.dops.setattr",
-				(void **)((char *)dnsk_dops +
-					  offsetof(struct inode_operations,
-						   setattr)),
-				(void *)dnsk_tmpfsx_setattr_dops);
+					      (void **)((char *)dnsk_dops +
+							offsetof(struct inode_operations, setattr)),
+					      (void *)dnsk_tmpfsx_setattr_dops);
 			if (ret)
 				goto out_wire;
 		}
 	}
 
-	ret = dnsk_patch_slot("tmpfsx.fc.parse_param",
-		(void **)((char *)dnsk_fc_ops +
-			  offsetof(struct fs_context_operations, parse_param)),
-		(void *)dnsk_tmpfsx_parse_param);
+	ret = dnsk_patch_slot(
+	    "tmpfsx.fc.parse_param",
+	    (void **)((char *)dnsk_fc_ops + offsetof(struct fs_context_operations, parse_param)),
+	    (void *)dnsk_tmpfsx_parse_param);
 	if (ret)
 		goto out_wire;
 	ret = dnsk_patch_slot("tmpfsx.fc.parse_monolithic",
-		(void **)((char *)dnsk_fc_ops +
-			  offsetof(struct fs_context_operations,
-				   parse_monolithic)),
-		(void *)dnsk_tmpfsx_parse_monolithic);
+			      (void **)((char *)dnsk_fc_ops +
+					offsetof(struct fs_context_operations, parse_monolithic)),
+			      (void *)dnsk_tmpfsx_parse_monolithic);
 	if (ret)
 		goto out_wire;
 
-	ret = dnsk_add_inline_hook("tmpfsx.init_fs_context",
-				   "shmem_init_fs_context",
-				   (void *)dnsk_init_fs_context,
-				   &dnsk_origin_init_fs_context);
+	ret = dnsk_add_inline_hook("tmpfsx.init_fs_context", "shmem_init_fs_context",
+				   (void *)dnsk_init_fs_context, &dnsk_origin_init_fs_context);
 	if (ret)
 		goto out_wire;
 	dnsk_init_ready = true;
 
 	ret = dnsk_add_inline_hook(DNSK_TMPFSX_KEY_FILL, "shmem_fill_super",
-				   (void *)dnsk_fill_super,
-				   &dnsk_origin_fill_super);
+				   (void *)dnsk_fill_super, &dnsk_origin_fill_super);
 	if (ret)
 		goto out_inline;
 	dnsk_fill_ready = true;
 
 	ret = dnsk_add_inline_hook(DNSK_TMPFSX_KEY_EVICT, "shmem_evict_inode",
-				   (void *)dnsk_evict_inode,
-				   &dnsk_origin_evict_inode);
+				   (void *)dnsk_evict_inode, &dnsk_origin_evict_inode);
 	if (ret)
 		goto out_inline;
 	dnsk_evict_ready = true;

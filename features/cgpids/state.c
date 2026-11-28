@@ -33,7 +33,8 @@ static s64 dnsk_pids_subtree_tasks(struct cgroup *cgrp)
 
 	read_lock(dnsk_tasklist_lock);
 	rcu_read_lock();
-	for_each_process_thread(g, t) {
+	for_each_process_thread(g, t)
+	{
 		struct css_set *cset;
 		struct cgroup_subsys_state *css;
 
@@ -152,8 +153,7 @@ static void dnsk_pids_update_peak(struct dnsk_pids_state *st, s64 val)
 	}
 }
 
-static void dnsk_pids_event_fail(struct cgroup *forking,
-				 struct dnsk_pids_state *over)
+static void dnsk_pids_event_fail(struct cgroup *forking, struct dnsk_pids_state *over)
 {
 	struct cgroup_subsys_state *css;
 	struct dnsk_pids_state *st;

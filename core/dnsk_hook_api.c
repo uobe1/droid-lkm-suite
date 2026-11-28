@@ -100,15 +100,13 @@ static int dnsk_dh_rw(struct dh_rw_req *req)
  * and quiesce_end are no-ops: the atomic window is the stop_machine inside
  * each text_write, not an independent barrier around the library call.
  */
-static int dnsk_dh_text_write(void *addr, const void *src, size_t len,
-			      enum dh_route route)
+static int dnsk_dh_text_write(void *addr, const void *src, size_t len, enum dh_route route)
 {
 	(void)route;
 	return dnsk_patch_text(addr, src, len, true);
 }
 
-static int dnsk_dh_ro_write(void *addr, const void *src, size_t len,
-			    enum dh_route route)
+static int dnsk_dh_ro_write(void *addr, const void *src, size_t len, enum dh_route route)
 {
 	(void)route;
 	return dnsk_patch_text(addr, src, len, true);
@@ -175,8 +173,7 @@ int dnsk_hook_install_internal(const struct dnsk_inline_hook_req *req)
 	void *target;
 	int i, ret;
 
-	if (!req || !req->key || !req->key[0] ||
-	    strlen(req->key) >= DNSK_HOOK_KEY_LEN)
+	if (!req || !req->key || !req->key[0] || strlen(req->key) >= DNSK_HOOK_KEY_LEN)
 		return -EINVAL;
 	if (!req->symbol || !req->symbol[0] || !req->replacement || !req->owner)
 		return -EINVAL;
@@ -212,9 +209,8 @@ int dnsk_hook_install_internal(const struct dnsk_inline_hook_req *req)
 	 * request that needs an origin but has no executable allocator fails
 	 * with -EOPNOTSUPP before any entry is written.
 	 */
-	ret = dnsk_dh_ret(dh_hook_install_origin(&dnsk_dh_ctx, req->key, target,
-						 req->replacement, &slot->hook,
-						 req->origin_out));
+	ret = dnsk_dh_ret(dh_hook_install_origin(&dnsk_dh_ctx, req->key, target, req->replacement,
+						 &slot->hook, req->origin_out));
 	if (ret)
 		goto out;
 
@@ -299,7 +295,8 @@ int dnsk_hooks_init(void)
 	} else {
 		dnsk_dh_be.alloc_exec = NULL;
 		dnsk_dh_be.free_exec = NULL;
-		dnsk_warn("hooks: module_alloc/module_memfree missing; call-through origin disabled\n");
+		dnsk_warn(
+		    "hooks: module_alloc/module_memfree missing; call-through origin disabled\n");
 	}
 
 	ret = dh_ctx_init(&dnsk_dh_ctx, &dnsk_dh_be, "dnsk_core");
@@ -308,9 +305,10 @@ int dnsk_hooks_init(void)
 		return -EINVAL;
 	}
 	dnsk_dh_ready = true;
-	dnsk_info("hooks: droid-hook backend ready (module_alloc=%px module_memfree=%px origin=%s)\n",
-		  dnsk_module_alloc_fn, dnsk_module_free_fn,
-		  dnsk_dh_be.alloc_exec ? "enabled" : "disabled");
+	dnsk_info(
+	    "hooks: droid-hook backend ready (module_alloc=%px module_memfree=%px origin=%s)\n",
+	    dnsk_module_alloc_fn, dnsk_module_free_fn,
+	    dnsk_dh_be.alloc_exec ? "enabled" : "disabled");
 	return 0;
 }
 
@@ -327,11 +325,9 @@ void dnsk_hooks_exit(void)
 
 		if (!dnsk_inline[i].used)
 			continue;
-		ret = dnsk_dh_ret(dh_hook_uninstall(&dnsk_dh_ctx,
-						    &dnsk_inline[i].hook));
+		ret = dnsk_dh_ret(dh_hook_uninstall(&dnsk_dh_ctx, &dnsk_inline[i].hook));
 		if (ret) {
-			dnsk_err("hooks: exit could not restore %s: %d\n",
-				 dnsk_inline[i].key, ret);
+			dnsk_err("hooks: exit could not restore %s: %d\n", dnsk_inline[i].key, ret);
 			continue;
 		}
 		memset(&dnsk_inline[i], 0, sizeof(dnsk_inline[i]));

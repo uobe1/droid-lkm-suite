@@ -28,7 +28,7 @@ static void dnsk_clear_enforcing(struct work_struct *work)
 
 static int __init dnsk_selpermissive_init(void)
 {
-	struct kprobe kp = { .symbol_name = "kallsyms_lookup_name" };
+	struct kprobe kp = {.symbol_name = "kallsyms_lookup_name"};
 	unsigned long (*lookup)(const char *name);
 	unsigned long addr;
 

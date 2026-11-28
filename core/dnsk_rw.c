@@ -73,8 +73,7 @@ static int dnsk_rw_check(u64 addr, size_t len, bool phys)
 	if (phys) {
 		if (addr + len < addr)
 			return -EINVAL;
-		if (!pfn_valid(PHYS_PFN(addr)) ||
-		    !pfn_valid(PHYS_PFN(addr + len - 1)))
+		if (!pfn_valid(PHYS_PFN(addr)) || !pfn_valid(PHYS_PFN(addr + len - 1)))
 			return -EINVAL;
 	} else {
 		if (!addr || (s64)addr > 0)
@@ -167,14 +166,13 @@ static int dnsk_rw_do_read(u64 addr, size_t len, bool phys)
 	if (ret)
 		return ret;
 	dnsk_rw_reads++;
-	dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT, "%s %llx ",
-				    phys ? "readp" : "read", addr);
+	dnsk_rw_out_len =
+	    scnprintf(dnsk_rw_out, DNSK_RW_OUT, "%s %llx ", phys ? "readp" : "read", addr);
 	for (i = 0; i < len; i++)
 		dnsk_rw_out_len += scnprintf(dnsk_rw_out + dnsk_rw_out_len,
-					     DNSK_RW_OUT - dnsk_rw_out_len,
-					     "%02x", buf[i]);
-	dnsk_rw_out_len += scnprintf(dnsk_rw_out + dnsk_rw_out_len,
-				     DNSK_RW_OUT - dnsk_rw_out_len, "\n");
+					     DNSK_RW_OUT - dnsk_rw_out_len, "%02x", buf[i]);
+	dnsk_rw_out_len +=
+	    scnprintf(dnsk_rw_out + dnsk_rw_out_len, DNSK_RW_OUT - dnsk_rw_out_len, "\n");
 	return 0;
 }
 
@@ -221,11 +219,9 @@ static int dnsk_rw_do_write(u64 addr, const u8 *data, size_t len, bool phys)
 	slot->phys = phys;
 	slot->used = true;
 	dnsk_rw_writes++;
-	dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,
-				    "%s %llx slot=%u len=%zu ns=%llu\n",
+	dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT, "%s %llx slot=%u len=%zu ns=%llu\n",
 				    phys ? "writep" : "write", addr,
-				    (unsigned int)(slot - dnsk_rw_slots), len,
-				    ktime_get_ns() - t0);
+				    (unsigned int)(slot - dnsk_rw_slots), len, ktime_get_ns() - t0);
 	return 0;
 }
 
@@ -243,8 +239,7 @@ static int dnsk_rw_kmem_read(void *dst, const void *src, size_t len)
 	return (int)dnsk_rw_read_fn(dst, src, len);
 }
 
-static int dnsk_rw_kmem_write(void *dst, const void *src, size_t len,
-			      bool text)
+static int dnsk_rw_kmem_write(void *dst, const void *src, size_t len, bool text)
 {
 	unsigned long a;
 
@@ -265,8 +260,7 @@ static int dnsk_rw_do_op(struct dnsk_rw_req *req)
 		return dnsk_rw_kmem_read(req->dst, req->addr, req->len);
 	case DNSK_RW_WRITE:
 		if (req->flags & (DNSK_RW_F_TEXT | DNSK_RW_F_RO))
-			return dnsk_rw_kmem_write(req->addr, req->src,
-						  req->len,
+			return dnsk_rw_kmem_write(req->addr, req->src, req->len,
 						  req->flags & DNSK_RW_F_TEXT);
 		if (!req->src)
 			return -EINVAL;
@@ -276,28 +270,23 @@ static int dnsk_rw_do_op(struct dnsk_rw_req *req)
 		return 0;
 	case DNSK_RW_XCHG:
 		if (req->flags & (DNSK_RW_F_TEXT | DNSK_RW_F_RO))
-			return dnsk_patch_xchg64(req->addr, req->value,
-						 &req->old);
+			return dnsk_patch_xchg64(req->addr, req->value, &req->old);
 		if (dnsk_rw_check((u64)req->addr, sizeof(u64), false) ||
 		    ((unsigned long)req->addr & 7))
 			return -EINVAL;
-		req->old = __atomic_exchange_n((u64 *)req->addr, req->value,
-					       __ATOMIC_SEQ_CST);
+		req->old = __atomic_exchange_n((u64 *)req->addr, req->value, __ATOMIC_SEQ_CST);
 		return 0;
 	case DNSK_RW_CAS:
 		if (req->flags & (DNSK_RW_F_TEXT | DNSK_RW_F_RO))
-			return dnsk_patch_cas64(req->addr, req->old, req->value,
-						&req->old);
+			return dnsk_patch_cas64(req->addr, req->old, req->value, &req->old);
 		if (dnsk_rw_check((u64)req->addr, sizeof(u64), false) ||
 		    ((unsigned long)req->addr & 7))
 			return -EINVAL;
 		{
 			u64 expected = req->old;
 
-			if (__atomic_compare_exchange_n((u64 *)req->addr,
-							&expected, req->value,
-							false, __ATOMIC_SEQ_CST,
-							__ATOMIC_SEQ_CST))
+			if (__atomic_compare_exchange_n((u64 *)req->addr, &expected, req->value,
+							false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
 				return 0;
 			req->old = expected;
 			return -EAGAIN;
@@ -376,14 +365,12 @@ static int dnsk_rw_do_revert(unsigned long slot)
 	s = &dnsk_rw_slots[slot];
 	if (!s->used)
 		return -ENOENT;
-	ret = dnsk_patch_text(dnsk_rw_ptr(s->addr, s->phys), s->orig, s->len,
-			      false);
+	ret = dnsk_patch_text(dnsk_rw_ptr(s->addr, s->phys), s->orig, s->len, false);
 	if (ret)
 		return ret;
 	s->used = false;
 	dnsk_rw_reverts++;
-	dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,
-				    "revert %lu ok\n", slot);
+	dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT, "revert %lu ok\n", slot);
 	return 0;
 }
 
@@ -472,28 +459,25 @@ static int dnsk_rw_selftest(void)
 		goto out;
 	}
 	t1 = ktime_get_ns();
-	dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,
-				    "selftest pass ns=%llu\n", t1 - t0);
+	dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT, "selftest pass ns=%llu\n", t1 - t0);
 out:
 	kfree(buf);
 	kfree(back);
 	return ret;
 }
 
-static ssize_t dnsk_rw_read_file(struct file *file, char __user *ubuf,
-				 size_t count, loff_t *ppos)
+static ssize_t dnsk_rw_read_file(struct file *file, char __user *ubuf, size_t count, loff_t *ppos)
 {
 	ssize_t ret;
 
 	mutex_lock(&dnsk_rw_lock);
-	ret = simple_read_from_buffer(ubuf, count, ppos, dnsk_rw_out,
-				      dnsk_rw_out_len);
+	ret = simple_read_from_buffer(ubuf, count, ppos, dnsk_rw_out, dnsk_rw_out_len);
 	mutex_unlock(&dnsk_rw_lock);
 	return ret;
 }
 
-static ssize_t dnsk_rw_write_file(struct file *file, const char __user *ubuf,
-				  size_t count, loff_t *ppos)
+static ssize_t dnsk_rw_write_file(struct file *file, const char __user *ubuf, size_t count,
+				  loff_t *ppos)
 {
 	char kbuf[160];
 	char *p = kbuf, *cmd, *rest;
@@ -555,53 +539,48 @@ static ssize_t dnsk_rw_write_file(struct file *file, const char __user *ubuf,
 		if (*name)
 			va = dnsk_resolve_symbol(name);
 		if (!va) {
-			dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,
-						    "%s %s null\n", cmd, name);
+			dnsk_rw_out_len =
+			    scnprintf(dnsk_rw_out, DNSK_RW_OUT, "%s %s null\n", cmd, name);
 			ret = 0;
 		} else if (cmd[0] == 'p') {
 			unsigned long pa = 0;
 
 			if (dnsk_virt_to_phys(va, &pa)) {
-				dnsk_rw_out_len = scnprintf(dnsk_rw_out,
-							    DNSK_RW_OUT,
-							    "pa %s null\n", name);
+				dnsk_rw_out_len =
+				    scnprintf(dnsk_rw_out, DNSK_RW_OUT, "pa %s null\n", name);
 			} else {
-				dnsk_rw_out_len = scnprintf(dnsk_rw_out,
-							    DNSK_RW_OUT,
-							    "pa %s 0x%lx\n", name,
-							    pa);
+				dnsk_rw_out_len =
+				    scnprintf(dnsk_rw_out, DNSK_RW_OUT, "pa %s 0x%lx\n", name, pa);
 			}
 			ret = 0;
 		} else {
-			dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,
-						    "resolve %s %px\n", name, va);
+			dnsk_rw_out_len =
+			    scnprintf(dnsk_rw_out, DNSK_RW_OUT, "resolve %s %px\n", name, va);
 			ret = 0;
 		}
 	} else if (!strcmp(cmd, "selftest")) {
 		ret = dnsk_rw_selftest();
 		if (ret)
-			dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,
-						    "selftest fail %d\n", ret);
+			dnsk_rw_out_len =
+			    scnprintf(dnsk_rw_out, DNSK_RW_OUT, "selftest fail %d\n", ret);
 	} else if (!strcmp(cmd, "info")) {
 		ret = 0;
-		dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,
-					    "rw=%s reads=%llu writes=%llu reverts=%llu cap=%u slots=%u pa=ram-only\n",
-					    dnsk_patch_ready() ? "ready" : "disabled",
-					    dnsk_rw_reads, dnsk_rw_writes,
-					    dnsk_rw_reverts, DNSK_RW_MAX,
-					    DNSK_RW_SLOTS);
+		dnsk_rw_out_len = scnprintf(
+		    dnsk_rw_out, DNSK_RW_OUT,
+		    "rw=%s reads=%llu writes=%llu reverts=%llu cap=%u slots=%u pa=ram-only\n",
+		    dnsk_patch_ready() ? "ready" : "disabled", dnsk_rw_reads, dnsk_rw_writes,
+		    dnsk_rw_reverts, DNSK_RW_MAX, DNSK_RW_SLOTS);
 	}
 	if (ret)
-		dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT,
-					    "error %d\n", ret);
+		dnsk_rw_out_len = scnprintf(dnsk_rw_out, DNSK_RW_OUT, "error %d\n", ret);
 out:
 	mutex_unlock(&dnsk_rw_lock);
 	return ret ? ret : count;
 }
 
 static const struct proc_ops dnsk_rw_proc_ops = {
-	.proc_read = dnsk_rw_read_file,
-	.proc_write = dnsk_rw_write_file,
+    .proc_read = dnsk_rw_read_file,
+    .proc_write = dnsk_rw_write_file,
 };
 
 int dnsk_rw_init(struct proc_dir_entry *proc_dir)
@@ -615,8 +594,7 @@ int dnsk_rw_init(struct proc_dir_entry *proc_dir)
 		return -ENOMEM;
 	}
 	dnsk_info("rw: /proc/dnsk/rw ready (patch=%s, read=%s, pa=ram-only)\n",
-		  dnsk_patch_ready() ? "yes" : "no",
-		  dnsk_rw_read_fn ? "yes" : "no");
+		  dnsk_patch_ready() ? "yes" : "no", dnsk_rw_read_fn ? "yes" : "no");
 	return 0;
 }
 

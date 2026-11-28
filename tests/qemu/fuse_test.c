@@ -193,17 +193,16 @@ static void fill_attr(struct fuse_attr *a, uint64_t nodeid)
 	}
 }
 
-static int reply(int fd, uint64_t unique, int error, const void *payload,
-		 size_t len)
+static int reply(int fd, uint64_t unique, int error, const void *payload, size_t len)
 {
 	struct fuse_out_header out = {
-		.len = sizeof(out) + (error ? 0 : len),
-		.error = error,
-		.unique = unique,
+	    .len = sizeof(out) + (error ? 0 : len),
+	    .error = error,
+	    .unique = unique,
 	};
 	struct iovec iov[2] = {
-		{ .iov_base = &out, .iov_len = sizeof(out) },
-		{ .iov_base = (void *)payload, .iov_len = error ? 0 : len },
+	    {.iov_base = &out, .iov_len = sizeof(out)},
+	    {.iov_base = (void *)payload, .iov_len = error ? 0 : len},
 	};
 	ssize_t n = writev(fd, iov, error ? 1 : 2);
 
@@ -259,7 +258,7 @@ static int handle_request(int fd, const char *buf, ssize_t len)
 		return reply(fd, in->unique, 0, &out, sizeof(out));
 	}
 	case FUSE_OPEN: {
-		struct fuse_open_out out = { 0 };
+		struct fuse_open_out out = {0};
 
 		return reply(fd, in->unique, 0, &out, sizeof(out));
 	}
@@ -277,7 +276,7 @@ static int handle_request(int fd, const char *buf, ssize_t len)
 		return reply(fd, in->unique, 0, file_data + off, size);
 	}
 	case FUSE_OPENDIR: {
-		struct fuse_open_out out = { 0 };
+		struct fuse_open_out out = {0};
 
 		return reply(fd, in->unique, 0, &out, sizeof(out));
 	}
@@ -426,8 +425,7 @@ int main(void)
 	}
 	close(pipefd[0]);
 
-	snprintf(opts, sizeof(opts),
-		 "fd=%d,rootmode=40000,user_id=0,group_id=0", fd);
+	snprintf(opts, sizeof(opts), "fd=%d,rootmode=40000,user_id=0,group_id=0", fd);
 	if (mount("fuse", MNT, "fuse", MS_NOSUID | MS_NODEV, opts) < 0) {
 		perror("fuse mount");
 		goto fail;

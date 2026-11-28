@@ -168,7 +168,8 @@ class UnloadProtocolModelTest(unittest.TestCase):
         """fork/clone racing rmmod: rmmod cannot proceed until every clone
         that already entered module text has left."""
         m = Module()
-        cloned = [m.in_module_call() for _ in range(5)]
+        for _ in range(5):
+            m.in_module_call()
         self.assertEqual(m.rmmod(), "EAGAIN")
         # three finish, two still inside => still unsafe
         for _ in range(3):

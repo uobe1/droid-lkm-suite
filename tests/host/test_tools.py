@@ -37,7 +37,7 @@ class KmiMatrixTests(unittest.TestCase):
             else:
                 self.assertEqual(data["stage"], "M0-core-scaffold", path)
             self.assertEqual(set(data["features"]), features, path)
-            for name, feature in data["features"].items():
+            for _name, feature in data["features"].items():
                 # Implementation status is recorded in docs/status.md only.
                 self.assertNotIn("status", feature, path)
                 self.assertIn("target_level", feature, path)

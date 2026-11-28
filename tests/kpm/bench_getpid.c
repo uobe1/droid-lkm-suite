@@ -26,7 +26,6 @@ int main(int argc, char **argv)
 	clock_gettime(CLOCK_MONOTONIC, &b);
 
 	ns = (b.tv_sec - a.tv_sec) * 1e9 + (b.tv_nsec - a.tv_nsec);
-	printf("getpid_bench n=%ld ns_total=%.0f ns_per_op=%.2f sum=%ld\n",
-	       n, ns, ns / n, sum);
+	printf("getpid_bench n=%ld ns_total=%.0f ns_per_op=%.2f sum=%ld\n", n, ns, ns / n, sum);
 	return 0;
 }

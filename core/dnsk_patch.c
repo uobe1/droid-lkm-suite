@@ -23,8 +23,7 @@
 
 atomic_t dnsk_patch_state = ATOMIC_INIT(-EOPNOTSUPP);
 
-typedef void (*dnsk_set_fixmap_fn_t)(enum fixed_addresses idx, phys_addr_t phys,
-				     pgprot_t prot);
+typedef void (*dnsk_set_fixmap_fn_t)(enum fixed_addresses idx, phys_addr_t phys, pgprot_t prot);
 typedef long (*dnsk_copy_nofault_fn_t)(void *dst, const void *src, size_t size);
 
 static struct mm_struct *dnsk_init_mm;
@@ -121,8 +120,8 @@ int dnsk_patch_init(void)
 	    (!dnsk_dcache_fn && !dnsk_dcache_old_fn)) {
 		atomic_set(&dnsk_patch_state, -EOPNOTSUPP);
 		dnsk_warn("patching disabled: init_mm=%px fixmap=%px copy=%px dcache=%px/%px\n",
-			  dnsk_init_mm, dnsk_set_fixmap_fn, dnsk_copy_nofault_fn,
-			  dnsk_dcache_fn, dnsk_dcache_old_fn);
+			  dnsk_init_mm, dnsk_set_fixmap_fn, dnsk_copy_nofault_fn, dnsk_dcache_fn,
+			  dnsk_dcache_old_fn);
 		return -EOPNOTSUPP;
 	}
 
@@ -162,8 +161,7 @@ void dnsk_icache_flush(void *addr, size_t len)
 	dnsk_flush_icache((unsigned long)addr, len);
 }
 
-static __nocfi noinline int dnsk_fixmap_write(unsigned long phy,
-					      const void *src, size_t len)
+static __nocfi noinline int dnsk_fixmap_write(unsigned long phy, const void *src, size_t len)
 {
 	void *map;
 	long err;
@@ -184,8 +182,7 @@ struct dnsk_patch_info {
 	int ret;
 };
 
-static int dnsk_patch_nosync(void *dst, const void *src, size_t len,
-			     bool flush_icache)
+static int dnsk_patch_nosync(void *dst, const void *src, size_t len, bool flush_icache)
 {
 	unsigned long phy;
 	int err;
@@ -209,8 +206,7 @@ static int dnsk_patch_cb(void *arg)
 	struct dnsk_patch_info *info = arg;
 
 	if (atomic_inc_return(&info->cpu_count) == num_online_cpus()) {
-		info->ret = dnsk_patch_nosync(info->dst, info->src, info->len,
-					      info->flush_icache);
+		info->ret = dnsk_patch_nosync(info->dst, info->src, info->len, info->flush_icache);
 		atomic_inc(&info->cpu_count);
 	} else {
 		while (atomic_read(&info->cpu_count) <= num_online_cpus())
@@ -223,12 +219,12 @@ static int dnsk_patch_cb(void *arg)
 int dnsk_patch_text(void *dst, const void *src, size_t len, bool flush_icache)
 {
 	struct dnsk_patch_info info = {
-		.dst = dst,
-		.src = src,
-		.len = len,
-		.cpu_count = ATOMIC_INIT(0),
-		.flush_icache = flush_icache,
-		.ret = -EINVAL,
+	    .dst = dst,
+	    .src = src,
+	    .len = len,
+	    .cpu_count = ATOMIC_INIT(0),
+	    .flush_icache = flush_icache,
+	    .ret = -EINVAL,
 	};
 
 	if (!dnsk_patch_ready())
@@ -265,9 +261,8 @@ static int dnsk_rmw_cb(void *arg)
 			if (info->cas && cur != info->expected) {
 				info->ret = -EAGAIN;
 			} else {
-				info->ret = dnsk_patch_nosync(
-					info->dst, &info->value,
-					sizeof(info->value), false);
+				info->ret = dnsk_patch_nosync(info->dst, &info->value,
+							      sizeof(info->value), false);
 			}
 		}
 		atomic_inc(&info->cpu_count);
@@ -282,11 +277,11 @@ static int dnsk_rmw_cb(void *arg)
 int dnsk_patch_xchg64(void *dst, u64 value, u64 *old)
 {
 	struct dnsk_rmw_info info = {
-		.dst = dst,
-		.value = value,
-		.cas = false,
-		.cpu_count = ATOMIC_INIT(0),
-		.ret = -EINVAL,
+	    .dst = dst,
+	    .value = value,
+	    .cas = false,
+	    .cpu_count = ATOMIC_INIT(0),
+	    .ret = -EINVAL,
 	};
 	int ret;
 
@@ -303,12 +298,12 @@ int dnsk_patch_xchg64(void *dst, u64 value, u64 *old)
 int dnsk_patch_cas64(void *dst, u64 expected, u64 value, u64 *old)
 {
 	struct dnsk_rmw_info info = {
-		.dst = dst,
-		.value = value,
-		.expected = expected,
-		.cas = true,
-		.cpu_count = ATOMIC_INIT(0),
-		.ret = -EINVAL,
+	    .dst = dst,
+	    .value = value,
+	    .expected = expected,
+	    .cas = true,
+	    .cpu_count = ATOMIC_INIT(0),
+	    .ret = -EINVAL,
 	};
 	int ret;
 

@@ -32,8 +32,8 @@ int dnsk_diag_init(void)
 	if (!dnsk_proc_dir)
 		return -ENOMEM;
 
-	dnsk_proc_status = proc_create_single_data("status", 0400, dnsk_proc_dir,
-						   dnsk_status_show, NULL);
+	dnsk_proc_status =
+	    proc_create_single_data("status", 0400, dnsk_proc_dir, dnsk_status_show, NULL);
 	if (!dnsk_proc_status) {
 		proc_remove(dnsk_proc_dir);
 		dnsk_proc_dir = NULL;

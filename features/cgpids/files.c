@@ -20,8 +20,7 @@
 #include <linux/string.h>
 #include "cgpids.h"
 
-#define DNSK_SEQ_PRIVATE(seq) \
-	(*(void **)((char *)(seq) + DNSK_SEQ_FILE_PRIVATE))
+#define DNSK_SEQ_PRIVATE(seq) (*(void **)((char *)(seq) + DNSK_SEQ_FILE_PRIVATE))
 
 static_assert(offsetof(struct cgroup, self) == 0);
 static_assert(offsetof(struct cgroup, kn) == 264);
@@ -44,10 +43,9 @@ struct cgroup_subsys_state *(*dnsk_of_css)(struct kernfs_open_file *of);
 
 static int (*orig_controllers_show)(struct seq_file *seq, void *v);
 static int (*orig_subtree_show)(struct seq_file *seq, void *v);
-static ssize_t (*orig_subtree_write)(struct kernfs_open_file *of, char *buf,
-				     size_t nbytes, loff_t off);
-static int (*orig_mkdir)(struct kernfs_node *parent, const char *name,
-			 umode_t mode);
+static ssize_t (*orig_subtree_write)(struct kernfs_open_file *of, char *buf, size_t nbytes,
+				     loff_t off);
+static int (*orig_mkdir)(struct kernfs_node *parent, const char *name, umode_t mode);
 static int (*orig_rmdir)(struct kernfs_node *kn);
 
 /*
@@ -63,8 +61,7 @@ static __nocfi noinline int dnsk_call_init_cftypes(void)
 
 static __nocfi noinline int dnsk_call_addrm(struct cgroup *cgrp, bool add)
 {
-	return dnsk_cgroup_addrm_files(&cgrp->self, cgrp, dnsk_pids_files,
-				       add);
+	return dnsk_cgroup_addrm_files(&cgrp->self, cgrp, dnsk_pids_files, add);
 }
 
 static __nocfi noinline void dnsk_call_activate(struct kernfs_node *kn)
@@ -72,14 +69,13 @@ static __nocfi noinline void dnsk_call_activate(struct kernfs_node *kn)
 	dnsk_kernfs_activate(kn);
 }
 
-static __nocfi noinline struct cgroup_subsys_state *
-dnsk_call_of_css(struct kernfs_open_file *of)
+static __nocfi noinline struct cgroup_subsys_state *dnsk_call_of_css(struct kernfs_open_file *of)
 {
 	return dnsk_of_css(of);
 }
 
-static __nocfi noinline int dnsk_call_mkdir(struct kernfs_node *parent,
-					    const char *name, umode_t mode)
+static __nocfi noinline int dnsk_call_mkdir(struct kernfs_node *parent, const char *name,
+					    umode_t mode)
 {
 	return orig_mkdir(parent, name, mode);
 }
@@ -89,21 +85,18 @@ static __nocfi noinline int dnsk_call_rmdir(struct kernfs_node *kn)
 	return orig_rmdir(kn);
 }
 
-static __nocfi noinline int dnsk_call_controllers_show(struct seq_file *seq,
-						       void *v)
+static __nocfi noinline int dnsk_call_controllers_show(struct seq_file *seq, void *v)
 {
 	return orig_controllers_show(seq, v);
 }
 
-static __nocfi noinline int dnsk_call_subtree_show(struct seq_file *seq,
-						   void *v)
+static __nocfi noinline int dnsk_call_subtree_show(struct seq_file *seq, void *v)
 {
 	return orig_subtree_show(seq, v);
 }
 
-static __nocfi noinline ssize_t
-dnsk_call_subtree_write(struct kernfs_open_file *of, char *buf, size_t nbytes,
-			loff_t off)
+static __nocfi noinline ssize_t dnsk_call_subtree_write(struct kernfs_open_file *of, char *buf,
+							size_t nbytes, loff_t off)
 {
 	return orig_subtree_write(of, buf, nbytes, off);
 }
@@ -214,7 +207,8 @@ static bool dnsk_child_enabled(struct cgroup *cgrp)
 	bool enabled = false;
 
 	mutex_lock(dnsk_cgroup_mutex);
-	list_for_each_entry(css, &cgrp->self.children, sibling) {
+	list_for_each_entry(css, &cgrp->self.children, sibling)
+	{
 		struct dnsk_pids_state *st;
 
 		rcu_read_lock();
@@ -229,8 +223,7 @@ static bool dnsk_child_enabled(struct cgroup *cgrp)
 	return enabled;
 }
 
-static ssize_t dnsk_subtree_write(struct kernfs_open_file *of, char *buf,
-				  size_t nbytes, loff_t off)
+static ssize_t dnsk_subtree_write(struct kernfs_open_file *of, char *buf, size_t nbytes, loff_t off)
 {
 	struct cgroup *cgrp = dnsk_of_cgrp(of);
 	struct dnsk_pids_state *st;
@@ -261,8 +254,7 @@ static ssize_t dnsk_subtree_write(struct kernfs_open_file *of, char *buf,
 	return ret;
 }
 
-static ssize_t dnsk_max_write(struct kernfs_open_file *of, char *buf,
-			      size_t nbytes, loff_t off)
+static ssize_t dnsk_max_write(struct kernfs_open_file *of, char *buf, size_t nbytes, loff_t off)
 {
 	struct cgroup *cgrp = dnsk_of_cgrp(of);
 	struct dnsk_pids_state *st;
@@ -308,8 +300,7 @@ static int dnsk_max_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-static s64 dnsk_current_read(struct cgroup_subsys_state *css,
-			     struct cftype *cft)
+static s64 dnsk_current_read(struct cgroup_subsys_state *css, struct cftype *cft)
 {
 	struct dnsk_pids_state *st;
 	s64 val;
@@ -367,45 +358,43 @@ static int dnsk_events_local_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-struct cftype dnsk_pids_files[] = {
-	{
-		.name = "pids.max",
-		.write = dnsk_max_write,
-		.seq_show = dnsk_max_show,
-		.flags = CFTYPE_NOT_ON_ROOT,
-	},
-	{
-		.name = "pids.current",
-		.read_s64 = dnsk_current_read,
-		.flags = CFTYPE_NOT_ON_ROOT,
-	},
-	{
-		.name = "pids.peak",
-		.read_s64 = dnsk_peak_read,
-		.flags = CFTYPE_NOT_ON_ROOT,
-	},
-	{
-		.name = "pids.events",
-		.seq_show = dnsk_events_show,
-		.flags = CFTYPE_NOT_ON_ROOT,
-	},
-	{
-		.name = "pids.events.local",
-		.seq_show = dnsk_events_local_show,
-		.flags = CFTYPE_NOT_ON_ROOT,
-	},
-	{ }
-};
+struct cftype dnsk_pids_files[] = {{
+				       .name = "pids.max",
+				       .write = dnsk_max_write,
+				       .seq_show = dnsk_max_show,
+				       .flags = CFTYPE_NOT_ON_ROOT,
+				   },
+				   {
+				       .name = "pids.current",
+				       .read_s64 = dnsk_current_read,
+				       .flags = CFTYPE_NOT_ON_ROOT,
+				   },
+				   {
+				       .name = "pids.peak",
+				       .read_s64 = dnsk_peak_read,
+				       .flags = CFTYPE_NOT_ON_ROOT,
+				   },
+				   {
+				       .name = "pids.events",
+				       .seq_show = dnsk_events_show,
+				       .flags = CFTYPE_NOT_ON_ROOT,
+				   },
+				   {
+				       .name = "pids.events.local",
+				       .seq_show = dnsk_events_local_show,
+				       .flags = CFTYPE_NOT_ON_ROOT,
+				   },
+				   {}};
 
 static struct cgroup *dnsk_find_child(struct cgroup *parent, const char *name)
 {
 	struct cgroup_subsys_state *css;
 
-	list_for_each_entry(css, &parent->self.children, sibling) {
+	list_for_each_entry(css, &parent->self.children, sibling)
+	{
 		struct cgroup *child = css->cgroup;
 
-		if (child->kn && child->kn->name &&
-		    !strcmp(child->kn->name, name))
+		if (child->kn && child->kn->name && !strcmp(child->kn->name, name))
 			return child;
 	}
 	return NULL;
@@ -420,8 +409,7 @@ static bool dnsk_on_dfl(struct cgroup *cgrp)
 	return css->cgroup == (struct cgroup *)((char *)dnsk_cgrp_dfl_root + 64);
 }
 
-static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name,
-		      umode_t mode)
+static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name, umode_t mode)
 {
 	struct cgroup *parent, *child;
 	struct dnsk_pids_state *st;
@@ -437,12 +425,11 @@ static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name,
 
 	mutex_lock(dnsk_cgroup_mutex);
 	child = dnsk_find_child(parent, name);
-	pr_info("dnsk_cgpids: mkdir parent=%px child=%px dfl=%d\n",
-		parent, child, child ? dnsk_on_dfl(child) : -1);
+	pr_info("dnsk_cgpids: mkdir parent=%px child=%px dfl=%d\n", parent, child,
+		child ? dnsk_on_dfl(child) : -1);
 	if (child)
-		pr_info("dnsk_cgpids: child_kn=%s flags=%u kf=%px ss=%px sp=%px\n",
-			child->kn->name, dnsk_pids_files[0].flags,
-			dnsk_pids_files[0].kf_ops, dnsk_pids_files[0].ss,
+		pr_info("dnsk_cgpids: child_kn=%s flags=%u kf=%px ss=%px sp=%px\n", child->kn->name,
+			dnsk_pids_files[0].flags, dnsk_pids_files[0].kf_ops, dnsk_pids_files[0].ss,
 			child->self.parent);
 	if (!child || !dnsk_on_dfl(child)) {
 		mutex_unlock(dnsk_cgroup_mutex);
@@ -458,8 +445,7 @@ static int dnsk_mkdir(struct kernfs_node *parent_kn, const char *name,
 		add_ret = dnsk_call_addrm(child, true);
 		if (!add_ret)
 			dnsk_call_activate(child->kn);
-		pr_info("dnsk_cgpids: mkdir addrm=%d files=%d\n",
-			add_ret, st->files_added);
+		pr_info("dnsk_cgpids: mkdir addrm=%d files=%d\n", add_ret, st->files_added);
 		if (!add_ret)
 			st->files_added = true;
 	}
@@ -555,8 +541,7 @@ void dnsk_cgpids_install_sysops(void)
 
 	orig_mkdir = ops->mkdir;
 	orig_rmdir = ops->rmdir;
-	pr_info("dnsk_cgpids: sysops mkdir=%ps rmdir=%ps\n",
-		orig_mkdir, orig_rmdir);
+	pr_info("dnsk_cgpids: sysops mkdir=%ps rmdir=%ps\n", orig_mkdir, orig_rmdir);
 	WRITE_ONCE(ops->mkdir, dnsk_mkdir);
 	WRITE_ONCE(ops->rmdir, dnsk_rmdir);
 }

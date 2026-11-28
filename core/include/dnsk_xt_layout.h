@@ -144,7 +144,8 @@ _Static_assert(offsetof(struct xt_match, revision) == 45, "compat xt_match.revis
 _Static_assert(offsetof(struct xt_match, match) == 48, "compat xt_match.match");
 _Static_assert(offsetof(struct xt_match, checkentry) == 56, "compat xt_match.checkentry");
 _Static_assert(offsetof(struct xt_match, destroy) == 64, "compat xt_match.destroy");
-_Static_assert(offsetof(struct xt_match, compat_from_user) == 72, "compat xt_match.compat_from_user");
+_Static_assert(offsetof(struct xt_match, compat_from_user) == 72,
+	       "compat xt_match.compat_from_user");
 _Static_assert(offsetof(struct xt_match, compat_to_user) == 80, "compat xt_match.compat_to_user");
 _Static_assert(offsetof(struct xt_match, me) == 88, "compat xt_match.me");
 _Static_assert(offsetof(struct xt_match, table) == 96, "compat xt_match.table");
@@ -162,7 +163,8 @@ _Static_assert(offsetof(struct xt_target, revision) == 45, "compat xt_target.rev
 _Static_assert(offsetof(struct xt_target, target) == 48, "compat xt_target.target");
 _Static_assert(offsetof(struct xt_target, checkentry) == 56, "compat xt_target.checkentry");
 _Static_assert(offsetof(struct xt_target, destroy) == 64, "compat xt_target.destroy");
-_Static_assert(offsetof(struct xt_target, compat_from_user) == 72, "compat xt_target.compat_from_user");
+_Static_assert(offsetof(struct xt_target, compat_from_user) == 72,
+	       "compat xt_target.compat_from_user");
 _Static_assert(offsetof(struct xt_target, compat_to_user) == 80, "compat xt_target.compat_to_user");
 _Static_assert(offsetof(struct xt_target, me) == 88, "compat xt_target.me");
 _Static_assert(offsetof(struct xt_target, table) == 96, "compat xt_target.table");

@@ -52,8 +52,7 @@ static struct dnsk_feature *dnsk_feature_find_locked(const char *name)
 	int i;
 
 	for (i = 0; i < DNSK_MAX_FEATURES; i++) {
-		if (dnsk_features[i].active &&
-		    !strcmp(dnsk_features[i].name, name))
+		if (dnsk_features[i].active && !strcmp(dnsk_features[i].name, name))
 			return &dnsk_features[i];
 	}
 	return NULL;
@@ -139,9 +138,8 @@ void dnsk_features_show(struct seq_file *m)
 
 		if (!f->active)
 			continue;
-		seq_printf(m, "feature %s %s version=%s caps=%s\n",
-			   f->name, dnsk_status_name(f->status),
-			   f->version[0] ? f->version : "-",
+		seq_printf(m, "feature %s %s version=%s caps=%s\n", f->name,
+			   dnsk_status_name(f->status), f->version[0] ? f->version : "-",
 			   f->caps[0] ? f->caps : "-");
 	}
 	mutex_unlock(&dnsk_features_lock);

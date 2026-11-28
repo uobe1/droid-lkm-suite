@@ -261,7 +261,7 @@ def check_copied_outputs_exist(texts: dict[Path, str]) -> None:
                 tokens = [t for t in stripped.split()[1:] if not t.startswith("-")]
                 if len(tokens) < 2:
                     continue
-                sources, dest = tokens[:-1], tokens[-1]
+                sources = tokens[:-1]
                 for source in sources:
                     if "/" in source or "*" in source or source.endswith(skip_suffixes):
                         continue

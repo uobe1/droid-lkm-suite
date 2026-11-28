@@ -23,14 +23,12 @@ struct dnsk_lookup_ctx {
 static unsigned long (*kallsyms_lookup_name_fn)(const char *name);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
-typedef int (*dnsk_walk_fn)(int (*fn)(void *, const char *, unsigned long),
-			    void *data);
+typedef int (*dnsk_walk_fn)(int (*fn)(void *, const char *, unsigned long), void *data);
 static int dnsk_walk_cb(void *data, const char *name, unsigned long addr)
 #else
-typedef int (*dnsk_walk_fn)(int (*fn)(void *, const char *, struct module *,
-				      unsigned long), void *data);
-static int dnsk_walk_cb(void *data, const char *name, struct module *mod,
-			unsigned long addr)
+typedef int (*dnsk_walk_fn)(int (*fn)(void *, const char *, struct module *, unsigned long),
+			    void *data);
+static int dnsk_walk_cb(void *data, const char *name, struct module *mod, unsigned long addr)
 #endif
 {
 	struct dnsk_lookup_ctx *ctx = data;
@@ -50,7 +48,7 @@ static dnsk_walk_fn kallsyms_on_each_symbol_fn;
 
 static void *dnsk_bootstrap(const char *name)
 {
-	struct kprobe kp = { };
+	struct kprobe kp = {};
 	void *addr;
 
 	kp.symbol_name = name;
@@ -81,7 +79,7 @@ void dnsk_symbols_exit(void)
 
 void *dnsk_resolve_symbol_exact(const char *name)
 {
-	struct dnsk_lookup_ctx ctx = { .name = name };
+	struct dnsk_lookup_ctx ctx = {.name = name};
 
 	if (!name || !name[0])
 		return NULL;

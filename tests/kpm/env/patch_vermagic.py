@@ -71,8 +71,8 @@ def patch_modinfo(data, headers, vermagic):
             new = vermagic.encode() if isinstance(vermagic, str) else vermagic
             if len(new) > len(old):
                 raise SystemExit(
-                    "patch_vermagic: new vermagic is longer (%d > %d bytes); "
-                    "refusing to grow .modinfo" % (len(new), len(old)))
+                    f"patch_vermagic: new vermagic is longer ({len(new)} > {len(old)} bytes); "
+                    "refusing to grow .modinfo")
             repl = tag + new + b"\0" * (end - i - len(tag) - len(new))
             data[start + i:start + i + len(repl)] = repl
             return old.decode("utf-8", "replace")
@@ -110,12 +110,11 @@ def main():
         data = bytearray(f.read())
     headers = sections(data)
     old = patch_modinfo(data, headers, args.vermagic)
-    print("vermagic: %r -> %r" % (old, args.vermagic))
+    print(f"vermagic: {old!r} -> {args.vermagic!r}")
 
     if args.module_layout_crc is not None:
         if patch_module_layout(data, headers, args.module_layout_crc, args.crc_width):
-            print("module_layout crc -> 0x%x (width %d)"
-                  % (args.module_layout_crc, args.crc_width))
+            print(f"module_layout crc -> 0x{args.module_layout_crc:x} (width {args.crc_width})")
         else:
             raise SystemExit(
                 "patch_vermagic: no existing module_layout entry in __versions; "
@@ -125,7 +124,7 @@ def main():
     out = args.out or args.ko
     with open(out, "wb") as f:
         f.write(data)
-    print("wrote %s" % out)
+    print(f"wrote {out}")
 
 
 if __name__ == "__main__":

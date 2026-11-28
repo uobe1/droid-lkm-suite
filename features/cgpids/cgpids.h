@@ -30,7 +30,7 @@ enum dnsk_pids_event {
  * call_rcu() may run after module_exit, and it must not branch into freed text.
  */
 struct dnsk_pids_state {
-	struct rcu_head rcu;	/* MUST be first: kfree_rcu() contract */
+	struct rcu_head rcu; /* MUST be first: kfree_rcu() contract */
 	struct cgroup *cgrp;
 	atomic64_t counter;
 	atomic64_t limit;
@@ -64,14 +64,11 @@ extern struct mutex *dnsk_cgroup_mutex;
 extern void *dnsk_cgroup_base_files;
 extern void *dnsk_cgrp_dfl_root;
 extern void *dnsk_cgroup_kf_syscall_ops;
-extern int (*dnsk_cgroup_mkdir)(struct kernfs_node *parent, const char *name,
-			       umode_t mode);
+extern int (*dnsk_cgroup_mkdir)(struct kernfs_node *parent, const char *name, umode_t mode);
 extern int (*dnsk_cgroup_rmdir)(struct kernfs_node *kn);
-extern int (*dnsk_cgroup_init_cftypes)(struct cgroup_subsys *ss,
-				      struct cftype *cfts);
-extern int (*dnsk_cgroup_addrm_files)(struct cgroup_subsys_state *css,
-				     struct cgroup *cgrp,
-				     struct cftype cfts[], bool is_add);
+extern int (*dnsk_cgroup_init_cftypes)(struct cgroup_subsys *ss, struct cftype *cfts);
+extern int (*dnsk_cgroup_addrm_files)(struct cgroup_subsys_state *css, struct cgroup *cgrp,
+				      struct cftype cfts[], bool is_add);
 extern void (*dnsk_kernfs_activate)(struct kernfs_node *kn);
 
 int dnsk_cgpids_files_init(void);
@@ -86,8 +83,7 @@ struct dnsk_feature_desc;
 int dnsk_cgpids_native_init(struct dnsk_core_api *api);
 
 /* V side: the module-owned controller.  Compiled only into the virtual build. */
-int dnsk_cgpids_virtual_init(struct dnsk_core_api *api,
-			     const struct dnsk_feature_desc *desc);
+int dnsk_cgpids_virtual_init(struct dnsk_core_api *api, const struct dnsk_feature_desc *desc);
 void dnsk_cgpids_virtual_exit(struct dnsk_core_api *api);
 int dnsk_cgpids_native_exit(void);
 bool dnsk_cgpids_native_active(void);

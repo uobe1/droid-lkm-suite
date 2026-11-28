@@ -225,7 +225,7 @@ class _Base(unittest.TestCase):
             npc, ninsn, nmnem = self.insns[i + 1]
             if nmnem == follower:
                 return pc, insn, ninsn
-        self.fail("no adrp+%s pair" % follower)
+        self.fail(f"no adrp+{follower} pair")
 
 
 class Aarch64RefsTest(_Base):
@@ -330,7 +330,7 @@ class PureCRefsTest(_Base):
 
     def test_c_adrp_decode_matches_python_and_real(self):
         seen = 0
-        for pc, adrp, npc, ninsn, nmnem in self._adrp_pairs():
+        for pc, adrp, _npc, ninsn, nmnem in self._adrp_pairs():
             cpage = self.lib.dnsk_adrp_target_page(pc, adrp)
             self.assertEqual(cpage, decode_adrp(adrp, pc))
             if nmnem == "add":
@@ -345,7 +345,7 @@ class PureCRefsTest(_Base):
         self.assertGreaterEqual(seen, 3)
 
     def test_c_instruction_classifiers(self):
-        for pc, adrp, npc, ninsn, nmnem in self._adrp_pairs():
+        for _pc, adrp, _npc, ninsn, nmnem in self._adrp_pairs():
             self.assertTrue(self.lib.dnsk_insn_is_adrp(adrp))
             if nmnem == "add":
                 self.assertTrue(self.lib.dnsk_insn_is_add_imm(ninsn))
@@ -359,7 +359,7 @@ class PureCRefsTest(_Base):
         self.assertFalse(self.lib.dnsk_insn_is_ldr_uimm64(0xD65F03C0))
 
     def test_python_and_c_ref_pair_agree(self):
-        for pc, adrp, npc, ninsn, nmnem in self._adrp_pairs():
+        for pc, adrp, _npc, ninsn, _nmnem in self._adrp_pairs():
             tgt = ctypes.c_uint64(0)
             kind = self.lib.dnsk_ref_pair(pc, adrp, ninsn,
                                           ctypes.byref(tgt))
@@ -443,7 +443,7 @@ class PureCRefsTest(_Base):
     def test_reloc_pair_patches_real_pairs(self):
         olda = self.target
         neua = 0x40000000 + (olda & 0xFFF)
-        for pc, adrp, npc, ninsn, nmnem in self._adrp_pairs():
+        for pc, adrp, _npc, ninsn, _nmnem in self._adrp_pairs():
             kind, tgt = ref_pair(pc, adrp, ninsn)
             buf = (ctypes.c_uint32 * 2)()
             res = self.lib.dnsk_reloc_pair(pc, adrp, ninsn, olda, neua, buf)
@@ -479,7 +479,7 @@ class PureCRefsTest(_Base):
             buf = (ctypes.c_uint32 * 2)()
             res = self.lib.dnsk_reloc_pair(pc, adrp, add, base,
                                            0x80000000, buf)
-            self.assertEqual(res, expect, "off=%#x" % off)
+            self.assertEqual(res, expect, f"off={off:#x}")
 
     def test_reloc_pair_far_target_is_rejected(self):
         pc = 0x40000000

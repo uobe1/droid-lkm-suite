@@ -70,8 +70,7 @@ int main(void)
 		return 1;
 	}
 	if (getuid() != 0 || geteuid() != 0) {
-		fprintf(stderr, "UNPRIV_USERNS_FAIL mapped uid=%u\n",
-			(unsigned)getuid());
+		fprintf(stderr, "UNPRIV_USERNS_FAIL mapped uid=%u\n", (unsigned)getuid());
 		return 1;
 	}
 	fd = open("/tmp/unpriv_file", O_CREAT | O_RDWR, 0600);

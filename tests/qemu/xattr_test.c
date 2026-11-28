@@ -48,8 +48,7 @@ int main(int argc, char **argv)
 	}
 	if (removexattr(path, "user.dnsk") < 0)
 		return fail("removexattr");
-	if (getxattr(path, "user.dnsk", value, sizeof(value)) >= 0 ||
-	    errno != ENODATA) {
+	if (getxattr(path, "user.dnsk", value, sizeof(value)) >= 0 || errno != ENODATA) {
 		fprintf(stderr, "XATTR_FAIL remove not effective\n");
 		return 1;
 	}

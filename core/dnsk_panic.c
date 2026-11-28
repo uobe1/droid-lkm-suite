@@ -25,12 +25,10 @@ void dnsk_panic_mark(const char *op)
 	strscpy(dnsk_last_op, op, sizeof(dnsk_last_op));
 }
 
-static int dnsk_panic_notify(struct notifier_block *nb, unsigned long event,
-			     void *data)
+static int dnsk_panic_notify(struct notifier_block *nb, unsigned long event, void *data)
 {
-	pr_emerg("DNSK_PANIC event=%lu op=%s features=%u hooks=%u\n",
-		 event, dnsk_last_op[0] ? dnsk_last_op : "none",
-		 dnsk_feature_count(), dnsk_hook_count());
+	pr_emerg("DNSK_PANIC event=%lu op=%s features=%u hooks=%u\n", event,
+		 dnsk_last_op[0] ? dnsk_last_op : "none", dnsk_feature_count(), dnsk_hook_count());
 	return NOTIFY_DONE;
 }
 

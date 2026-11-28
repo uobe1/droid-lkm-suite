@@ -55,8 +55,8 @@ int main(int argc, char **argv)
 	}
 	n = write(out, buf, st.st_size);
 	if (n != st.st_size) {
-		fprintf(stderr, "write %s: %zd/%ld (%s)\n", argv[2], n,
-			(long)st.st_size, n < 0 ? strerror(errno) : "short");
+		fprintf(stderr, "write %s: %zd/%ld (%s)\n", argv[2], n, (long)st.st_size,
+			n < 0 ? strerror(errno) : "short");
 		return 1;
 	}
 	close(out);

@@ -40,12 +40,15 @@ static void dump_ns(const char *tag, void *ns)
 	mnt = read_ptr(ns, offsetof(struct ipc_namespace, mq_mnt));
 	sb = mnt ? read_ptr(mnt, offsetof(struct vfsmount, mnt_sb)) : NULL;
 	sbi = sb ? read_ptr(sb, offsetof(struct super_block, s_fs_info)) : NULL;
-	if (copy_from_kernel_nofault(&count, (char *)ns + offsetof(struct ipc_namespace, mq_queues_count), sizeof(count)))
+	if (copy_from_kernel_nofault(&count,
+				     (char *)ns + offsetof(struct ipc_namespace, mq_queues_count),
+				     sizeof(count)))
 		count = -1;
-	if (copy_from_kernel_nofault(&max, (char *)ns + offsetof(struct ipc_namespace, mq_queues_max), sizeof(max)))
+	if (copy_from_kernel_nofault(
+		&max, (char *)ns + offsetof(struct ipc_namespace, mq_queues_max), sizeof(max)))
 		max = -1;
-	pr_info("dnsk_diag: %s ns=%px mq_mnt=%px sb=%px s_fs_info=%px queues=%d/%d\n",
-		tag, ns, mnt, sb, sbi, count, max);
+	pr_info("dnsk_diag: %s ns=%px mq_mnt=%px sb=%px s_fs_info=%px queues=%d/%d\n", tag, ns, mnt,
+		sb, sbi, count, max);
 }
 
 static __nocfi noinline void *lookup_module_symbol(struct dnsk_core_api *api, const char *name)
@@ -73,10 +76,9 @@ static int __init dnsk_diag_init(void)
 		return PTR_ERR(api);
 
 	init_ns = lookup_module_symbol(api, "ds_init_ipc_ns");
-	current_ns = read_ptr(current->nsproxy,
-			      offsetof(struct nsproxy, ipc_ns));
-	pr_info("dnsk_diag: task=%s current_ns=%px init_ns=%px\n",
-		current->comm, current_ns, init_ns);
+	current_ns = read_ptr(current->nsproxy, offsetof(struct nsproxy, ipc_ns));
+	pr_info("dnsk_diag: task=%s current_ns=%px init_ns=%px\n", current->comm, current_ns,
+		init_ns);
 	dump_ns("current", current_ns);
 	dump_ns("init", init_ns);
 	pr_info("dnsk_diag: done; no state changed\n");

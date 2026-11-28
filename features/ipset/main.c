@@ -19,8 +19,7 @@
 #include "units.h"
 #include "dnsk_xt_layout.h"
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0) || \
-	LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 #error "dnsk_ipset vendors Linux 6.12 ipset/xt_set sources; build only for 6.12 GKI"
 #endif
 

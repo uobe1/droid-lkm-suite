@@ -21,35 +21,25 @@ static dnsk_xattr_set_fn dnsk_simple_xattr_set;
 static dnsk_xattr_get_fn dnsk_simple_xattr_get;
 static dnsk_xattr_list_fn dnsk_simple_xattr_list;
 static dnsk_xattrs_free_fn dnsk_simple_xattrs_free;
-static int (*dnsk_inode_listsecurity)(struct inode *inode, char *buffer,
-				      size_t buffer_size);
+static int (*dnsk_inode_listsecurity)(struct inode *inode, char *buffer, size_t buffer_size);
 
-static int dnsk_xattr_get(const struct xattr_handler *handler,
-			  struct dentry *dentry, struct inode *inode,
-			  const char *name, void *buffer, size_t size)
+static int dnsk_xattr_get(const struct xattr_handler *handler, struct dentry *dentry,
+			  struct inode *inode, const char *name, void *buffer, size_t size)
 {
-	struct shmem_inode_info *info = container_of(inode,
-						     struct shmem_inode_info,
-						     vfs_inode);
+	struct shmem_inode_info *info = container_of(inode, struct shmem_inode_info, vfs_inode);
 
-	return dnsk_simple_xattr_get(&info->xattrs, xattr_full_name(handler,
-								     name),
-				     buffer, size);
+	return dnsk_simple_xattr_get(&info->xattrs, xattr_full_name(handler, name), buffer, size);
 }
 
-static int dnsk_xattr_set(const struct xattr_handler *handler,
-			  struct mnt_idmap *idmap, struct dentry *dentry,
-			  struct inode *inode, const char *name,
+static int dnsk_xattr_set(const struct xattr_handler *handler, struct mnt_idmap *idmap,
+			  struct dentry *dentry, struct inode *inode, const char *name,
 			  const void *value, size_t size, int flags)
 {
-	struct shmem_inode_info *info = container_of(inode,
-						     struct shmem_inode_info,
-						     vfs_inode);
+	struct shmem_inode_info *info = container_of(inode, struct shmem_inode_info, vfs_inode);
 	struct simple_xattr *ret;
 
-	ret = dnsk_simple_xattr_set(&info->xattrs,
-				    xattr_full_name(handler, name),
-				    value, size, flags);
+	ret = dnsk_simple_xattr_set(&info->xattrs, xattr_full_name(handler, name), value, size,
+				    flags);
 	return IS_ERR(ret) ? PTR_ERR(ret) : 0;
 }
 
@@ -108,13 +98,10 @@ static ssize_t dnsk_listxattr_account(struct inode *inode, ssize_t ret)
 	return ret + acl_bytes;
 }
 
-ssize_t dnsk_tmpfsx_listxattr(struct dentry *dentry, char *buffer,
-			      size_t size)
+ssize_t dnsk_tmpfsx_listxattr(struct dentry *dentry, char *buffer, size_t size)
 {
 	struct inode *inode = d_inode(dentry);
-	struct shmem_inode_info *info = container_of(inode,
-						     struct shmem_inode_info,
-						     vfs_inode);
+	struct shmem_inode_info *info = container_of(inode, struct shmem_inode_info, vfs_inode);
 	ssize_t ret;
 
 	ret = dnsk_simple_xattr_list(inode, &info->xattrs, buffer, size);
@@ -122,30 +109,28 @@ ssize_t dnsk_tmpfsx_listxattr(struct dentry *dentry, char *buffer,
 }
 
 static const struct xattr_handler dnsk_xattr_user_handler = {
-	.prefix = "user.",
-	.get = dnsk_xattr_get,
-	.set = dnsk_xattr_set,
+    .prefix = "user.",
+    .get = dnsk_xattr_get,
+    .set = dnsk_xattr_set,
 };
 
 static const struct xattr_handler dnsk_xattr_trusted_handler = {
-	.prefix = "trusted.",
-	.get = dnsk_xattr_get,
-	.set = dnsk_xattr_set,
+    .prefix = "trusted.",
+    .get = dnsk_xattr_get,
+    .set = dnsk_xattr_set,
 };
 
 static const struct xattr_handler dnsk_xattr_security_handler = {
-	.prefix = "security.",
-	.get = dnsk_xattr_get,
-	.set = dnsk_xattr_set,
+    .prefix = "security.",
+    .get = dnsk_xattr_get,
+    .set = dnsk_xattr_set,
 };
 
 const struct xattr_handler *dnsk_tmpfsx_handlers[6];
 
-static int (*dnsk_acl_update_mode)(struct mnt_idmap *idmap,
-				   struct inode *inode, umode_t *mode_p,
+static int (*dnsk_acl_update_mode)(struct mnt_idmap *idmap, struct inode *inode, umode_t *mode_p,
 				   struct posix_acl **acl);
-static void (*dnsk_set_cached_acl)(struct inode *inode, int type,
-				   struct posix_acl *acl);
+static void (*dnsk_set_cached_acl)(struct inode *inode, int type, struct posix_acl *acl);
 /* Verbatim prototype: fs/inode.c:2672 returns struct timespec64 by value. */
 typedef struct timespec64 (*dnsk_set_ctime_fn)(struct inode *inode);
 static dnsk_set_ctime_fn dnsk_set_ctime_current;
@@ -158,8 +143,8 @@ static dnsk_set_ctime_fn dnsk_set_ctime_current;
  * :736-737) through do_set_acl/do_get_acl -> set_posix_acl -> i_op->set_acl,
  * and listxattr reports ACL names via generic posix_acl_listxattr().
  */
-static int dnsk_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
-			struct posix_acl *acl, int type)
+static int dnsk_set_acl(struct mnt_idmap *idmap, struct dentry *dentry, struct posix_acl *acl,
+			int type)
 {
 	struct inode *inode = d_inode(dentry);
 	int ret;
@@ -183,24 +168,20 @@ static int dnsk_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 
 void dnsk_tmpfsx_evict_inode(struct inode *inode)
 {
-	struct shmem_inode_info *info = container_of(inode,
-						     struct shmem_inode_info,
-						     vfs_inode);
+	struct shmem_inode_info *info = container_of(inode, struct shmem_inode_info, vfs_inode);
 	size_t freed = 0;
 
 	dnsk_simple_xattrs_free(&info->xattrs, &freed);
 }
 
-int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
-			   dnsk_xattr_list_fn list,
+int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get, dnsk_xattr_list_fn list,
 			   dnsk_xattrs_free_fn free_fn, void *listsecurity)
 {
 	dnsk_simple_xattr_set = set;
 	dnsk_simple_xattr_get = get;
 	dnsk_simple_xattr_list = list;
 	dnsk_simple_xattrs_free = free_fn;
-	dnsk_inode_listsecurity =
-		(typeof(dnsk_inode_listsecurity))listsecurity;
+	dnsk_inode_listsecurity = (typeof(dnsk_inode_listsecurity))listsecurity;
 	dnsk_tmpfsx_handlers[0] = &dnsk_xattr_security_handler;
 	dnsk_tmpfsx_handlers[1] = &dnsk_xattr_trusted_handler;
 	dnsk_tmpfsx_handlers[2] = &dnsk_xattr_user_handler;
@@ -210,8 +191,7 @@ int dnsk_tmpfsx_xattr_init(dnsk_xattr_set_fn set, dnsk_xattr_get_fn get,
 	return 0;
 }
 
-int dnsk_tmpfsx_acl_init(void *update_mode, void *set_cached_acl,
-			 void *set_ctime_current,
+int dnsk_tmpfsx_acl_init(void *update_mode, void *set_cached_acl, void *set_ctime_current,
 			 struct dnsk_acl_methods *methods)
 {
 	if (!update_mode || !set_cached_acl || !set_ctime_current || !methods)
@@ -225,27 +205,22 @@ int dnsk_tmpfsx_acl_init(void *update_mode, void *set_cached_acl,
 
 static struct dnsk_acl_orig dnsk_orig;
 static int (*dnsk_simple_acl_create)(struct inode *dir, struct inode *inode);
-static int (*dnsk_posix_acl_chmod)(struct mnt_idmap *idmap,
-				   struct dentry *dentry, umode_t mode);
+static int (*dnsk_posix_acl_chmod)(struct mnt_idmap *idmap, struct dentry *dentry, umode_t mode);
 
-static __nocfi noinline int dnsk_call_sac(struct inode *dir,
-					  struct inode *inode)
+static __nocfi noinline int dnsk_call_sac(struct inode *dir, struct inode *inode)
 {
 	return dnsk_simple_acl_create(dir, inode);
 }
 
-static __nocfi noinline int dnsk_call_chmod(struct mnt_idmap *idmap,
-					    struct dentry *dentry, umode_t mode)
+static __nocfi noinline int dnsk_call_chmod(struct mnt_idmap *idmap, struct dentry *dentry,
+					    umode_t mode)
 {
 	return dnsk_posix_acl_chmod(idmap, dentry, mode);
 }
 
-static __nocfi noinline int dnsk_call_setattr(int (*fn)(struct mnt_idmap *,
-							struct dentry *,
-							struct iattr *),
-					      struct mnt_idmap *idmap,
-					      struct dentry *dentry,
-					      struct iattr *attr)
+static __nocfi noinline int
+dnsk_call_setattr(int (*fn)(struct mnt_idmap *, struct dentry *, struct iattr *),
+		  struct mnt_idmap *idmap, struct dentry *dentry, struct iattr *attr)
 {
 	return fn(idmap, dentry, attr);
 }
@@ -266,8 +241,8 @@ static void dnsk_inherit_acl(struct inode *dir, struct inode *inode)
 		pr_warn_once("dnsk_tmpfsx: acl inherit failed %d\n", ret);
 }
 
-int dnsk_tmpfsx_create(struct mnt_idmap *idmap, struct inode *dir,
-		       struct dentry *dentry, umode_t mode, bool excl)
+int dnsk_tmpfsx_create(struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry,
+		       umode_t mode, bool excl)
 {
 	int ret;
 
@@ -279,8 +254,8 @@ int dnsk_tmpfsx_create(struct mnt_idmap *idmap, struct inode *dir,
 	return ret;
 }
 
-int dnsk_tmpfsx_mkdir(struct mnt_idmap *idmap, struct inode *dir,
-		      struct dentry *dentry, umode_t mode)
+int dnsk_tmpfsx_mkdir(struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry,
+		      umode_t mode)
 {
 	int ret;
 
@@ -292,8 +267,8 @@ int dnsk_tmpfsx_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 	return ret;
 }
 
-int dnsk_tmpfsx_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			struct dentry *dentry, const char *symname)
+int dnsk_tmpfsx_symlink(struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry,
+			const char *symname)
 {
 	int ret;
 
@@ -305,8 +280,8 @@ int dnsk_tmpfsx_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	return ret;
 }
 
-int dnsk_tmpfsx_mknod(struct mnt_idmap *idmap, struct inode *dir,
-		      struct dentry *dentry, umode_t mode, dev_t dev)
+int dnsk_tmpfsx_mknod(struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry,
+		      umode_t mode, dev_t dev)
 {
 	int ret;
 
@@ -318,8 +293,7 @@ int dnsk_tmpfsx_mknod(struct mnt_idmap *idmap, struct inode *dir,
 	return ret;
 }
 
-int dnsk_tmpfsx_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
-			struct file *file, umode_t mode)
+int dnsk_tmpfsx_tmpfile(struct mnt_idmap *idmap, struct inode *dir, struct file *file, umode_t mode)
 {
 	int ret;
 
@@ -331,10 +305,8 @@ int dnsk_tmpfsx_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 	return ret;
 }
 
-static int dnsk_do_setattr(int (*fn)(struct mnt_idmap *, struct dentry *,
-				     struct iattr *),
-			   struct mnt_idmap *idmap, struct dentry *dentry,
-			   struct iattr *attr)
+static int dnsk_do_setattr(int (*fn)(struct mnt_idmap *, struct dentry *, struct iattr *),
+			   struct mnt_idmap *idmap, struct dentry *dentry, struct iattr *attr)
 {
 	struct inode *inode = d_inode(dentry);
 	int ret;
@@ -350,26 +322,23 @@ static int dnsk_do_setattr(int (*fn)(struct mnt_idmap *, struct dentry *,
 	return ret;
 }
 
-int dnsk_tmpfsx_setattr_iops(struct mnt_idmap *idmap, struct dentry *dentry,
-			     struct iattr *attr)
+int dnsk_tmpfsx_setattr_iops(struct mnt_idmap *idmap, struct dentry *dentry, struct iattr *attr)
 {
 	return dnsk_do_setattr(dnsk_orig.setattr_iops, idmap, dentry, attr);
 }
 
-int dnsk_tmpfsx_setattr_dops(struct mnt_idmap *idmap, struct dentry *dentry,
-			     struct iattr *attr)
+int dnsk_tmpfsx_setattr_dops(struct mnt_idmap *idmap, struct dentry *dentry, struct iattr *attr)
 {
 	return dnsk_do_setattr(dnsk_orig.setattr_dops, idmap, dentry, attr);
 }
 
-int dnsk_tmpfsx_acl_iops_init(const struct dnsk_acl_orig *orig,
-			      void *simple_acl_create, void *acl_chmod)
+int dnsk_tmpfsx_acl_iops_init(const struct dnsk_acl_orig *orig, void *simple_acl_create,
+			      void *acl_chmod)
 {
 	if (!orig || !simple_acl_create || !acl_chmod)
 		return -EINVAL;
 	dnsk_orig = *orig;
-	dnsk_simple_acl_create = (typeof(dnsk_simple_acl_create))
-		simple_acl_create;
+	dnsk_simple_acl_create = (typeof(dnsk_simple_acl_create))simple_acl_create;
 	dnsk_posix_acl_chmod = (typeof(dnsk_posix_acl_chmod))acl_chmod;
 	return 0;
 }

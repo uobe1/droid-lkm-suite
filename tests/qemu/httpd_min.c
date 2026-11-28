@@ -17,9 +17,9 @@ int main(int argc, char **argv)
 	int port = argc > 1 ? atoi(argv[1]) : 80;
 	const char *body = argc > 2 ? argv[2] : "dns-ok\n";
 	struct sockaddr_in addr = {
-		.sin_family = AF_INET,
-		.sin_addr.s_addr = htonl(INADDR_ANY),
-		.sin_port = htons(port),
+	    .sin_family = AF_INET,
+	    .sin_addr.s_addr = htonl(INADDR_ANY),
+	    .sin_port = htons(port),
 	};
 	int one = 1;
 	int s;

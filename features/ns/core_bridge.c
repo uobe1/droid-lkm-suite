@@ -19,11 +19,11 @@ int dnsk_ns_core_register(void)
 	struct dnsk_core_api *(*get_api)(u16, u16);
 	unsigned long (*module_lookup)(const char *);
 	struct dnsk_feature_desc desc = {
-		.name = "ns",
-		.version = "m1",
-		.status = DNSK_STATUS_DEVELOPMENT,
-		.caps = "pid_ns,ipc_ns,sysvipc,posix_mqueue",
-		.owner = THIS_MODULE,
+	    .name = "ns",
+	    .version = "m1",
+	    .status = DNSK_STATUS_DEVELOPMENT,
+	    .caps = "pid_ns,ipc_ns,sysvipc,posix_mqueue",
+	    .owner = THIS_MODULE,
 	};
 	unsigned long addr;
 	int ret;

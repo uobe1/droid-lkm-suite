@@ -15,8 +15,8 @@ static int dnsk_bench_pre(struct kprobe *p, struct pt_regs *regs)
 }
 
 static struct kprobe dnsk_bench_kp = {
-	.symbol_name = "__arm64_sys_getpid",
-	.pre_handler = dnsk_bench_pre,
+    .symbol_name = "__arm64_sys_getpid",
+    .pre_handler = dnsk_bench_pre,
 };
 
 static int __init dnsk_bench_init(void)

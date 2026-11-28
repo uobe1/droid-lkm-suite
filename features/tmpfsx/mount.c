@@ -14,14 +14,11 @@
 #include <linux/fs_context.h>
 #include "mount.h"
 
-static int (*dnsk_orig_parse_param)(struct fs_context *fc,
-				    struct fs_parameter *param);
+static int (*dnsk_orig_parse_param)(struct fs_context *fc, struct fs_parameter *param);
 static int (*dnsk_orig_parse_monolithic)(struct fs_context *fc, void *data);
 
-int dnsk_tmpfsx_mount_init(int (*parse_param)(struct fs_context *,
-					      struct fs_parameter *),
-			   int (*parse_monolithic)(struct fs_context *,
-						   void *))
+int dnsk_tmpfsx_mount_init(int (*parse_param)(struct fs_context *, struct fs_parameter *),
+			   int (*parse_monolithic)(struct fs_context *, void *))
 {
 	dnsk_orig_parse_param = parse_param;
 	dnsk_orig_parse_monolithic = parse_monolithic;

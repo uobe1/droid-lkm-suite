@@ -43,22 +43,20 @@ struct mutex *dnsk_cgroup_mutex;
 void *dnsk_cgroup_base_files;
 void *dnsk_cgrp_dfl_root;
 void *dnsk_cgroup_kf_syscall_ops;
-int (*dnsk_cgroup_mkdir)(struct kernfs_node *parent, const char *name,
-			 umode_t mode);
+int (*dnsk_cgroup_mkdir)(struct kernfs_node *parent, const char *name, umode_t mode);
 int (*dnsk_cgroup_rmdir)(struct kernfs_node *kn);
-int (*dnsk_cgroup_init_cftypes)(struct cgroup_subsys *ss,
-				struct cftype *cfts);
-int (*dnsk_cgroup_addrm_files)(struct cgroup_subsys_state *css,
-			       struct cgroup *cgrp, struct cftype cfts[],
-			       bool is_add);
+int (*dnsk_cgroup_init_cftypes)(struct cgroup_subsys *ss, struct cftype *cfts);
+int (*dnsk_cgroup_addrm_files)(struct cgroup_subsys_state *css, struct cgroup *cgrp,
+			       struct cftype cfts[], bool is_add);
 void (*dnsk_kernfs_activate)(struct kernfs_node *kn);
 
 static struct dnsk_feature_desc dnsk_cgpids_native_desc = {
-	.name = "cgpids",
-	.version = "0.2",
-	.status = DNSK_STATUS_NATIVE,
-	.caps = "native pids cgroup_subsys injected into the profile slot; v2 files, fork EAGAIN, attach accounting",
-	.owner = THIS_MODULE,
+    .name = "cgpids",
+    .version = "0.2",
+    .status = DNSK_STATUS_NATIVE,
+    .caps = "native pids cgroup_subsys injected into the profile slot; v2 files, fork EAGAIN, "
+	    "attach accounting",
+    .owner = THIS_MODULE,
 };
 
 /*
@@ -66,16 +64,18 @@ static struct dnsk_feature_desc dnsk_cgpids_native_desc = {
  * virtual one is only registered when that backend is actually selected.
  */
 static struct dnsk_feature_desc dnsk_cgpids_desc = {
-	.name = "cgpids",
-	.version = "0.1",
-	.status = DNSK_STATUS_VIRTUAL,
-	.caps = "v2 virtual pids: max/current/peak/events, fork EAGAIN, migration accounting",
-	.owner = THIS_MODULE,
+    .name = "cgpids",
+    .version = "0.1",
+    .status = DNSK_STATUS_VIRTUAL,
+    .caps = "v2 virtual pids: max/current/peak/events, fork EAGAIN, migration accounting",
+    .owner = THIS_MODULE,
 };
 
 static bool dnsk_native = true;
 module_param_named(native, dnsk_native, bool, 0444);
-MODULE_PARM_DESC(native, "register a real pids subsys in the profile slot (default); 0 keeps the virtual controller");
+MODULE_PARM_DESC(
+    native,
+    "register a real pids subsys in the profile slot (default); 0 keeps the virtual controller");
 
 /*
  * Write anything to this parameter to hand the net_prio slot back and drop the
@@ -101,7 +101,7 @@ static int dnsk_quiesce_set(const char *val, const struct kernel_param *kp)
 	return ret;
 }
 static const struct kernel_param_ops dnsk_quiesce_ops = {
-	.set = dnsk_quiesce_set,
+    .set = dnsk_quiesce_set,
 };
 module_param_cb(quiesce, &dnsk_quiesce_ops, NULL, 0200);
 MODULE_PARM_DESC(quiesce, "hand the cgroup slot back and drop the self reference before rmmod");

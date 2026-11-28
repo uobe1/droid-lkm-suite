@@ -109,12 +109,10 @@ static pid_t spawn_userns_helper(unsigned int outer_id)
 	close(ready[1]);
 	close(go[0]);
 	if (read(ready[0], &byte, 1) != 1) {
-		fprintf(stderr, "idmap helper died before ready, errno=%d\n",
-			errno);
+		fprintf(stderr, "idmap helper died before ready, errno=%d\n", errno);
 		goto fail;
 	}
-	if (helper_map_write(pid, "setgroups", "deny") < 0 &&
-	    errno != ENOENT)
+	if (helper_map_write(pid, "setgroups", "deny") < 0 && errno != ENOENT)
 		goto fail;
 	snprintf(map, sizeof(map), "0 %u 1\n", outer_id);
 	if (helper_map_write(pid, "uid_map", map) < 0)
@@ -146,7 +144,7 @@ static int child_idmap_test(void)
 {
 	char path[64];
 	const char *step = "start";
-	struct dnsk_mount_attr attr = { .attr_set = MOUNT_ATTR_IDMAP };
+	struct dnsk_mount_attr attr = {.attr_set = MOUNT_ATTR_IDMAP};
 	struct stat st;
 	int fd, tfd = -1, ufd = -1, ret, saved;
 	pid_t pb = -1;
@@ -166,8 +164,7 @@ static int child_idmap_test(void)
 	if (stat("/tmp/idmap/f", &st) < 0)
 		goto fail_umount;
 	if (st.st_uid != 0) {
-		fprintf(stderr, "USERNS_TEST_FAIL idmap pre uid=%u\n",
-			(unsigned)st.st_uid);
+		fprintf(stderr, "USERNS_TEST_FAIL idmap pre uid=%u\n", (unsigned)st.st_uid);
 		goto fail_umount;
 	}
 	step = "spawn_idmap";
@@ -187,13 +184,11 @@ static int child_idmap_test(void)
 	 * idmapped result with move_mount().
 	 */
 	step = "open_tree";
-	tfd = syscall(SYS_open_tree, AT_FDCWD, "/tmp/idmap",
-		      OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC);
+	tfd = syscall(SYS_open_tree, AT_FDCWD, "/tmp/idmap", OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC);
 	if (tfd < 0)
 		goto fail_umount;
 	step = "mount_setattr";
-	ret = syscall(SYS_mount_setattr, tfd, "", AT_EMPTY_PATH,
-		      &attr, sizeof(attr));
+	ret = syscall(SYS_mount_setattr, tfd, "", AT_EMPTY_PATH, &attr, sizeof(attr));
 	if (ret < 0)
 		goto fail_tree;
 	step = "clone_stat";
@@ -216,8 +211,7 @@ static int child_idmap_test(void)
 	if (mkdir("/tmp/idmap2", 0755) < 0 && errno != EEXIST)
 		goto fail_tree;
 	step = "move_mount";
-	ret = syscall(SYS_move_mount, tfd, "", AT_FDCWD, "/tmp/idmap2",
-		      MOVE_MOUNT_F_EMPTY_PATH);
+	ret = syscall(SYS_move_mount, tfd, "", AT_FDCWD, "/tmp/idmap2", MOVE_MOUNT_F_EMPTY_PATH);
 	if (ret < 0)
 		goto fail_tree;
 	close(tfd);
@@ -226,8 +220,7 @@ static int child_idmap_test(void)
 	if (stat("/tmp/idmap2/f", &st) < 0)
 		goto fail_umount;
 	if (st.st_uid != 1) {
-		fprintf(stderr, "USERNS_TEST_FAIL idmap uid=%u\n",
-			(unsigned)st.st_uid);
+		fprintf(stderr, "USERNS_TEST_FAIL idmap uid=%u\n", (unsigned)st.st_uid);
 		goto fail_umount;
 	}
 	step = "done";
@@ -258,8 +251,7 @@ fail:
 	}
 	if (ufd >= 0)
 		close(ufd);
-	fprintf(stderr, "USERNS_TEST_FAIL idmap_%s: %s\n", step,
-		strerror(saved));
+	fprintf(stderr, "USERNS_TEST_FAIL idmap_%s: %s\n", step, strerror(saved));
 	return 1;
 }
 
@@ -297,8 +289,7 @@ static int idmap_test(void)
 		fprintf(stderr, "USERNS_TEST_FAIL idmap_spawn_sb_ready\n");
 		goto fail;
 	}
-	if (helper_map_write(pid, "setgroups", "deny") < 0 &&
-	    errno != ENOENT)
+	if (helper_map_write(pid, "setgroups", "deny") < 0 && errno != ENOENT)
 		goto fail_map;
 	if (helper_map_write(pid, "uid_map", "0 0 1\n1 1 1\n") < 0)
 		goto fail_map;
@@ -317,8 +308,7 @@ static int idmap_test(void)
 	return 0;
 
 fail_map:
-	fprintf(stderr, "USERNS_TEST_FAIL idmap_sb_map: %s\n",
-		strerror(errno));
+	fprintf(stderr, "USERNS_TEST_FAIL idmap_sb_map: %s\n", strerror(errno));
 fail:
 	kill(pid, SIGKILL);
 	waitpid(pid, NULL, 0);
@@ -341,10 +331,8 @@ static int overlay_test(void)
 		return perror("ovl mkdir"), 1;
 	if (mount("tmpfs", "/tmp/ovl", "tmpfs", 0, "size=8M") < 0)
 		return perror("ovl tmpfs"), 1;
-	if (mkdir("/tmp/ovl/lower", 0755) < 0 ||
-	    mkdir("/tmp/ovl/upper", 0755) < 0 ||
-	    mkdir("/tmp/ovl/work", 0755) < 0 ||
-	    mkdir("/tmp/ovl/merged", 0755) < 0)
+	if (mkdir("/tmp/ovl/lower", 0755) < 0 || mkdir("/tmp/ovl/upper", 0755) < 0 ||
+	    mkdir("/tmp/ovl/work", 0755) < 0 || mkdir("/tmp/ovl/merged", 0755) < 0)
 		return perror("ovl dirs"), 1;
 
 	fd = open("/tmp/ovl/lower/base", O_CREAT | O_WRONLY, 0644);
@@ -405,8 +393,7 @@ int main(void)
 		return 1;
 	}
 	if (getuid() != 0 || getgid() != 0) {
-		fprintf(stderr, "USERNS_TEST_FAIL unmapped uid=%u gid=%u\n",
-			getuid(), getgid());
+		fprintf(stderr, "USERNS_TEST_FAIL unmapped uid=%u gid=%u\n", getuid(), getgid());
 		return 1;
 	}
 
@@ -430,8 +417,7 @@ int main(void)
 		return 1;
 	}
 	if (getuid() != 0 || getgid() != 0) {
-		fprintf(stderr, "USERNS_TEST_FAIL nested uid=%u gid=%u\n",
-			getuid(), getgid());
+		fprintf(stderr, "USERNS_TEST_FAIL nested uid=%u gid=%u\n", getuid(), getgid());
 		return 1;
 	}
 
