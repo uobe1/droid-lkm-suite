@@ -3,7 +3,7 @@
 Native/Real LKM container-subsystem completion for Android GKI
 
 本页是 MkDocs 首页
-当前处于 `android16-6.12` 开发收尾阶段 (core M0 完成, feature 处于开发/Native 化), 功能状态见 [status](status.md).
+当前处于 `android16-6.12` 开发收尾阶段 (core 与 feature 均处于开发/Native 化), 功能状态见 [status](status.md).
 
 ## 关键约束
 

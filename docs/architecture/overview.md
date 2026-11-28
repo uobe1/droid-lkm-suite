@@ -13,7 +13,7 @@
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
-| `dnsk_core.ko` | 符号解析, patch, inline hook 托管 (内嵌 droid-hook), diag, feature 注册, panic 取证, 日志 | M0 完成 (ABI 2) |
+| `dnsk_core.ko` | 符号解析, patch, inline hook 托管 (内嵌 droid-hook), diag, feature 注册, panic 取证, 日志 | development (ABI 2; QEMU/真机门控未重跑) |
 | `dnsk_ns.ko` | PID_NS/IPC_NS/SYSVIPC/POSIX_MQUEUE, 含 USER_NS 实现 | development |
 | `dnsk_devtmpfs.ko` | devtmpfs | development |
 | `dnsk_netfilter.ko` | nft 目标子集, xt_addrtype/REJECT/RECENT, ip6table_nat | development |
